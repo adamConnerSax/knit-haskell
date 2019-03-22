@@ -1,0 +1,13 @@
+.stack-work/*
+*~
+*#
+/dist
+\#*#
+.#*
+/dist-newstyle
+cabal.project.local
+*.json
+*.png
+TAGS
+.ghc*
+bench/*.html
