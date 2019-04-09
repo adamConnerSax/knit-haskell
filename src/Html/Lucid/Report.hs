@@ -1,18 +1,29 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-|
+Module      : Html.Lucid.Report
+Description : freer-simple random effect
+Copyright   : (c) Adam Conner-Sax 2019
+License     : BSD-3-Clause
+Maintainer  : adam_conner_sax@yahoo.com
+Stability   : experimental
+
+Functions to support some simple reports using Lucid.  Particularly to support adding latex and hvega charts.
+-}
 module Html.Lucid.Report
   (
+    -- * Setup, headers, scripts, etc.
     makeReportHtml
+    -- * add specific report bits
   , placeVisualization
   , placeTextSection
   , latexToHtml
+  -- * helpers
   , latex_
   )
 where
 
---import           Control.Monad.Morph        (generalize, hoist, lift)
---import           Control.Monad.Trans        (lift)
 import qualified Data.Aeson.Encode.Pretty   as A
 import qualified Data.ByteString.Lazy.Char8 as BS
 import           Data.Monoid                ((<>))
@@ -24,8 +35,8 @@ import qualified Lucid                      as H
 import qualified Text.Pandoc                as P
 
 import qualified Control.Monad.Freer.Html   as FH
---import qualified Control.Monad.Freer  as FR
 
+-- | convert Latex to Lucid Html
 latexToHtml :: T.Text -> H.Html ()
 latexToHtml lText = do
   let latexReadOptions = P.def
@@ -59,6 +70,7 @@ tufteSetup = do
    H.link_ [H.rel_ "stylesheet", H.href_ "https://cdnjs.cloudflare.com/ajax/libs/tufte-css/1.4/tufte.min.css"]
    H.meta_ [H.name_ "viewport", H.content_"width=device-width, initial-scale=1"]
 
+-- | -- | wrap given html in appropriate headers for the hvega and latex functions to work
 makeReportHtml :: T.Text -> H.Html a -> H.Html a
 makeReportHtml title reportHtml = H.html_ $ head >> H.body_ (H.article_ reportHtml) where
   head :: H.Html () = H.head_ (do
@@ -69,17 +81,14 @@ makeReportHtml title reportHtml = H.html_ $ head >> H.body_ (H.article_ reportHt
                                   return ()
                               )
 
+-- | add an hvega visualization with the given id
 placeVisualization :: T.Text -> GV.VegaLite -> H.Html ()
 placeVisualization idText vl =
   let vegaScript :: T.Text = T.decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
       script = "var vlSpec=\n" <> vegaScript <> ";\n" <> "vegaEmbed(\'#" <> idText <> "\',vlSpec);"
   in H.figure_ [H.id_ idText] (H.script_ [H.type_ "text/javascript"]  (H.toHtmlRaw script))
 
+-- | add the given Html as a new section
 placeTextSection :: H.Html () -> H.Html ()
 placeTextSection x = H.section_ [{- attributes/styles here -}] x
 
-
--- utilities for lifting through
-
---htmlToIOLogged :: H.Html a -> SL.Logger (H.HtmlT IO) a
---htmlToIOLogged = SL.liftPureAction

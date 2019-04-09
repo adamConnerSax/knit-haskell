@@ -1,12 +1,24 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-|
+Module      : Html.Blaze.Report
+Description : Support functions for simple reports in Blaze
+Copyright   : (c) Adam Conner-Sax 2019
+License     : BSD-3-Clause
+Maintainer  : adam_conner_sax@yahoo.com
+Stability   : experimental
+
+Functions to support some simple reports using Blaze.  Particularly to support adding latex and hvega charts.
+-}
 module Html.Blaze.Report
-  ( makeReportHtml
+  (
+    -- * Add relevant headers, scripts
+    makeReportHtml
+    -- * add report pieces
   , placeVisualization
   , placeTextSection
   , latexToHtml
---  , htmlToIOLogged
   , latex_
   )
 where
@@ -26,6 +38,7 @@ import qualified Text.Pandoc                   as P
 import qualified Control.Monad.Freer.Html      as FH
 --import qualified Control.Monad.Freer  as FR
 
+-- | convert Latex to Blaze Html
 latexToHtml :: T.Text -> H.Html
 latexToHtml lText = do
   let
@@ -72,6 +85,7 @@ tufteSetup = do
     "https://cdnjs.cloudflare.com/ajax/libs/tufte-css/1.4/tufte.min.css"
   H.meta ! HA.name "viewport" ! HA.content "width=device-width, initial-scale=1"
 
+-- | wrap given html in appropriate headers for the hvega and latex functions to work
 makeReportHtml :: T.Text -> H.Html -> H.Html
 makeReportHtml title reportHtml = H.html $ do
   H.docTypeHtml $ do
@@ -82,6 +96,7 @@ makeReportHtml title reportHtml = H.html $ do
       vegaScripts2
     H.body $ H.article $ reportHtml
 
+-- | add an hvega visualization with the given id
 placeVisualization :: T.Text -> GV.VegaLite -> H.Html
 placeVisualization idText vl =
   let vegaScript :: T.Text =
@@ -96,6 +111,7 @@ placeVisualization idText vl =
   in  H.figure ! HA.id (H.toValue idText) $ do
         H.script ! HA.type_ "text/javascript" $ H.preEscapedToHtml script
 
+-- | add the given Html as a new section
 placeTextSection :: H.Html -> H.Html
 placeTextSection x = H.section x
 

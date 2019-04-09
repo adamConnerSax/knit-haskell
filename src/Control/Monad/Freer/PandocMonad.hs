@@ -14,9 +14,23 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-|
+Module      : Control.Monad.Freer.Pandoc
+Description : freer-simple logging effect
+Copyright   : (c) Adam Conner-Sax 2019
+License     : BSD-3-Clause
+Maintainer  : adam_conner_sax@yahoo.com
+Stability   : experimental
+
+freer-simple PandocMonad effect.  Allows a freer-simple stack to satisfy a PandocMonad constraint.  This still needs to run on top of PandocIO
+but that will likely be addressed at some point in the future, just requiring IO at base and the Logging and Random effects.
+-}
 module Control.Monad.Freer.PandocMonad
-  ( Pandoc
+  (
+    -- * Types
+    Pandoc
   , PandocEffects
+  -- * functions to run in IO
   , runPandoc
   , runPandocAndLoggingToIO
   -- * re-exports
@@ -38,6 +52,7 @@ import           Data.Time.Clock                ( UTCTime )
 import           Data.Time.LocalTime            ( TimeZone )
 import           System.Random                  ( StdGen )
 
+-- | Pandoc Effect
 data Pandoc r where
   LookupEnv :: String -> Pandoc (Maybe String)
   GetCurrentTime :: Pandoc UTCTime
@@ -59,25 +74,30 @@ data Pandoc r where
 
 FR.makeEffect ''Pandoc
 
+-- | split off the error piece so we can handle directly
 instance FR.Members '[Pandoc, FR.Error P.PandocError] effs => MonadError P.PandocError (FR.Eff effs) where
   throwError = FR.throwError
   catchError = FR.catchError
 
 -- we handle logging within the existing effect system
+-- | map pandoc severities to our logging system
 pandocSeverity :: P.LogMessage -> Log.LogSeverity
 pandocSeverity lm = case P.messageVerbosity lm of
   P.ERROR   -> Log.Error
   P.WARNING -> Log.Warning
   P.INFO    -> Log.Info
 
+-- | handle the logging aspect with our logger
 logPandocMessage
   :: FR.Member (Log.Logger Log.LogEntry) effs => P.LogMessage -> FR.Eff effs ()
 logPandocMessage lm = FR.send $ Log.Log $ Log.LogEntry
   (pandocSeverity lm)
   (T.pack . P.showLogMessage $ lm)
 
+-- * Constraint Helper
 type PandocEffects effs = (FR.Members '[Pandoc, FR.Error P.PandocError, Log.PrefixLog, (Log.Logger Log.LogEntry)] effs {-*, MonadError P.PandocError (FR.Eff effs)-})
 
+-- | PandocMonad instance so that pandoc functions can be run in the freer-simple stack
 instance PandocEffects effs => P.PandocMonad (FR.Eff effs) where
   lookupEnv = lookupEnv
   getCurrentTime = getCurrentTime
@@ -99,7 +119,7 @@ instance PandocEffects effs => P.PandocMonad (FR.Eff effs) where
 
 -- for now.  But we can split this up into IO
 -- must run before logger, right?
-
+-- | run the Pandoc effect in another monad which satisfies the PandocMonad constraint.  Someday this will become a MonadIO constraint.
 runPandoc
   :: ( P.PandocMonad m
      , FR.LastMember m effs
@@ -133,6 +153,8 @@ mergeEithers (Left  x        ) = Left x
 mergeEithers (Right (Left  x)) = Left x
 mergeEithers (Right (Right x)) = Right x
 
+-- | run the Pandoc effects, and log messages with the given severity, over IO.  If there is a Pandoc error,
+-- you will get a Left in the resulting Either.
 runPandocAndLoggingToIO
   :: [Log.LogSeverity]
   -> FR.Eff
