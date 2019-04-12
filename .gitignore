@@ -11,3 +11,9 @@ cabal.project.local
 TAGS
 .ghc*
 bench/*.html
+report.html
+*.prof
+*.hp
+*.ps
+*.aux
+*.png
