@@ -12,6 +12,7 @@ TAGS
 .ghc*
 bench/*.html
 report.html
+examples/html
 *.prof
 *.hp
 *.ps

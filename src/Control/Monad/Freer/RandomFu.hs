@@ -27,18 +27,21 @@ freer-simple Random effect.  Allows a freer-simple stack to satisfy a MonadRando
 3. In IO, using a given Data.Random.Source.PureMT source.  (IO is used to put the source in an IORef)
 4. (TODO) Reinterpreted in a State (PureMT) effect.
 -}
-module Control.Monad.Freer.Random
+module Control.Monad.Freer.RandomFu
   (
-    -- * Types 
+    -- * Effect
     Random
-    -- * combinators
+    
+    -- * Actions
   , sampleRVar
   , sampleDist
-  -- * run functions 
+  
+  -- * Interpretations 
   , runRandomIOSimple
   , runRandomIOPureMT
   , runRandomFromSource
   ) where
+
 import           Data.IORef (newIORef)
 import qualified Data.Random as R
 import qualified Data.Random.Source as R

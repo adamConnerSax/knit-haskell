@@ -27,13 +27,18 @@ module Text.Pandoc.Report
   , addHtml
   , addBlaze
   , addLucid
+  , addLatex
+  , addHvega
   -- * converters
   , markDownTextToBlazeFragment
   -- * formatted output
   , toBlazeDocument
   , pandocWriterToBlazeDocument
-  -- * options helper
+  -- * options helper  
   , mindocOptionsF
+  -- * re-exports
+  , Member
+  , Eff
   )
 where
 
@@ -55,6 +60,10 @@ import qualified Control.Monad.Freer.PandocMonad
                                                as PM
 import qualified Control.Monad.Freer.Html      as H
 import qualified Control.Monad.Freer           as FR
+import           Control.Monad.Freer
+import           Html.Blaze.Report              ( latexToHtml
+                                                , placeVisualization
+                                                )
 
 -- | Base Html reader options 
 htmlReaderOptions =
@@ -132,6 +141,22 @@ addLucid
   => LH.Html ()
   -> FR.Eff effs ()
 addLucid = addHtml . LT.toStrict . LH.renderText
+
+-- | add latex (via blaze)
+addLatex
+  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  => T.Text
+  -> FR.Eff effs ()
+addLatex = addBlaze . latexToHtml
+
+-- | add hvega (via blaze)
+addHvega
+  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  => T.Text
+  -> GV.VegaLite
+  -> FR.Eff effs ()
+addHvega vizId = addBlaze . placeVisualization vizId
+
 
 -- | Convert markDown to Blaze
 markDownTextToBlazeFragment
