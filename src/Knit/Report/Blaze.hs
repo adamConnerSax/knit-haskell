@@ -11,7 +11,7 @@ Stability   : experimental
 
 Functions to support some simple reports using Blaze.  Particularly to support adding latex and hvega charts.
 -}
-module Html.Blaze.Report
+module Knit.Report.Blaze
   (
     -- * Add relevant headers, scripts
     makeReportHtml
@@ -35,7 +35,7 @@ import           Text.Blaze.Html5               ( (!) )
 import qualified Text.Blaze.Html5.Attributes   as HA
 import qualified Text.Pandoc                   as P
 
-import qualified Control.Monad.Freer.Html      as FH
+import qualified Knit.Effects.Html             as FH
 --import qualified Control.Monad.Freer  as FR
 
 -- | convert Latex to Blaze Html

@@ -1,19 +1,22 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GADTs #-}
 module Main where
 
-import qualified Control.Monad.Freer.Logger    as Log
-import qualified Control.Monad.Freer.PandocMonad
-                                               as FR
-import qualified Text.Pandoc.Report            as P
-import qualified Control.Monad.Freer.Pandoc      as P
+import qualified Knit.Effects.Logger    as Log
+import qualified Knit.Effects.PandocMonad as PM
+import qualified Knit.Effects.Pandoc      as PE
+
+import qualified Knit.Report.Pandoc            as PR
+import qualified Polysemy as P
 
 import           Control.Monad.IO.Class          (MonadIO(liftIO))
 import qualified Data.Map                      as M
 import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
+import qualified Data.Text                as T
 import           Data.String.Here (here)
 import qualified Graphics.Vega.VegaLite        as V
 
@@ -27,13 +30,13 @@ templateVars = M.fromList
 main :: IO ()
 main = do
   let runEffects =
-        FR.runPandocAndLoggingToIO Log.logAll
+        PM.runPandocAndLoggingToIO Log.logAll
           . Log.wrapPrefix "Example1.Main"
           . fmap BH.renderHtml
-      pandocToHtml =  P.pandocWriterToBlazeDocument
+      pandocToHtml =  PR.pandocWriterToBlazeDocument
         (Just "pandoc-templates/minWithVega-pandoc.html")
         templateVars
-        P.mindocOptionsF
+        PR.mindocOptionsF
   htmlAsTextE <- runEffects $ pandocToHtml $ makeDoc   
   case htmlAsTextE of
     Right htmlAsText ->
@@ -42,6 +45,7 @@ main = do
         $ htmlAsText
     Left err -> putStrLn $ "pandoc error: " ++ show err
 
+md1 :: T.Text
 md1 = [here|
 ## Some example markdown
 * [Markdown][MarkdownLink] is a nice way to write formatted notes with a minimum of code.
@@ -50,19 +54,19 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: (P.Member P.ToPandoc effs
-           , Log.LogWithPrefixes effs
-           , FR.PandocEffects effs
-           , MonadIO (P.Eff effs)) => P.Eff effs ()
+makeDoc :: (P.Member PE.ToPandoc effs
+           , Log.LogWithPrefixesLE effs
+           , PM.PandocEffects effs
+           , MonadIO (P.Semantic effs)) => P.Semantic effs ()
 makeDoc = Log.wrapPrefix "makeDoc" $ do
   Log.logLE Log.Info "adding some markdown..."
-  P.addMarkDown md1
+  PR.addMarkDown md1
   Log.logLE Log.Info "adding some latex..."
-  P.addMarkDown "## Some example latex"
-  P.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+  PR.addMarkDown "## Some example latex"
+  PR.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   Log.logLE Log.Info "adding a visualization..."
-  P.addMarkDown "## An example hvega visualization"
-  P.addHvega "someID" exampleVis
+  PR.addMarkDown "## An example hvega visualization"
+  PR.addHvega "someID" exampleVis
 
 exampleVis =
   let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []

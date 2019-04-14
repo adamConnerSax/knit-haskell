@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -17,7 +18,7 @@ Stability   : experimental
 freer-simple Pandoc effect.  This is writer-like, allowing the interspersed addition of various Pandoc-readable formats into one doc and then rendering
 to many Pandoc-writeable formats.  Currently only a subset of formats are supported.
 -}
-module Control.Monad.Freer.Pandoc
+module Knit.Effects.Pandoc
   (
     -- * Effect Types
     ToPandoc
@@ -42,15 +43,19 @@ module Control.Monad.Freer.Pandoc
   )
 where
 
-import qualified Text.Pandoc                   as P
+import qualified Text.Pandoc                   as PA
 import qualified Data.Text                     as T
 import           Data.ByteString.Lazy          as LBS
 import qualified Text.Blaze.Html               as Blaze
-import qualified Control.Monad.Freer           as FR
-import qualified Control.Monad.Freer.PandocMonad
-                                               as FR
-import qualified Control.Monad.Freer.Writer    as FR
-import           Control.Monad.Freer.Docs       ( Docs
+
+import qualified Polysemy                      as P
+import           Polysemy.Internal              ( send )
+import qualified Polysemy.Writer               as P
+
+
+import qualified Knit.Effects.PandocMonad      as PM
+
+import           Knit.Effects.Docs              ( Docs
                                                 , NamedDoc(..)
                                                 , newDoc
                                                 , toNamedDocList
@@ -82,100 +87,105 @@ data PandocWriteFormat a where
 deriving instance Show (PandocWriteFormat a)
 
 -- | Pandoc writer, add any read format to current doc
-data ToPandoc r where
-  AddFrom  :: PandocReadFormat a -> P.ReaderOptions -> a -> ToPandoc () -- add to current doc
+data ToPandoc m r where
+  AddFrom  :: PandocReadFormat a -> PA.ReaderOptions -> a -> ToPandoc m () -- add to current doc
 
 
 -- | Pandoc output effect, take given doc and produce formatted output
-data FromPandoc r where
-  WriteTo  :: PandocWriteFormat a -> P.WriterOptions -> P.Pandoc -> FromPandoc a -- convert to given format
+data FromPandoc m r where
+  WriteTo  :: PandocWriteFormat a -> PA.WriterOptions -> PA.Pandoc -> FromPandoc m a -- convert to given format
 
 
 -- | add a piece of a Pandoc readable type to the current doc
 addFrom
-  :: FR.Member ToPandoc effs
+  :: P.Member ToPandoc effs
   => PandocReadFormat a
-  -> P.ReaderOptions
+  -> PA.ReaderOptions
   -> a
-  -> FR.Eff effs ()
-addFrom prf pro doc = FR.send $ AddFrom prf pro doc
+  -> P.Semantic effs ()
+addFrom prf pro doc = send $ AddFrom prf pro doc
 
 -- | write given doc in requested format
 writeTo
-  :: FR.Member FromPandoc effs
+  :: P.Member FromPandoc effs
   => PandocWriteFormat a
-  -> P.WriterOptions
-  -> P.Pandoc
-  -> FR.Eff effs a
-writeTo pwf pwo pdoc = FR.send $ WriteTo pwf pwo pdoc
+  -> PA.WriterOptions
+  -> PA.Pandoc
+  -> P.Semantic effs a
+writeTo pwf pwo pdoc = send $ WriteTo pwf pwo pdoc
 
 -- | Convert a to Pandoc with the given options
 toPandoc
-  :: P.PandocMonad m => PandocReadFormat a -> P.ReaderOptions -> a -> m P.Pandoc
+  :: PA.PandocMonad m
+  => PandocReadFormat a
+  -> PA.ReaderOptions
+  -> a
+  -> m PA.Pandoc
 toPandoc prf pro x = read pro x
  where
   read = case prf of
-    ReadDocX       -> P.readDocx
-    ReadMarkDown   -> P.readMarkdown
-    ReadCommonMark -> P.readCommonMark
-    ReadRST        -> P.readRST
-    ReadLaTeX      -> P.readLaTeX
-    ReadHtml       -> P.readHtml
+    ReadDocX       -> PA.readDocx
+    ReadMarkDown   -> PA.readMarkdown
+    ReadCommonMark -> PA.readCommonMark
+    ReadRST        -> PA.readRST
+    ReadLaTeX      -> PA.readLaTeX
+    ReadHtml       -> PA.readHtml
 
 -- | convert Pandoc to a with the given options
 fromPandoc
-  :: P.PandocMonad m
+  :: PA.PandocMonad m
   => PandocWriteFormat a
-  -> P.WriterOptions
-  -> P.Pandoc
+  -> PA.WriterOptions
+  -> PA.Pandoc
   -> m a
 fromPandoc pwf pwo pdoc = write pwo pdoc
  where
   write = case pwf of
-    WriteDocX        -> P.writeDocx
-    WriteMarkDown    -> P.writeMarkdown
-    WriteCommonMark  -> P.writeCommonMark
-    WriteRST         -> P.writeRST
-    WriteLaTeX       -> P.writeLaTeX
-    WriteHtml5       -> P.writeHtml5
-    WriteHtml5String -> P.writeHtml5String
+    WriteDocX        -> PA.writeDocx
+    WriteMarkDown    -> PA.writeMarkdown
+    WriteCommonMark  -> PA.writeCommonMark
+    WriteRST         -> PA.writeRST
+    WriteLaTeX       -> PA.writeLaTeX
+    WriteHtml5       -> PA.writeHtml5
+    WriteHtml5String -> PA.writeHtml5String
 
 -- | Re-interpret ToPandoc in Writer
 toWriter
-  :: FR.PandocEffects effs
-  => FR.Eff (ToPandoc ': effs) a
-  -> FR.Eff (FR.Writer P.Pandoc ': effs) a
+  :: PM.PandocEffects effs
+  => P.Semantic (ToPandoc ': effs) a
+  -> P.Semantic (P.Writer PA.Pandoc ': effs) a
 toWriter =
-  FR.reinterpret (\(AddFrom rf ro x) -> FR.raise (toPandoc rf ro x) >>= FR.tell)
+  P.reinterpret (\(AddFrom rf ro x) -> P.raise (toPandoc rf ro x) >>= P.tell)
 
 -- | run ToPandoc by interpreting in Writer and running that
 runPandocWriter
-  :: FR.PandocEffects effs
-  => FR.Eff (ToPandoc ': effs) ()
-  -> FR.Eff effs P.Pandoc
-runPandocWriter = fmap snd . FR.runWriter . toWriter
+  :: PM.PandocEffects effs
+  => P.Semantic (ToPandoc ': effs) ()
+  -> P.Semantic effs PA.Pandoc
+runPandocWriter = fmap fst . P.runWriter . toWriter
 
 -- | type-alias for use with the @Docs@ effect
-type Pandocs = Docs P.Pandoc
+type Pandocs = Docs PA.Pandoc
 
 -- | add a new named Pandoc to a Pandoc Docs collection
-newPandocPure :: FR.Member Pandocs effs => T.Text -> P.Pandoc -> FR.Eff effs ()
+newPandocPure
+  :: P.Member Pandocs effs => T.Text -> PA.Pandoc -> P.Semantic effs ()
 newPandocPure = newDoc
 
 -- | add the Pandoc stored in the writer-style ToPandoc effect to the named docs collection with the given name
 newPandoc
-  :: (FR.PandocEffects effs, FR.Member Pandocs effs)
+  :: (PM.PandocEffects effs, P.Member Pandocs effs)
   => T.Text
-  -> FR.Eff (ToPandoc ': effs) ()
-  -> FR.Eff effs ()
-newPandoc n l = fmap snd (FR.runWriter $ toWriter l) >>= newPandocPure n
+  -> P.Semantic (ToPandoc ': effs) ()
+  -> P.Semantic effs ()
+newPandoc n l = fmap fst (P.runWriter $ toWriter l) >>= newPandocPure n
 
 -- | Given a write format and options, convert the NamedDoc to the requested format
 namedPandocFrom
-  :: P.PandocMonad m
+  :: PA.PandocMonad m
   => PandocWriteFormat a
-  -> P.WriterOptions
-  -> NamedDoc P.Pandoc
+  -> PA.WriterOptions
+  -> NamedDoc PA.Pandoc
   -> m (NamedDoc a)
 namedPandocFrom pwf pwo (NamedDoc n pdoc) = do
   doc <- fromPandoc pwf pwo pdoc
@@ -183,21 +193,20 @@ namedPandocFrom pwf pwo (NamedDoc n pdoc) = do
 
 -- | Given a write format and options, convert a list of named Pandocs to a list of named docs in the requested format
 pandocsToNamed
-  :: FR.PandocEffects effs
+  :: PM.PandocEffects effs
   => PandocWriteFormat a
-  -> P.WriterOptions
-  -> FR.Eff (Pandocs ': effs) ()
-  -> FR.Eff effs [NamedDoc a]
+  -> PA.WriterOptions
+  -> P.Semantic (Pandocs ': effs) ()
+  -> P.Semantic effs [NamedDoc a]
 pandocsToNamed pwf pwo =
   (traverse (namedPandocFrom pwf pwo) =<<) . toNamedDocList -- monad, list, NamedDoc itself
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE
-  :: FR.PandocEffects effs
+  :: PM.PandocEffects effs
   => PandocWriteFormat a
-  -> P.WriterOptions
-  -> FR.Eff (ToPandoc ': effs) ()
-  -> FR.Eff effs a
-fromPandocE pwf pwo =
-  ((fromPandoc pwf pwo . snd) =<<) . FR.runWriter . toWriter
+  -> PA.WriterOptions
+  -> P.Semantic (ToPandoc ': effs) ()
+  -> P.Semantic effs a
+fromPandocE pwf pwo = ((fromPandoc pwf pwo . fst) =<<) . P.runWriter . toWriter
 

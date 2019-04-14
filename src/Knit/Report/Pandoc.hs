@@ -15,7 +15,7 @@ Stability   : experimental
 
 Functions to support some simple reports using Blaze.  Particularly to support adding latex and hvega charts.
 -}
-module Text.Pandoc.Report
+module Knit.Report.Pandoc
   (
     -- * Default Options
     htmlReaderOptions
@@ -52,118 +52,118 @@ import qualified Data.Map                      as M
 import qualified Graphics.Vega.VegaLite        as GV
 import qualified Text.Blaze.Html               as BH
 import qualified Text.Blaze.Html.Renderer.Text as BH
-import qualified Text.Pandoc                   as P
-import qualified Text.Pandoc.Extensions        as P
+import qualified Text.Pandoc                   as PA
+import qualified Text.Pandoc.Extensions        as PA
 import qualified Lucid                         as LH
-import qualified Control.Monad.Freer.Pandoc    as P
-import qualified Control.Monad.Freer.PandocMonad
-                                               as PM
-import qualified Control.Monad.Freer.Html      as H
-import qualified Control.Monad.Freer           as FR
+
+import qualified Knit.Effects.Pandoc           as PE
+import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effects.Html             as H
+import qualified Polysemy                      as P
 import           Control.Monad.Freer
-import           Html.Blaze.Report              ( latexToHtml
+import           Knit.Report.Blaze              ( latexToHtml
                                                 , placeVisualization
                                                 )
 
 -- | Base Html reader options 
 htmlReaderOptions =
-  P.def { P.readerExtensions = P.extensionsFromList [P.Ext_raw_html] }
+  PA.def { PA.readerExtensions = PA.extensionsFromList [PA.Ext_raw_html] }
 
 -- | Html reader options for complete document
-htmlReaderOptionsWithHeader = htmlReaderOptions { P.readerStandalone = True }
+htmlReaderOptionsWithHeader = htmlReaderOptions { PA.readerStandalone = True }
 
 -- | Base Html writer options, with support for MathJax
-htmlWriterOptions = P.def
-  { P.writerExtensions     = P.extensionsFromList [P.Ext_raw_html]
-  , P.writerHTMLMathMethod = P.MathJax ""
+htmlWriterOptions = PA.def
+  { PA.writerExtensions     = PA.extensionsFromList [PA.Ext_raw_html]
+  , PA.writerHTMLMathMethod = PA.MathJax ""
   }
 
 -- | Full writer options which use pandoc monad for template access
 htmlFullDocWriterOptions
-  :: P.PandocMonad m
+  :: PA.PandocMonad m
   => Maybe FilePath
   -> M.Map String String
-  -> m P.WriterOptions
+  -> m PA.WriterOptions
 htmlFullDocWriterOptions pathM templateVars = do
   template <- case pathM of
-    Nothing -> P.getDefaultTemplate "Html5"
+    Nothing -> PA.getDefaultTemplate "Html5"
     Just fp -> do
-      exists <- P.fileExists fp
+      exists <- PA.fileExists fp
       if exists
-        then fmap BS.unpack (P.readFileStrict fp)
-        else P.logOutput (P.IgnoredIOError ("Couldn't find " ++ show fp))
-          >> P.getDefaultTemplate "Html5"
-  return $ htmlWriterOptions { P.writerTemplate      = Just template
-                             , P.writerVariables     = M.toList templateVars
-                             , P.writerSetextHeaders = True
+        then fmap BS.unpack (PA.readFileStrict fp)
+        else PA.logOutput (PA.IgnoredIOError ("Couldn't find " ++ show fp))
+          >> PA.getDefaultTemplate "Html5"
+  return $ htmlWriterOptions { PA.writerTemplate      = Just template
+                             , PA.writerVariables     = M.toList templateVars
+                             , PA.writerSetextHeaders = True
                              }
 
 -- | Base markdown reader options
-markDownReaderOptions = P.def
-  { P.readerStandalone = True
-  , P.readerExtensions = P.extensionsFromList
-                           [ P.Ext_auto_identifiers
-                           , P.Ext_backtick_code_blocks
-                           , P.Ext_fancy_lists
-                           , P.Ext_footnotes
-                           , P.Ext_simple_tables
-                           , P.Ext_multiline_tables
-                           , P.Ext_tex_math_dollars
-                           , P.Ext_header_attributes
-                           , P.Ext_implicit_header_references
-                           ]
+markDownReaderOptions = PA.def
+  { PA.readerStandalone = True
+  , PA.readerExtensions = PA.extensionsFromList
+                            [ PA.Ext_auto_identifiers
+                            , PA.Ext_backtick_code_blocks
+                            , PA.Ext_fancy_lists
+                            , PA.Ext_footnotes
+                            , PA.Ext_simple_tables
+                            , PA.Ext_multiline_tables
+                            , PA.Ext_tex_math_dollars
+                            , PA.Ext_header_attributes
+                            , PA.Ext_implicit_header_references
+                            ]
   }
 
 -- | add a markdown bit with default options
 addMarkDown
-  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
-  -> FR.Eff effs ()
-addMarkDown = P.addFrom P.ReadMarkDown markDownReaderOptions
+  -> P.Semantic effs ()
+addMarkDown = PE.addFrom PE.ReadMarkDown markDownReaderOptions
 
 -- | add Text formatted as Html
 addHtml
-  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
-  -> FR.Eff effs ()
-addHtml = P.addFrom P.ReadHtml htmlReaderOptions
+  -> P.Semantic effs ()
+addHtml = PE.addFrom PE.ReadHtml htmlReaderOptions
 
 -- | add Blaze Html 
 addBlaze
-  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => BH.Html
-  -> FR.Eff effs ()
+  -> P.Semantic effs ()
 addBlaze = addHtml . LT.toStrict . BH.renderHtml
 
 -- | add Lucid Html
 addLucid
-  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => LH.Html ()
-  -> FR.Eff effs ()
+  -> P.Semantic effs ()
 addLucid = addHtml . LT.toStrict . LH.renderText
 
 -- | add latex (via blaze)
 addLatex
-  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
-  -> FR.Eff effs ()
+  -> P.Semantic effs ()
 addLatex = addBlaze . latexToHtml
 
 -- | add hvega (via blaze)
 addHvega
-  :: (PM.PandocEffects effs, FR.Member P.ToPandoc effs)
+  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
   -> GV.VegaLite
-  -> FR.Eff effs ()
+  -> P.Semantic effs ()
 addHvega vizId = addBlaze . placeVisualization vizId
 
 
 -- | Convert markDown to Blaze
 markDownTextToBlazeFragment
-  :: PM.PandocEffects effs => T.Text -> FR.Eff effs BH.Html
+  :: PM.PandocEffects effs => T.Text -> P.Semantic effs BH.Html
 markDownTextToBlazeFragment =
-  P.fromPandocE P.WriteHtml5 htmlWriterOptions
-    . P.addFrom P.ReadMarkDown markDownReaderOptions
+  PE.fromPandocE PE.WriteHtml5 htmlWriterOptions
+    . PE.addFrom PE.ReadMarkDown markDownReaderOptions
 
 -- | Convert given Pandoc to Blaze Html.
 -- Incudes support for template and template variables and changes to the default writer options
@@ -171,12 +171,12 @@ toBlazeDocument
   :: PM.PandocEffects effs
   => Maybe FilePath
   -> M.Map String String
-  -> (P.WriterOptions -> P.WriterOptions)
-  -> P.Pandoc
-  -> FR.Eff effs BH.Html
+  -> (PA.WriterOptions -> PA.WriterOptions)
+  -> PA.Pandoc
+  -> P.Semantic effs BH.Html
 toBlazeDocument templatePathM templateVars optionsF pdoc = do
   writerOptions <- htmlFullDocWriterOptions templatePathM templateVars
-  P.fromPandoc P.WriteHtml5 (optionsF writerOptions) pdoc
+  PE.fromPandoc PE.WriteHtml5 (optionsF writerOptions) pdoc
 
 -- | Convert current Pandoc document (from the ToPandoc effect) into a Blaze Html document.
 -- Incudes support for template and template variables and changes to the default writer options. 
@@ -184,11 +184,11 @@ pandocWriterToBlazeDocument
   :: PM.PandocEffects effs
   => Maybe FilePath
   -> M.Map String String
-  -> (P.WriterOptions -> P.WriterOptions)
-  -> FR.Eff (P.ToPandoc ': effs) ()
-  -> FR.Eff effs BH.Html
+  -> (PA.WriterOptions -> PA.WriterOptions)
+  -> P.Semantic (PE.ToPandoc ': effs) ()
+  -> P.Semantic effs BH.Html
 pandocWriterToBlazeDocument templatePathM templateVars optionsF pw =
-  P.runPandocWriter pw >>= toBlazeDocument templatePathM templateVars optionsF
+  PE.runPandocWriter pw >>= toBlazeDocument templatePathM templateVars optionsF
 
 -- | options for the mindoc template 
-mindocOptionsF op = op { P.writerSectionDivs = True }
+mindocOptionsF op = op { PA.writerSectionDivs = True }

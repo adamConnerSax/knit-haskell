@@ -11,7 +11,7 @@ Stability   : experimental
 
 Functions to support some simple reports using Lucid.  Particularly to support adding latex and hvega charts.
 -}
-module Html.Lucid.Report
+module Knit.Report.Lucid
   (
     -- * Setup, headers, scripts, etc.
     makeReportHtml
@@ -34,7 +34,7 @@ import qualified Graphics.Vega.VegaLite     as GV
 import qualified Lucid                      as H
 import qualified Text.Pandoc                as P
 
-import qualified Control.Monad.Freer.Html   as FH
+import qualified Knit.Effects.Html   as FH
 
 -- | convert Latex to Lucid Html
 latexToHtml :: T.Text -> H.Html ()

@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -24,39 +25,41 @@ freer-simple logger effect, using severity based on monad-logger. Adds a Prefixi
 functions and more in logging prefixes and thus to distinguish where things are being logged from more easily.  Also allows filtering
 by severity.
 -}
-module Control.Monad.Freer.Logger
+module Knit.Effects.Logger
   (
     -- * Logging Types
     LogSeverity(..)
   , LogEntry(..)
-  -- * Effect Types
+  -- * Effects
   , Logger(..)
   , PrefixLog
-  -- * Combinators
+  -- * Actions
   , log
   , logLE
   , wrapPrefix
   -- * subsets for filtering
   , logAll
   , nonDiagnostic
-  -- * run, with prefixes, in IO
+  -- * interpreters
   , filteredLogEntriesToIO
   -- * Constraints for convenience 
-  , PrefixedLogEffs
+--  , PrefixedLogEffs
   , LogWithPrefixes
+  , LogWithPrefixesLE
   -- * re-exports from freer-simple
-  , Eff
+  , Semantic
   , Member
   , Handler
   )
 where
 
-
-import           Control.Monad.Freer            ( Eff
-                                                , Member
+import qualified Polysemy                      as P
+import           Polysemy                       ( Member
+                                                , Semantic
                                                 )
-import qualified Control.Monad.Freer           as FR
-import qualified Control.Monad.Freer.State     as FR
+import           Polysemy.Internal              ( send )
+import qualified Polysemy.State                as P
+
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
 import qualified Control.Monad.Log             as ML
@@ -123,44 +126,49 @@ nonDiagnostic = List.tail logAll
 type LoggerPrefix = [T.Text]
 
 -- | The Logger effect
-data Logger a r where
-  Log :: a -> Logger a ()
+data Logger a m r where
+  Log :: a -> Logger a m ()
 
 -- | add one log entry of arbitrary type.  If you want to log with another type besides @LogEntry.
-log :: FR.Member (Logger a) effs => a -> FR.Eff effs ()
-log = FR.send . Log
+log :: P.Member (Logger a) effs => a -> P.Semantic effs ()
+log = send . Log
 
 -- | add one log-entry of the LogEntry type
 logLE
-  :: FR.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> FR.Eff effs ()
+  :: P.Member (Logger LogEntry) effs
+  => LogSeverity
+  -> T.Text
+  -> P.Semantic effs ()
 logLE ls lm = log (LogEntry ls lm)
 
 -- | Helper function for logging with monad-logger handler
 logWithHandler
-  :: Handler (FR.Eff effs) a -> FR.Eff (Logger a ': effs) x -> FR.Eff effs x
-logWithHandler handler = FR.interpret (\(Log a) -> handler a)
+  :: Handler (P.Semantic effs) a
+  -> P.Semantic (Logger a ': effs) x
+  -> P.Semantic effs x
+logWithHandler handler = P.interpret (\(Log a) -> handler a)
 
 -- | Prefix effect
-data PrefixLog r where
-  AddPrefix :: T.Text -> PrefixLog ()
-  RemovePrefix :: PrefixLog ()
-  GetPrefix :: PrefixLog T.Text
+data PrefixLog m r where
+  AddPrefix :: T.Text -> PrefixLog m ()
+  RemovePrefix :: PrefixLog m ()
+  GetPrefix :: PrefixLog m T.Text
 
 -- | Add one level of prefix
-addPrefix :: FR.Member PrefixLog effs => T.Text -> FR.Eff effs ()
-addPrefix = FR.send . AddPrefix
+addPrefix :: P.Member PrefixLog effs => T.Text -> P.Semantic effs ()
+addPrefix = send . AddPrefix
 
 -- | remove last prefix
-removePrefix :: FR.Member PrefixLog effs => FR.Eff effs ()
-removePrefix = FR.send RemovePrefix
+removePrefix :: P.Member PrefixLog effs => P.Semantic effs ()
+removePrefix = send RemovePrefix
 
 -- | get current prefix 
-getPrefix :: FR.Member PrefixLog effs => FR.Eff effs T.Text
-getPrefix = FR.send $ GetPrefix
+getPrefix :: P.Member PrefixLog effs => P.Semantic effs T.Text
+getPrefix = send $ GetPrefix
 
 -- | add a prefix for the block of code
 wrapPrefix
-  :: FR.Member PrefixLog effs => T.Text -> FR.Eff effs a -> FR.Eff effs a
+  :: P.Member PrefixLog effs => T.Text -> P.Semantic effs a -> P.Semantic effs a
 wrapPrefix p l = do
   addPrefix p
   res <- l
@@ -170,16 +178,16 @@ wrapPrefix p l = do
 -- | interpret LogPrefix in State
 prefixInState
   :: forall effs a
-   . FR.Eff (PrefixLog ': effs) a
-  -> FR.Eff (FR.State [T.Text] ': effs) a
-prefixInState = FR.reinterpret $ \case
-  AddPrefix t  -> FR.modify (\ps -> t : ps)
-  RemovePrefix -> FR.modify @[T.Text] tail -- type application required here since tail is polymorphic
-  GetPrefix    -> (FR.get >>= (return . T.intercalate "." . List.reverse))
+   . P.Semantic (PrefixLog ': effs) a
+  -> P.Semantic (P.State [T.Text] ': effs) a
+prefixInState = P.reinterpret $ \case
+  AddPrefix t  -> P.modify (\ps -> t : ps)
+  RemovePrefix -> P.modify @[T.Text] tail -- type application required here since tail is polymorphic
+  GetPrefix    -> (P.get >>= (return . T.intercalate "." . List.reverse))
 
 -- | run the prefix effect by interpresting in State and running that
-runPrefix :: FR.Eff (PrefixLog ': effs) a -> FR.Eff effs a
-runPrefix = FR.evalState [] . prefixInState
+runPrefix :: P.Semantic (PrefixLog ': effs) a -> P.Semantic effs a
+runPrefix = fmap snd . P.runState [] . prefixInState
 
 -- | add a prefix to the log message and render
 data WithPrefix a = WithPrefix { msgPrefix :: T.Text, discardPrefix :: a }
@@ -188,11 +196,11 @@ renderWithPrefix k (WithPrefix pr a) = PP.pretty pr PP.<+> PP.align (k a)
 
 -- | use prefix effect to map all the logged messages to WithPrefix form
 logPrefixed
-  :: FR.Member PrefixLog effs
-  => FR.Eff (Logger a ': effs) x
-  -> FR.Eff (Logger (WithPrefix a) ': effs) x
+  :: P.Member PrefixLog effs
+  => P.Semantic (Logger a ': effs) x
+  -> P.Semantic (Logger (WithPrefix a) ': effs) x
 logPrefixed =
-  FR.reinterpret (\(Log a) -> getPrefix >>= (\p -> log (WithPrefix p a)))
+  P.reinterpret (\(Log a) -> getPrefix >>= (\p -> log (WithPrefix p a)))
 
 -- the use of "raise" below is there since we are running the handler in the stack that still has the LogPrefix effect.
 -- I couldn't figure out how to write this the other way.
@@ -200,12 +208,12 @@ logPrefixed =
 -- messages via that handler.
 logAndHandlePrefixed
   :: forall effs a x
-   . Handler (FR.Eff effs) (WithPrefix a)
-  -> FR.Eff (Logger a ': (PrefixLog ': effs)) x
-  -> FR.Eff effs x
+   . Handler (P.Semantic effs) (WithPrefix a)
+  -> P.Semantic (Logger a ': (PrefixLog ': effs)) x
+  -> P.Semantic effs x
 logAndHandlePrefixed handler =
   runPrefix
-    . logWithHandler (FR.raise . handler)
+    . logWithHandler (P.raise . handler)
     . logPrefixed @(PrefixLog ': effs)
 
 -- | Add a severity filter to a handler
@@ -230,23 +238,35 @@ prefixedLogEntryToIO = logToIO
 
 -- | Use preferred handler and filter to output to IO
 filteredLogEntriesToIO
-  :: MonadIO (FR.Eff effs)
+  :: MonadIO (P.Semantic effs)
   => [LogSeverity]
-  -> FR.Eff (Logger LogEntry ': (PrefixLog ': effs)) x
-  -> FR.Eff effs x
+  -> P.Semantic (Logger LogEntry ': (PrefixLog ': effs)) x
+  -> P.Semantic effs x
 filteredLogEntriesToIO lss = logAndHandlePrefixed
   (filterLog f lss $ prefixedLogEntryToIO)
   where f lss a = (severity $ discardPrefix a) `List.elem` lss
 
 -- | constraint helper for a general log-message type
-type PrefixedLogEffs a = '[PrefixLog, Logger a]
+--type PrefixedLogEffs a = '[PrefixLog, Logger a]
 
 -- | constraint helper for @LogEntry@ type with prefixes
-type LogWithPrefixes effs = FR.Members (PrefixedLogEffs LogEntry) effs
+type LogWithPrefixes a effs = (P.Member PrefixLog effs, P.Member (Logger a) effs)
+type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
+
+{-
+TODO: FIX THIS!!
+
+• Illegal instance declaration for
+        ‘ML.MonadLog a (P.Semantic effs)’
+        The liberal coverage condition fails in class ‘ML.MonadLog’
+          for functional dependency: ‘m -> message’
+        Reason: lhs type ‘P.Semantic effs’ does not determine rhs type ‘a’
+        Un-determined variable: a
+    • In the instance declaration for ‘ML.MonadLog a (P.Semantic effs)’
 
 -- not sure how to use this in practice but we might need it if we call a function with a MonadLog constraint.
--- | instance to support using an exisitng function with a MonadLog constraint from a freer-simple stack. 
-instance (ML.MonadLog a m, FR.LastMember m effs) => ML.MonadLog a (FR.Eff effs) where
-  logMessageFree inj = FR.sendM $ ML.logMessageFree inj
-
+-- | instance to support using an existing function with a MonadLog constraint from a freer-simple stack. 
+instance (ML.MonadLog a m, P.Member (P.Lift m) effs) => ML.MonadLog a (P.Semantic effs) where
+  logMessageFree inj = P.sendM @m $ ML.logMessageFree inj
+-}
 

@@ -1,0 +1,12 @@
+packages: . 
+jobs: 4
+with-compiler: /usr/local/bin/ghc
+benchmarks: true
+
+source-repository-package
+    type: git
+    location: https://github.com/isovector/polysemy
+    tag: 630b27d026dd9f749756c2f986d8f83113ba0177
+--    subdir: hvega
+
+
