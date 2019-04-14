@@ -43,6 +43,7 @@ where
 import qualified Knit.Effects.Logger           as Log
 
 import qualified Polysemy                      as P
+import qualified Polysemy.IO                   as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.Error                as P
 import           Polysemy.Internal.Lift         (Lift(Lift,unLift))
@@ -118,7 +119,7 @@ type PandocEffects effs =
   , P.Member Log.PrefixLog effs
   , P.Member (Log.Logger Log.LogEntry) effs)
 
--- | PandocMonad instance so that pandoc functions can be run in the freer-simple stack
+-- | PandocMonad instance so that pandoc functions can be run in the polysemy union effect
 instance PandocEffects effs => PA.PandocMonad (P.Semantic effs) where
   lookupEnv = lookupEnv
   getCurrentTime = getCurrentTime
@@ -172,10 +173,14 @@ mergeEithers (Left  x        ) = Left x
 mergeEithers (Right (Left  x)) = Left x
 mergeEithers (Right (Right x)) = Right x
 
+{-
+subsumed by Polysemy.IO.runIO
+
 -- I need a proof that (MonadIO m, P.Member (P.Lift m) r) :~: MonadIO (P.Semantic r) 
 -- | Create a (Lift IO) in the stack for other effects that need it.  Is this the right way to do this? 
 runIOInPandocIO :: P.Member (P.Lift PA.PandocIO) effs => P.Semantic (P.Lift IO ': effs) x -> P.Semantic effs x
 runIOInPandocIO = P.interpret ((P.sendM @PA.PandocIO) . liftIO . unLift)
+-}
 
 -- | run the Pandoc effects, and log messages with the given severity, over IO.  If there is a Pandoc error,
 -- you will get a Left in the resulting Either.
@@ -190,7 +195,7 @@ runPandocAndLoggingToIO lss =
   fmap mergeEithers
     . PA.runIO    
     . P.runM
-    . runIOInPandocIO
+    . P.runIO @PA.PandocIO --use PandocIO to interpret (Lift IO), basically.
     . P.runError
     . Log.filteredLogEntriesToIO lss
     . runPandoc @PA.PandocIO
