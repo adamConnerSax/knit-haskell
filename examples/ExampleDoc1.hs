@@ -60,6 +60,7 @@ makeDoc = Log.wrapPrefix "makeDoc" $ do
   Log.logLE Log.Info "adding some latex..."
   P.addMarkDown "## Some example latex"
   P.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+  Log.logLE Log.Info "adding a visualization..."
   P.addMarkDown "## An example hvega visualization"
   P.addHvega "someID" exampleVis
 

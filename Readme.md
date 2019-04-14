@@ -3,7 +3,7 @@
 knit-haskell is the beginning of an attempt to emulate parts of the RMarkdown/knitR experience in haskell. The idea is to be able to build HTML (or, perhaps, some other things [Pandoc](http://hackage.haskell.org/package/pandoc) can write) inside a haskell executable.  This package has some wrapping around Pandoc and the [PandocMonad](http://hackage.haskell.org/package/pandoc-2.7.2/docs/Text-Pandoc-Class.html#t:PandocMonad) as well as some logging facilities and some support for inserting [hvega](http://hackage.haskell.org/package/hvega) visualizations.  All of that is handled via writer-like monads so additions to the documents can be interspersed with regular haskell code.
 
 ## Features
-* Insert markdown, html ([blaze](http://hackage.haskell.org/package/blaze-html), [lucid](http://hackage.haskell.org/package/lucid) or Text) or [latex](https://en.wikipedia.org/wiki/LaTeX) into a document.
+* Insert [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown), html ([blaze](http://hackage.haskell.org/package/blaze-html), [lucid](http://hackage.haskell.org/package/lucid) or Text) or [latex](https://en.wikipedia.org/wiki/LaTeX) into a document.
 * Insert [hvega](http://hackage.haskell.org/package/hvega) visualizations (via [blaze](http://hackage.haskell.org/package/blaze-html) HTML) into a document
 
 
