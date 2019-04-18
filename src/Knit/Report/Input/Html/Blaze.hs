@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-|
 Module      : Knit.Report.Input.Html.Blaze
-Description : Support functions for adding Lucid fragments into a report
+Description : Support functions for adding Blaze Html fragments into a report
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com

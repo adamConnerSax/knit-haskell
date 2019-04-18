@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-|
 Module      : Knit.Report.Input.Latex
-Description : Support functions for simple reports using Pandoc
+Description : Support functions for adding LaTeX fragments into a report
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com

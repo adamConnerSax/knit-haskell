@@ -13,18 +13,18 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-Functions to output Pandoc reports using Blaze.  
+Functions to produce Html output for a Pandoc report.
 -}
 module Knit.Report.Output.Html
   (
     -- * Default Options
     htmlWriterOptions
 
-    -- * formatted output
+    -- * Formatted output
   , toBlazeDocument
   , pandocWriterToBlazeDocument
 
-  -- * options helper  
+  -- * Options helper  
   , mindocOptionsF
 
   -- * Other helpers
@@ -55,9 +55,9 @@ htmlWriterOptions = PA.def
 -- | Full writer options which use pandoc monad for template access
 htmlFullDocWriterOptions
   :: PA.PandocMonad m
-  => Maybe FilePath
-  -> M.Map String String
-  -> m PA.WriterOptions
+  => Maybe FilePath -- ^ path to template to include, @Nothing@ for no template.
+  -> M.Map String String -- ^ template Variable substitutions
+  -> m PA.WriterOptions 
 htmlFullDocWriterOptions pathM templateVars = do
   template <- case pathM of
     Nothing -> PA.getDefaultTemplate "Html5"
@@ -75,7 +75,9 @@ htmlFullDocWriterOptions pathM templateVars = do
 
 -- | Convert markDown to Blaze
 markDownTextToBlazeFragment
-  :: PM.PandocEffects effs => T.Text -> P.Semantic effs BH.Html
+  :: PM.PandocEffects effs
+  => T.Text -- ^ markDown Text
+  -> P.Semantic effs BH.Html
 markDownTextToBlazeFragment =
   PE.fromPandocE PE.WriteHtml5 htmlWriterOptions
     . PE.addFrom PE.ReadMarkDown markDownReaderOptions
@@ -84,10 +86,10 @@ markDownTextToBlazeFragment =
 -- Incudes support for template and template variables and changes to the default writer options
 toBlazeDocument
   :: PM.PandocEffects effs
-  => Maybe FilePath
-  -> M.Map String String
-  -> (PA.WriterOptions -> PA.WriterOptions)
-  -> PE.PandocWithRequirements
+  => Maybe FilePath -- ^ path to Pandoc template or @Nothing@ for no template
+  -> M.Map String String -- ^ template variable substitutions
+  -> (PA.WriterOptions -> PA.WriterOptions) -- ^ modify the Pandoc Writer Options
+  -> PE.PandocWithRequirements -- ^ Union of input requirements 
   -> P.Semantic effs BH.Html
 toBlazeDocument templatePathM templateVars optionsF pdocWR = do
   writerOptions <- htmlFullDocWriterOptions templatePathM templateVars
@@ -97,10 +99,10 @@ toBlazeDocument templatePathM templateVars optionsF pdocWR = do
 -- Incudes support for template and template variables and changes to the default writer options. 
 pandocWriterToBlazeDocument
   :: PM.PandocEffects effs
-  => Maybe FilePath
-  -> M.Map String String
-  -> (PA.WriterOptions -> PA.WriterOptions)
-  -> P.Semantic (PE.ToPandoc ': effs) ()
+  => Maybe FilePath -- ^ path to Pandoc template or @Nothing@ for no template
+  -> M.Map String String -- ^ template variable substitutions
+  -> (PA.WriterOptions -> PA.WriterOptions) -- ^ modify the Pandoc Writer Options
+  -> P.Semantic (PE.ToPandoc ': effs) () -- ^ effects stack to run to get Pandoc
   -> P.Semantic effs BH.Html
 pandocWriterToBlazeDocument templatePathM templateVars optionsF pw =
   PE.runPandocWriter pw >>= toBlazeDocument templatePathM templateVars optionsF

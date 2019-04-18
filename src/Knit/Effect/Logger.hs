@@ -26,8 +26,6 @@ Stability   : experimental
 using pretty-printing and severity based on <http://hackage.haskell.org/package/logging-effect logging-effect>. Adds a Prefixing effect so that it's easy to wrap entire
 functions, etc. in logging prefixes and thus to distinguish where things are being logged from more easily.  Also allows filtering
 by severity.
-
-Designed to be compatible with <http://hackage.haskell.org/package/monad-logger monad-logger>.
 -}
 module Knit.Effect.Logger
   (
@@ -113,7 +111,8 @@ logEntryToWithSeverity (LogEntry s t) =
 logAll :: [LogSeverity]
 logAll = [minBound .. maxBound]
 
--- | Uutput all but Diagnostic. Diagnostic is sometimes useful for debugging but can get noisy depending on how you use it.
+-- | Output all but Diagnostic.
+-- Diagnostic messages are sometimes useful for debugging but can get noisy depending on how you use it.
 nonDiagnostic :: [LogSeverity]
 nonDiagnostic = List.tail logAll
 

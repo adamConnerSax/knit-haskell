@@ -2,17 +2,22 @@ cabal-version:       2.2
 
 name:                knit-haskell
 version:             0.1.0.0
-synopsis:            a minimal Rmarkdown sort of thing for haskell, by way of Pandoc
-description:         knit-haskell is a beginning attempt at bringing some of the benefits of Rmarkdown to Haskell.
-                     It includes an effects stack (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl)
-                     which includes logging, randomness (via <http://hackage.haskell.org/package/random-fu random-fu>,
+synopsis:            a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
+description:         knit-haskell is a beginning attempt at bringing some of the benefits of
+                     Rmarkdown to Haskell.
+                     It includes an effects stack
+                     (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl)
+                     which includes logging, randomness
+                     (via <http://hackage.haskell.org/package/random-fu random-fu>),
                      a simplified interface to Pandoc and various writer-like effects to
-                     intersperse document building with regualr code.
+                     intersperse document building with regular code.
                      Various helper functions are provided to simplify common operations,
                      making it especially straightforward to build
-                     an HTML document from bits of markdown, latex and <http://hackage.haskell.org/package/lucid Lucid>
+                     an HTML document from bits of markdown,
+                     latex and <http://hackage.haskell.org/package/lucid Lucid>
                      or <http://hackage.haskell.org/package/blaze-html Blaze> html.
-                     Support is also included for including hvega visualizations. 
+                     Support is also included for including
+                     <http://hackage.haskell.org/package/hvega hvega> visualizations. 
 bug-reports:         https://github.com/adamConnerSax/knit-haskell/issues
 license:             BSD-3-Clause
 license-file:        LICENSE

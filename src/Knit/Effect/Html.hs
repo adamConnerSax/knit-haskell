@@ -19,29 +19,36 @@ to store that document for processing/output later.
 module Knit.Effect.Html
   (
     -- * Lucid
+
     -- ** Effects
     Lucid
   , LucidDocs
+
     -- ** Actions
   , lucid
-  -- ** Intepretations
+
+    -- ** Intepretations
   , lucidToNamedText
   , lucidHtml
   , lucidToText
   , newLucidDoc
-  -- * Blazr
+
+  -- * Blaze
+
   -- ** Effects
   , Blaze
   , BlazeDocs
+
   -- ** Actions
   , blaze
+
   -- ** Interpretations
   , blazeToNamedText
   , blazeHtml
   , blazeToText
   , newBlazeDoc
 
-  -- * re-exports
+    -- * Re-exports
   , NamedDoc(..)
   )
 where

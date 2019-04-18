@@ -96,7 +96,7 @@ runRandomFromSource source = P.interpret f where
 runRandomIOPureMT :: MonadIO (P.Semantic effs) => R.PureMT -> P.Semantic (Random ': effs) a -> P.Semantic effs a
 runRandomIOPureMT source re = liftIO (newIORef source) >>= flip runRandomFromSource re
 
--- | supply insstance of MonadRandom for functions which require it
+-- | supply instance of MonadRandom for functions which require it
 $(R.monadRandom [d|
         instance P.Member Random effs => R.MonadRandom (P.Semantic effs) where
             getRandomPrim = getRandomPrim

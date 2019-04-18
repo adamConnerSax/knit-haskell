@@ -11,7 +11,7 @@
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.Pandoc
-Description : freer-simple logging effect
+Description : Polysemy writer-like effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
@@ -29,7 +29,7 @@ module Knit.Effect.Pandoc
     ToPandoc
   , FromPandoc
 
-  -- * Requirement Supprt
+  -- * Requirement Support
   , Requirement(..)
   , PandocWithRequirements 
   -- * Format ADTs
@@ -107,10 +107,11 @@ data PandocWriteFormat a where
 deriving instance Show (PandocWriteFormat a)
 
 -- | ADT to allow inputs to request support, if necessary or possible, in the output format.
--- Latex in Html needs MathJax. But Latex needs to nothing to output in Latex.
--- Vega needs scripts to output in Html and can't be output in other formats
--- for now, we support all the things we can in any output format so this just results
+-- E.g., Latex output in Html needs MathJax. But Latex needs to nothing to output in Latex.
+-- Vega-lite needs some script headers to output in Html and can't be output in other formats.
+-- For now, we support all the things we can in any output format so this just results
 -- in a runtime test.
+
 -- TODO (?): Allow headers/extensions to be added/switched based on this.
 data Requirement
   =
@@ -152,7 +153,7 @@ data ToPandoc m r where
 data FromPandoc m r where
   WriteTo  :: PandocWriteFormat a -> PA.WriterOptions -> PA.Pandoc -> FromPandoc m a -- convert to given format
 
--- | add a piece of a Pandoc readable type to the current doc
+-- | Add a piece of a Pandoc readable type to the current doc
 addFrom
   :: P.Member ToPandoc effs
   => PandocReadFormat a
@@ -161,10 +162,11 @@ addFrom
   -> P.Semantic effs ()
 addFrom prf pro doc' = send $ AddFrom prf pro doc'
 
+-- | Add a requirement that the output format must satisfy.
 require :: P.Member ToPandoc effs => Requirement -> P.Semantic effs ()
 require r = send $ Require r
 
--- | write given doc in requested format
+-- | Write given doc in requested format
 writeTo
   :: P.Member FromPandoc effs
   => PandocWriteFormat a
@@ -190,7 +192,7 @@ toPandoc prf pro x = readF pro x
     ReadLaTeX      -> PA.readLaTeX
     ReadHtml       -> PA.readHtml
 
--- | convert Pandoc to a with the given options
+-- | Convert Pandoc to requested format with the given options.
 -- | Throw a PandocError if the output format is unsupported given the inputs.
 fromPandoc
   :: PA.PandocMonad m
@@ -212,7 +214,7 @@ fromPandoc pwf pwo (PandocWithRequirements pdoc rs) =
           WriteHtml5       -> PA.writeHtml5
           WriteHtml5String -> PA.writeHtml5String
 
--- | Re-interpret ToPandoc in Writers
+-- | Re-interpret ToPandoc in Writer
 toWriter
   :: PM.PandocEffects effs
   => P.Semantic (ToPandoc ': effs) a
@@ -222,56 +224,60 @@ toWriter =
     (AddFrom rf ro x) -> P.raise (fmap justDoc $ toPandoc rf ro x) >>= P.tell @PandocWithRequirements
     (Require r) -> P.tell (justRequirement r)
 
--- | run ToPandoc by interpreting in Writer and running that
+-- | Run ToPandoc by interpreting in Writer and then running that Writer.
 runPandocWriter
   :: PM.PandocEffects effs
   => P.Semantic (ToPandoc ': effs) ()
   -> P.Semantic effs PandocWithRequirements
 runPandocWriter = fmap fst . P.runWriter . toWriter
 
--- | type-alias for use with the @Docs@ effect
+-- | Type-alias for use with the @Docs@ effect.
 type Pandocs = Docs PandocWithRequirements
 
--- | add a new named Pandoc to a Pandoc Docs collection
+-- | Add a new named Pandoc to a Pandoc Docs collection.
 newPandocPure
-  :: P.Member Pandocs effs => T.Text -> PandocWithRequirements -> P.Semantic effs ()
+  :: P.Member Pandocs effs
+  => T.Text -- ^ name for document
+  -> PandocWithRequirements -- ^ document and union of all input requirements
+  -> P.Semantic effs () 
 newPandocPure = newDoc
 
--- | add the Pandoc stored in the writer-style ToPandoc effect to the named docs collection with the given name
+-- | Add the Pandoc stored in the writer-style ToPandoc effect to the named docs collection with the given name.
 newPandoc
   :: (PM.PandocEffects effs, P.Member Pandocs effs)
-  => T.Text
-  -> P.Semantic (ToPandoc ': effs) ()
+  => T.Text -- ^ name of document
+  -> P.Semantic (ToPandoc ': effs) () 
   -> P.Semantic effs ()
 newPandoc n l = fmap fst (P.runWriter $ toWriter l) >>= newPandocPure n
 
 -- | Given a write format and options, convert the NamedDoc to the requested format
 namedPandocFrom
   :: PA.PandocMonad m
-  => PandocWriteFormat a
-  -> PA.WriterOptions
-  -> NamedDoc PandocWithRequirements
-  -> m (NamedDoc a)
+  => PandocWriteFormat a -- ^ format for Pandoc output
+  -> PA.WriterOptions -- ^ options for the Pandoc Writer
+  -> NamedDoc PandocWithRequirements -- ^ named Pandoc with its union of requirements
+  -> m (NamedDoc a) -- ^ document in output format (in the effects monad).
 namedPandocFrom pwf pwo (NamedDoc n pdoc) = do
   doc' <- fromPandoc pwf pwo pdoc
   return $ NamedDoc n doc'
 
--- | Given a write format and options, convert a list of named Pandocs to a list of named docs in the requested format
+-- | Given a write format and options,
+-- convert a list of named Pandocs to a list of named docs in the requested format
 pandocsToNamed
   :: PM.PandocEffects effs
-  => PandocWriteFormat a
-  -> PA.WriterOptions
-  -> P.Semantic (Pandocs ': effs) ()
-  -> P.Semantic effs [NamedDoc a]
+  => PandocWriteFormat a -- ^ format for Pandoc output
+  -> PA.WriterOptions -- ^ options for the Pandoc Writer
+  -> P.Semantic (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
+  -> P.Semantic effs [NamedDoc a] -- ^ documents in requested format, within the effects monad
 pandocsToNamed pwf pwo =
-  (traverse (namedPandocFrom pwf pwo) =<<) . toNamedDocList -- monad, list, NamedDoc itself
+  (traverse (namedPandocFrom pwf pwo) =<<) . toNamedDocList 
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE
   :: PM.PandocEffects effs
-  => PandocWriteFormat a
-  -> PA.WriterOptions
-  -> P.Semantic (ToPandoc ': effs) ()
-  -> P.Semantic effs a
+  => PandocWriteFormat a -- ^ format for Pandoc output
+  -> PA.WriterOptions -- ^ options for the Pandoc Writer
+  -> P.Semantic (ToPandoc ': effs) () -- ^ effects stack to be (partially) run to get document
+  -> P.Semantic effs a -- ^ document in requested format, within the effects monad
 fromPandocE pwf pwo = ((fromPandoc pwf pwo . fst) =<<) . P.runWriter . toWriter
 
