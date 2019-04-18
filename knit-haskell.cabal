@@ -20,7 +20,8 @@ author:              Adam Conner-Sax
 maintainer:          adam_conner_sax@yahoo.com
 copyright:           2019 Adam Conner-Sax
 category:            Text
-extra-source-files:  ChangeLog.md    
+extra-source-files:  ChangeLog.md
+tested-with: GHC ==8.6.4 || ==8.6.2                     
 Build-type: Simple
 
 source-repository head
