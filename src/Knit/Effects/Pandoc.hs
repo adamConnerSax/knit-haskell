@@ -6,6 +6,8 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE LambdaCase  #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Control.Monad.Freer.Pandoc
@@ -15,28 +17,40 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-freer-simple Pandoc effect.  This is writer-like, allowing the interspersed addition of various Pandoc-readable formats into one doc and then rendering
-to many Pandoc-writeable formats.  Currently only a subset of formats are supported.
+Polysemy Pandoc effect.
+This is writer-like, allowing the interspersed addition of various Pandoc-readable formats into one doc and then rendering
+to many Pandoc-writeable formats.  Currently only a subset of formats are supported.  Inputs can express requirements,
+e.g., hvega requires html output because it uses javascript.
+Those requirements are then checked before output is rendered and an error thrown if the input is not supported.
 -}
 module Knit.Effects.Pandoc
   (
-    -- * Effect Types
+    -- * Effects
     ToPandoc
   , FromPandoc
+
+  -- * Requirement Supprt
+  , Requirement(..)
+  , PandocWithRequirements 
   -- * Format ADTs
   , PandocReadFormat(..)
   , PandocWriteFormat(..)
+
   -- * Combinators
   , addFrom
+  , require
   , writeTo
   , toPandoc
   , fromPandoc
-  -- * run the effect to produce a document
+
+  -- * Interpreters
   , runPandocWriter
+
   -- * Docs effect type-aliases
   , Pandocs
   , NamedDoc(..)
-  -- * use with the Docs effect 
+
+  -- * Docs Effect Interpreters 
   , newPandoc
   , pandocsToNamed
   , fromPandocE
@@ -46,7 +60,13 @@ where
 import qualified Text.Pandoc                   as PA
 import qualified Data.Text                     as T
 import           Data.ByteString.Lazy          as LBS
+import qualified Data.Foldable                 as F
+import qualified Data.Monoid                   as Mon
+import           Data.Set                      as S
 import qualified Text.Blaze.Html               as Blaze
+import Control.Monad.Except (throwError)
+
+
 
 import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
@@ -86,15 +106,51 @@ data PandocWriteFormat a where
 
 deriving instance Show (PandocWriteFormat a)
 
+-- | ADT to allow inputs to request support, if necessary or possible, in the output format.
+-- Latex in Html needs MathJax. But Latex needs to nothing to output in Latex.
+-- Vega needs scripts to output in Html and can't be output in other formats
+-- for now, we support all the things we can in any output format so this just results
+-- in a runtime test.
+-- TODO (?): Allow headers/extensions to be added/switched based on this.
+data Requirement
+  =
+    VegaSupport -- ^ Supported only for Html output.
+  | LatexSupport -- ^ Supported in Html output (via MathJax) and Latex output.
+  deriving (Show, Ord, Eq, Bounded, Enum)
+
+handlesAll :: PandocWriteFormat a -> S.Set Requirement  -> Bool
+handlesAll f reqs = Mon.getAll $ F.fold (fmap (Mon.All . handles f)  $ S.toList reqs) where
+  handles :: PandocWriteFormat a -> Requirement -> Bool
+  handles WriteHtml5 VegaSupport         = True
+  handles WriteHtml5String VegaSupport   = True
+  handles WriteHtml5 LatexSupport        = True
+  handles WriteHtml5String LatexSupport  = True
+  handles WriteLaTeX LatexSupport        = True
+  handles _     _                        = False
+
+data PandocWithRequirements = PandocWithRequirements { doc :: PA.Pandoc, reqs :: S.Set Requirement }
+instance Semigroup PandocWithRequirements where
+  (PandocWithRequirements da ra) <> (PandocWithRequirements db rb)
+    = PandocWithRequirements (da <> db) (ra <> rb)
+    
+instance Monoid PandocWithRequirements where
+  mempty = PandocWithRequirements mempty mempty
+
+
+justDoc :: PA.Pandoc -> PandocWithRequirements
+justDoc d = PandocWithRequirements d mempty
+
+justRequirement :: Requirement -> PandocWithRequirements
+justRequirement r = PandocWithRequirements mempty (S.singleton r)
+
 -- | Pandoc writer, add any read format to current doc
 data ToPandoc m r where
-  AddFrom  :: PandocReadFormat a -> PA.ReaderOptions -> a -> ToPandoc m () -- add to current doc
-
+  AddFrom  :: PandocReadFormat a -> PA.ReaderOptions -> a -> ToPandoc m () -- ^ add to current doc
+  Require :: Requirement -> ToPandoc m () -- ^ require specific support
 
 -- | Pandoc output effect, take given doc and produce formatted output
 data FromPandoc m r where
   WriteTo  :: PandocWriteFormat a -> PA.WriterOptions -> PA.Pandoc -> FromPandoc m a -- convert to given format
-
 
 -- | add a piece of a Pandoc readable type to the current doc
 addFrom
@@ -104,6 +160,9 @@ addFrom
   -> a
   -> P.Semantic effs ()
 addFrom prf pro doc = send $ AddFrom prf pro doc
+
+require :: P.Member ToPandoc effs => Requirement -> P.Semantic effs ()
+require r = send $ Require r
 
 -- | write given doc in requested format
 writeTo
@@ -132,44 +191,50 @@ toPandoc prf pro x = read pro x
     ReadHtml       -> PA.readHtml
 
 -- | convert Pandoc to a with the given options
+-- | Throw a PandocError if the output format is unsupported given the inputs.
 fromPandoc
   :: PA.PandocMonad m
   => PandocWriteFormat a
   -> PA.WriterOptions
-  -> PA.Pandoc
+  -> PandocWithRequirements
   -> m a
-fromPandoc pwf pwo pdoc = write pwo pdoc
- where
-  write = case pwf of
-    WriteDocX        -> PA.writeDocx
-    WriteMarkDown    -> PA.writeMarkdown
-    WriteCommonMark  -> PA.writeCommonMark
-    WriteRST         -> PA.writeRST
-    WriteLaTeX       -> PA.writeLaTeX
-    WriteHtml5       -> PA.writeHtml5
-    WriteHtml5String -> PA.writeHtml5String
+fromPandoc pwf pwo (PandocWithRequirements pdoc reqs) =
+  case handlesAll pwf reqs of
+    False -> throwError $ PA.PandocSomeError $ "One of " ++ (show $ S.toList reqs) ++ " cannot be output to " ++ show pwf
+    True -> write pwo pdoc
+      where
+        write = case pwf of
+          WriteDocX        -> PA.writeDocx
+          WriteMarkDown    -> PA.writeMarkdown
+          WriteCommonMark  -> PA.writeCommonMark
+          WriteRST         -> PA.writeRST
+          WriteLaTeX       -> PA.writeLaTeX
+          WriteHtml5       -> PA.writeHtml5
+          WriteHtml5String -> PA.writeHtml5String
 
--- | Re-interpret ToPandoc in Writer
+-- | Re-interpret ToPandoc in Writers
 toWriter
   :: PM.PandocEffects effs
   => P.Semantic (ToPandoc ': effs) a
-  -> P.Semantic (P.Writer PA.Pandoc ': effs) a
+  -> P.Semantic (P.Writer PandocWithRequirements ': effs) a
 toWriter =
-  P.reinterpret (\(AddFrom rf ro x) -> P.raise (toPandoc rf ro x) >>= P.tell)
+  P.reinterpret $ \case
+    (AddFrom rf ro x) -> P.raise (fmap justDoc $ toPandoc rf ro x) >>= P.tell @PandocWithRequirements
+    (Require r) -> P.tell (justRequirement r)
 
 -- | run ToPandoc by interpreting in Writer and running that
 runPandocWriter
   :: PM.PandocEffects effs
   => P.Semantic (ToPandoc ': effs) ()
-  -> P.Semantic effs PA.Pandoc
+  -> P.Semantic effs PandocWithRequirements
 runPandocWriter = fmap fst . P.runWriter . toWriter
 
 -- | type-alias for use with the @Docs@ effect
-type Pandocs = Docs PA.Pandoc
+type Pandocs = Docs PandocWithRequirements
 
 -- | add a new named Pandoc to a Pandoc Docs collection
 newPandocPure
-  :: P.Member Pandocs effs => T.Text -> PA.Pandoc -> P.Semantic effs ()
+  :: P.Member Pandocs effs => T.Text -> PandocWithRequirements -> P.Semantic effs ()
 newPandocPure = newDoc
 
 -- | add the Pandoc stored in the writer-style ToPandoc effect to the named docs collection with the given name
@@ -185,7 +250,7 @@ namedPandocFrom
   :: PA.PandocMonad m
   => PandocWriteFormat a
   -> PA.WriterOptions
-  -> NamedDoc PA.Pandoc
+  -> NamedDoc PandocWithRequirements
   -> m (NamedDoc a)
 namedPandocFrom pwf pwo (NamedDoc n pdoc) = do
   doc <- fromPandoc pwf pwo pdoc

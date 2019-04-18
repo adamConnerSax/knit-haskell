@@ -6,8 +6,8 @@
 {-# LANGUAGE DataKinds     #-}
 {-# LANGUAGE GADTs         #-}
 {-|
-Module      : Text.Pandoc.Report
-Description : Support functions for simple reports using Pandoc
+Module      : Knit.Report.Output.Html
+Description : Output Pandoc as Html
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
@@ -15,34 +15,19 @@ Stability   : experimental
 
 Functions to support some simple reports using Blaze.  Particularly to support adding latex and hvega charts.
 -}
-module Knit.Report.Pandoc
+module Knit.Report.Output.Html
   (
     -- * Default Options
-    htmlReaderOptions
-  , htmlReaderOptionsWithHeader
-  , htmlWriterOptions
-  , markDownReaderOptions
-  -- * functions to add various thing to the current Pandoc
-  , addMarkDown
-  , addHtml
-  , addBlaze
-  , addLucid
-  , addLatex
-  , addHvega
-  -- * converters
-  , markDownTextToBlazeFragment
-  -- * formatted output
+    htmlWriterOptions
+    -- * formatted output
   , toBlazeDocument
   , pandocWriterToBlazeDocument
   -- * options helper  
   , mindocOptionsF
-  -- * re-exports
-  , Member
-  , Semantic
   )
 where
 
-import           Control.Monad.Trans            ( liftIO )
+
 import qualified Data.ByteString.Char8         as BS
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as T
@@ -63,16 +48,13 @@ import           Polysemy                       ( Member
 import qualified Knit.Effects.Pandoc           as PE
 import qualified Knit.Effects.PandocMonad      as PM
 import qualified Knit.Effects.Html             as H
-import           Knit.Report.Blaze              ( latexToHtml
-                                                , placeVisualization
-                                                )
 
--- | Base Html reader options 
-htmlReaderOptions =
-  PA.def { PA.readerExtensions = PA.extensionsFromList [PA.Ext_raw_html] }
-
--- | Html reader options for complete document
-htmlReaderOptionsWithHeader = htmlReaderOptions { PA.readerStandalone = True }
+import           Knit.Report.Input.MarkDown.PandocMarkDown (markDownReaderOptions)
+{-
+import           Knit.Report.Other.Blaze              ( latexToHtml
+                                                      , placeVisualization
+                                                      )
+-}
 
 -- | Base Html writer options, with support for MathJax
 htmlWriterOptions = PA.def
@@ -100,65 +82,6 @@ htmlFullDocWriterOptions pathM templateVars = do
                              , PA.writerSetextHeaders = True
                              }
 
--- | Base markdown reader options
-markDownReaderOptions = PA.def
-  { PA.readerStandalone = True
-  , PA.readerExtensions = PA.extensionsFromList
-                            [ PA.Ext_auto_identifiers
-                            , PA.Ext_backtick_code_blocks
-                            , PA.Ext_fancy_lists
-                            , PA.Ext_footnotes
-                            , PA.Ext_simple_tables
-                            , PA.Ext_multiline_tables
-                            , PA.Ext_tex_math_dollars
-                            , PA.Ext_header_attributes
-                            , PA.Ext_implicit_header_references
-                            ]
-  }
-
--- | add a markdown bit with default options
-addMarkDown
-  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
-  => T.Text
-  -> P.Semantic effs ()
-addMarkDown = PE.addFrom PE.ReadMarkDown markDownReaderOptions
-
--- | add Text formatted as Html
-addHtml
-  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
-  => T.Text
-  -> P.Semantic effs ()
-addHtml = PE.addFrom PE.ReadHtml htmlReaderOptions
-
--- | add Blaze Html 
-addBlaze
-  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
-  => BH.Html
-  -> P.Semantic effs ()
-addBlaze = addHtml . LT.toStrict . BH.renderHtml
-
--- | add Lucid Html
-addLucid
-  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
-  => LH.Html ()
-  -> P.Semantic effs ()
-addLucid = addHtml . LT.toStrict . LH.renderText
-
--- | add latex (via blaze)
-addLatex
-  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
-  => T.Text
-  -> P.Semantic effs ()
-addLatex = addBlaze . latexToHtml
-
--- | add hvega (via blaze)
-addHvega
-  :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
-  => T.Text
-  -> GV.VegaLite
-  -> P.Semantic effs ()
-addHvega vizId = addBlaze . placeVisualization vizId
-
 
 -- | Convert markDown to Blaze
 markDownTextToBlazeFragment
@@ -174,11 +97,11 @@ toBlazeDocument
   => Maybe FilePath
   -> M.Map String String
   -> (PA.WriterOptions -> PA.WriterOptions)
-  -> PA.Pandoc
+  -> PE.PandocWithRequirements
   -> P.Semantic effs BH.Html
-toBlazeDocument templatePathM templateVars optionsF pdoc = do
+toBlazeDocument templatePathM templateVars optionsF pdocWR = do
   writerOptions <- htmlFullDocWriterOptions templatePathM templateVars
-  PE.fromPandoc PE.WriteHtml5 (optionsF writerOptions) pdoc
+  PE.fromPandoc PE.WriteHtml5 (optionsF writerOptions) pdocWR
 
 -- | Convert current Pandoc document (from the ToPandoc effect) into a Blaze Html document.
 -- Incudes support for template and template variables and changes to the default writer options. 

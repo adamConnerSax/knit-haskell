@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-|
-Module      : Html.Blaze.Report
+Module      : Knit.Report.Other.Blaze
 Description : Support functions for simple reports in Blaze
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
@@ -10,8 +10,9 @@ Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
 Functions to support some simple reports using Blaze.  Particularly to support adding latex and hvega charts.
+Using the Pandoc framework instead is recommended.  
 -}
-module Knit.Report.Blaze
+module Knit.Report.Other.Blaze
   (
     -- * Add relevant headers, scripts
     makeReportHtml
@@ -36,7 +37,6 @@ import qualified Text.Blaze.Html5.Attributes   as HA
 import qualified Text.Pandoc                   as P
 
 import qualified Knit.Effects.Html             as FH
---import qualified Control.Monad.Freer  as FR
 
 -- | convert Latex to Blaze Html
 latexToHtml :: T.Text -> H.Html

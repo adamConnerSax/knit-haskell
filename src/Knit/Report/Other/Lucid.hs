@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-|
-Module      : Html.Lucid.Report
+Module      : Knit.Report.Other.Lucid
 Description : freer-simple random effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
@@ -11,7 +11,7 @@ Stability   : experimental
 
 Functions to support some simple reports using Lucid.  Particularly to support adding latex and hvega charts.
 -}
-module Knit.Report.Lucid
+module Knit.Report.Other.Lucid
   (
     -- * Setup, headers, scripts, etc.
     makeReportHtml

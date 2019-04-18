@@ -6,10 +6,13 @@ synopsis:            a minimal Rmarkdown sort of thing for haskell, by way of Pa
 description:         knit-haskell is a beginning attempt at bringing some of the benefits of Rmarkdown to Haskell.
                      It includes an effects stack (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl)
                      which includes logging, randomness (via <http://hackage.haskell.org/package/random-fu random-fu>,
-                     a simplified interface to Pandoc and various writer-like effects to intersperse document building with regualr code.
-                     Various helper functions are provided to simplify common operations, making it especially straightforward to build
+                     a simplified interface to Pandoc and various writer-like effects to
+                     intersperse document building with regualr code.
+                     Various helper functions are provided to simplify common operations,
+                     making it especially straightforward to build
                      an HTML document from bits of markdown, latex and <http://hackage.haskell.org/package/lucid Lucid>
-                     or <http://hackage.haskell.org/package/blaze-html Blaze> html.  Support is also included for including hvega visualizations. 
+                     or <http://hackage.haskell.org/package/blaze-html Blaze> html.
+                     Support is also included for including hvega visualizations. 
 bug-reports:         https://github.com/adamConnerSax/knit-haskell/issues
 license:             BSD-3-Clause
 license-file:        LICENSE
@@ -32,9 +35,16 @@ library
                  , Knit.Effects.RandomFu
                  , Knit.Effects.PandocMonad
                  , Knit.Effects.Pandoc
-                 , Knit.Report.Lucid
-                 , Knit.Report.Blaze
-                 , Knit.Report.Pandoc
+                 , Knit.Report.Input.Html
+                 , Knit.Report.Input.Html.Lucid
+                 , Knit.Report.Input.Html.Blaze
+                 , Knit.Report.Input.Latex
+                 , Knit.Report.Input.MarkDown.PandocMarkDown
+                 , Knit.Report.Input.Visualization.Hvega
+                 , Knit.Report.Output.Html
+                 , Knit.Report
+                 , Knit.Report.Other.Lucid
+                 , Knit.Report.Other.Blaze
 
   build-depends:    aeson-pretty                      >= 0.8.7 && < 0.9,
                     base                              >= 4.12.0 && < 4.13,

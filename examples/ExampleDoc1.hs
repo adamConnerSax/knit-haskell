@@ -4,12 +4,7 @@
 {-# LANGUAGE GADTs #-}
 module Main where
 
-import qualified Knit.Effects.Logger    as Log
-import qualified Knit.Effects.PandocMonad as PM
-import qualified Knit.Effects.Pandoc      as PE
-
-import qualified Knit.Report.Pandoc            as PR
-import qualified Polysemy as P
+import qualified Knit.Report as K    
 
 import           Control.Monad.IO.Class          (MonadIO(liftIO))
 import qualified Data.Map                      as M
@@ -30,13 +25,13 @@ templateVars = M.fromList
 main :: IO ()
 main = do
   let runEffects =
-        PM.runPandocAndLoggingToIO Log.logAll
-          . Log.wrapPrefix "Example1.Main"
+        K.runPandocAndLoggingToIO K.logAll
+          . K.wrapPrefix "Example1.Main"
           . fmap BH.renderHtml
-      pandocToHtml =  PR.pandocWriterToBlazeDocument
+      pandocToHtml =  K.pandocWriterToBlazeDocument
         (Just "pandoc-templates/minWithVega-pandoc.html")
         templateVars
-        PR.mindocOptionsF
+        K.mindocOptionsF
   htmlAsTextE <- runEffects $ pandocToHtml $ makeDoc   
   case htmlAsTextE of
     Right htmlAsText ->
@@ -54,19 +49,19 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: (P.Member PE.ToPandoc effs
-           , Log.LogWithPrefixesLE effs
-           , PM.PandocEffects effs
-           , MonadIO (P.Semantic effs)) => P.Semantic effs ()
-makeDoc = Log.wrapPrefix "makeDoc" $ do
-  Log.logLE Log.Info "adding some markdown..."
-  PR.addMarkDown md1
-  Log.logLE Log.Info "adding some latex..."
-  PR.addMarkDown "## Some example latex"
-  PR.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
-  Log.logLE Log.Info "adding a visualization..."
-  PR.addMarkDown "## An example hvega visualization"
-  PR.addHvega "someID" exampleVis
+makeDoc :: (K.Member K.ToPandoc effs
+           , K.LogWithPrefixesLE effs
+           , K.PandocEffects effs
+           , MonadIO (K.Semantic effs)) => K.Semantic effs ()
+makeDoc = K.wrapPrefix "makeDoc" $ do
+  K.logLE K.Info "adding some markdown..."
+  K.addMarkDown md1
+  K.logLE K.Info "adding some latex..."
+  K.addMarkDown "## Some example latex"
+  K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+  K.logLE K.Info "adding a visualization..."
+  K.addMarkDown "## An example hvega visualization"
+  K.addHvega "someID" exampleVis
 
 exampleVis =
   let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
