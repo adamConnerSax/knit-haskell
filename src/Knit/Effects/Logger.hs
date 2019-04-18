@@ -12,41 +12,50 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE InstanceSigs    #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Control.Monad.Freer.Loger
-Description : freer-simple logging effect
+Module      : Knit.Effects.Logger
+Description : Polysemy logging effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-freer-simple logger effect, using severity based on monad-logger. Adds a Prefixing effect so that it's easy to wrap entire
-functions and more in logging prefixes and thus to distinguish where things are being logged from more easily.  Also allows filtering
+<https://github.com/isovector/polysemy#readme Polysemy> logger effect,
+using pretty-printing and severity based on <http://hackage.haskell.org/package/logging-effect logging-effect>. Adds a Prefixing effect so that it's easy to wrap entire
+functions, etc. in logging prefixes and thus to distinguish where things are being logged from more easily.  Also allows filtering
 by severity.
+
+Designed to be compatible with <http://hackage.haskell.org/package/monad-logger monad-logger>.
 -}
 module Knit.Effects.Logger
   (
     -- * Logging Types
     LogSeverity(..)
   , LogEntry(..)
+
   -- * Effects
   , Logger(..)
   , PrefixLog
+
   -- * Actions
   , log
   , logLE
   , wrapPrefix
-  -- * subsets for filtering
+
+  -- * Interpreters
+  , filteredLogEntriesToIO
+
+  -- * Subsets for filtering
   , logAll
   , nonDiagnostic
-  -- * interpreters
-  , filteredLogEntriesToIO
+
   -- * Constraints for convenience 
---  , PrefixedLogEffs
   , LogWithPrefixes
   , LogWithPrefixesLE
-  -- * re-exports from freer-simple
+
+  -- * Re-Exports
   , Semantic
   , Member
   , Handler
@@ -64,7 +73,6 @@ import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
 import qualified Control.Monad.Log             as ML
 import qualified Data.List                     as List
-import           Data.Monoid                    ( (<>) )
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Prettyprint.Doc     as PP
@@ -82,12 +90,10 @@ import           Prelude                 hiding ( log )
 -- conversion is uneccessary if we throw a message away?  But still, the interpreters could take the pretty-printers as arguments?
 -- Parking this for now, since it has absorbed outsize time for no benefit except some understanding.
 
-
--- a simple type for logging text with a subset of severities
 -- | Severity of message.  Based on monad-logger.
 data LogSeverity = Diagnostic | Info | Warning | Error deriving (Show, Eq, Ord, Enum, Bounded)
 
--- | Map between LogSeverity and monad-logger severity
+-- | Map between @LogSeverity@ and monad-logger severity.
 logSeverityToSeverity :: LogSeverity -> ML.Severity
 logSeverityToSeverity Diagnostic = ML.Debug
 logSeverityToSeverity Info       = ML.Informational
@@ -97,43 +103,29 @@ logSeverityToSeverity Error      = ML.Error
 -- | A basic LogEntry with a severity and a (Text) message
 data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
 
--- | convert @LogEntry to monad-logger style
+-- | Convert @LogEntry@ to monad-logger style.
 logEntryToWithSeverity :: LogEntry -> ML.WithSeverity T.Text
 logEntryToWithSeverity (LogEntry s t) =
   ML.WithSeverity (logSeverityToSeverity s) t
 
--- | format LogEntry for Text output
-logEntryPretty :: LogEntry -> T.Text
-logEntryPretty (LogEntry Diagnostic d) = "(Diagnostic): " <> d
-logEntryPretty (LogEntry Info       t) = "(Info): " <> t
-logEntryPretty (LogEntry Warning    w) = "(Warning): " <> w
-logEntryPretty (LogEntry Error      e) = "(Error): " <> e
 
--- | filter which messages are ouptput.  Any severity in the list is included.
-filterLogEntry :: [LogSeverity] -> LogEntry -> Maybe LogEntry
-filterLogEntry ls (LogEntry s m) =
-  if s `elem` ls then Just (LogEntry s m) else Nothing
-
--- | output everything
+-- | Severity list used output everything.
 logAll :: [LogSeverity]
 logAll = [minBound .. maxBound]
 
--- | output all but Diagnostic. Diagnostic is sometimes useful for debugging but can get noisy depending on how you use it.
+-- | Uutput all but Diagnostic. Diagnostic is sometimes useful for debugging but can get noisy depending on how you use it.
 nonDiagnostic :: [LogSeverity]
 nonDiagnostic = List.tail logAll
-
--- | ordered list of all the prefixes added so far
-type LoggerPrefix = [T.Text]
 
 -- | The Logger effect
 data Logger a m r where
   Log :: a -> Logger a m ()
 
--- | add one log entry of arbitrary type.  If you want to log with another type besides @LogEntry.
+-- | Add one log entry of arbitrary type.  If you want to log with another type besides @LogEntry.
 log :: P.Member (Logger a) effs => a -> P.Semantic effs ()
 log = send . Log
 
--- | add one log-entry of the LogEntry type
+-- | Add one log-entry of the @LogEntry@ type.
 logLE
   :: P.Member (Logger LogEntry) effs
   => LogSeverity
@@ -141,32 +133,32 @@ logLE
   -> P.Semantic effs ()
 logLE ls lm = log (LogEntry ls lm)
 
--- | Helper function for logging with monad-logger handler
+-- | Helper function for logging with monad-logger handler.
 logWithHandler
   :: Handler (P.Semantic effs) a
   -> P.Semantic (Logger a ': effs) x
   -> P.Semantic effs x
 logWithHandler handler = P.interpret (\(Log a) -> handler a)
 
--- | Prefix effect
+-- | Prefix Effect
 data PrefixLog m r where
-  AddPrefix :: T.Text -> PrefixLog m ()
-  RemovePrefix :: PrefixLog m ()
-  GetPrefix :: PrefixLog m T.Text
+  AddPrefix :: T.Text -> PrefixLog m () -- ^ Represents adding a prefix to the logging output
+  RemovePrefix :: PrefixLog m () -- ^ Represents removing one level of prefixing
+  GetPrefix :: PrefixLog m T.Text -- ^ Represents retrieving the current prefix
 
--- | Add one level of prefix
+-- | Add one level of prefix.
 addPrefix :: P.Member PrefixLog effs => T.Text -> P.Semantic effs ()
 addPrefix = send . AddPrefix
 
--- | remove last prefix
+-- | Remove last prefix.
 removePrefix :: P.Member PrefixLog effs => P.Semantic effs ()
 removePrefix = send RemovePrefix
 
--- | get current prefix 
+-- | Get current prefix 
 getPrefix :: P.Member PrefixLog effs => P.Semantic effs T.Text
 getPrefix = send $ GetPrefix
 
--- | add a prefix for the block of code
+-- | Add a prefix for the block of code.
 wrapPrefix
   :: P.Member PrefixLog effs => T.Text -> P.Semantic effs a -> P.Semantic effs a
 wrapPrefix p l = do
@@ -175,7 +167,7 @@ wrapPrefix p l = do
   removePrefix
   return res
 
--- | interpret LogPrefix in State
+-- | Interpret LogPrefix in @Polysemy.State [T.Text]@.
 prefixInState
   :: forall effs a
    . P.Semantic (PrefixLog ': effs) a
@@ -185,16 +177,18 @@ prefixInState = P.reinterpret $ \case
   RemovePrefix -> P.modify @[T.Text] tail -- type application required here since tail is polymorphic
   GetPrefix    -> (P.get >>= (return . T.intercalate "." . List.reverse))
 
--- | run the prefix effect by interpresting in State and running that
+-- | Interpret the 'LogPrefix' effect in State and run that.
 runPrefix :: P.Semantic (PrefixLog ': effs) a -> P.Semantic effs a
 runPrefix = fmap snd . P.runState [] . prefixInState
 
--- | add a prefix to the log message and render
+-- | Monad-logger style wrapper to add prefixes to log messages.
 data WithPrefix a = WithPrefix { msgPrefix :: T.Text, discardPrefix :: a }
+
+-- | Render a prefixed log message with the pretty-printer.
 renderWithPrefix :: (a -> PP.Doc ann) -> WithPrefix a -> PP.Doc ann
 renderWithPrefix k (WithPrefix pr a) = PP.pretty pr PP.<+> PP.align (k a)
 
--- | use prefix effect to map all the logged messages to WithPrefix form
+-- | Use @PrefixLog@ Effect to re-interpret all the logged messages to WithPrefix form.
 logPrefixed
   :: P.Member PrefixLog effs
   => P.Semantic (Logger a ': effs) x
@@ -216,7 +210,7 @@ logAndHandlePrefixed handler =
     . logWithHandler (P.raise . handler)
     . logPrefixed @(PrefixLog ': effs)
 
--- | Add a severity filter to a handler
+-- | Add a severity filter to a handler.
 filterLog
   :: Monad m
   => ([LogSeverity] -> a -> Bool)
@@ -225,18 +219,19 @@ filterLog
   -> Handler m a
 filterLog filterF lss h a = if filterF lss a then h a else return ()
 
--- | Simplest handler, uses a function from message to Text and then outputs all messages in IO
+-- | Simple handler, uses a function from message to Text and then outputs all messages in IO.
+-- Can be used as base for any other handler that gives @Text@.
 logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
 logToIO toText = liftIO . T.putStrLn . toText
 
--- | preferred handler for @LogEntry@ type with prefixes
+-- | Preferred handler for @LogEntry@ type with prefixes.
 prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
 prefixedLogEntryToIO = logToIO
   (PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
     (ML.renderWithSeverity PP.pretty . logEntryToWithSeverity)
   )
 
--- | Use preferred handler and filter to output to IO
+-- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the union.
 filteredLogEntriesToIO
   :: MonadIO (P.Semantic effs)
   => [LogSeverity]
@@ -244,17 +239,16 @@ filteredLogEntriesToIO
   -> P.Semantic effs x
 filteredLogEntriesToIO lss = logAndHandlePrefixed
   (filterLog f lss $ prefixedLogEntryToIO)
-  where f lss a = (severity $ discardPrefix a) `List.elem` lss
+  where f lss' a = (severity $ discardPrefix a) `List.elem` lss'
 
--- | constraint helper for a general log-message type
---type PrefixedLogEffs a = '[PrefixLog, Logger a]
-
--- | constraint helper for @LogEntry@ type with prefixes
+-- | Constraint helper for logging with prefixes
 type LogWithPrefixes a effs = (P.Member PrefixLog effs, P.Member (Logger a) effs)
+
+-- | Constraint helper for @LogEntry@ type with prefixes
 type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
 
 {-
-TODO: FIX THIS!!
+TODO: Working instance of logging-effect MonadLog.  Maybe.
 
 • Illegal instance declaration for
         ‘ML.MonadLog a (P.Semantic effs)’
@@ -264,9 +258,13 @@ TODO: FIX THIS!!
         Un-determined variable: a
     • In the instance declaration for ‘ML.MonadLog a (P.Semantic effs)’
 
+
 -- not sure how to use this in practice but we might need it if we call a function with a MonadLog constraint.
 -- | instance to support using an existing function with a MonadLog constraint from a freer-simple stack. 
 instance (ML.MonadLog a m, P.Member (P.Lift m) effs) => ML.MonadLog a (P.Semantic effs) where
+  logMessageFree :: (ML.MonadLog a m, P.Member (P.Lift m) effs,forall n. Monoid n => (a -> n) -> n) -> P.Semantic effs ()
   logMessageFree inj = P.sendM @m $ ML.logMessageFree inj
--}
 
+instance (P.Member (Logger a) effs) => ML.MonadLog a (P.Semantic effs) where
+  logMessageFree inj = mapM_ log (inj $ pure @[])
+-}
