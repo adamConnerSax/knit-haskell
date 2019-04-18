@@ -15,20 +15,22 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Control.Monad.Freer.Random
-Description : freer-simple random effect
+Module      : Knit.Effect.RandomFu
+Description : Polysemy random-fu effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-freer-simple Random effect.  Allows a freer-simple stack to satisfy a MonadRandom (from random-fu) constraint.  This can be run in a few ways:
-1. In a simple way in @IO@
-2. Using any Data.Random.RandomSource (random-fu)
-3. In IO, using a given Data.Random.Source.PureMT source.  (IO is used to put the source in an IORef)
-4. (TODO) Reinterpreted in a State (PureMT) effect.
+Polysemy "random-fu" effect.
+Allows a polysemy "stack" to satisfy a MonadRandom (from "random-fu") constraint.
+This can be run in a few ways:
+
+1. Directly in 'IO'
+2. Using any 'Data.Random.RandomSource' from "random-fu"
+3. In 'IO', using a given 'Data.Random.Source.PureMT' source. ('IO' is used to put the source in an 'IORef')
 -}
-module Knit.Effects.RandomFu
+module Knit.Effect.RandomFu
   (
     -- * Effect
     Random
@@ -72,22 +74,25 @@ getRandomPrim :: P.Member Random effs => R.Prim t -> P.Semantic effs t
 getRandomPrim = send . GetRandomPrim
 
 -- | Run in IO using default random-fu IO source
-runRandomIOSimple :: forall effs a. MonadIO (P.Semantic effs) => P.Semantic (Random ': effs) a -> P.Semantic effs a
+runRandomIOSimple :: forall effs a. MonadIO (P.Semantic effs)
+  => P.Semantic (Random ': effs) a
+  -> P.Semantic effs a
 runRandomIOSimple = P.interpret f where
   f :: forall m x. (Random m x -> P.Semantic effs x)
   f r = case r of
     SampleRVar rv -> liftIO $ R.sample rv
     GetRandomPrim pt -> liftIO $ R.getRandomPrim pt
 
--- | run using the given source
-runRandomFromSource :: forall s effs a. R.RandomSource (P.Semantic effs) s => s -> P.Semantic (Random ': effs) a -> P.Semantic effs a
+-- | Run using the given source
+runRandomFromSource :: forall s effs a. R.RandomSource (P.Semantic effs) s
+  => s -> P.Semantic (Random ': effs) a -> P.Semantic effs a
 runRandomFromSource source = P.interpret f where
   f :: forall m x. (Random m x -> P.Semantic effs x)
   f r = case r of
     SampleRVar rv -> R.runRVar (R.sample rv) source 
     GetRandomPrim pt -> R.runRVar (R.getRandomPrim pt) source
 
--- | run in IO, using the given PureMT source and IO to store in IORef
+-- | Run in 'IO', using the given 'PureMT' source stored in an 'IORef'
 runRandomIOPureMT :: MonadIO (P.Semantic effs) => R.PureMT -> P.Semantic (Random ': effs) a -> P.Semantic effs a
 runRandomIOPureMT source re = liftIO (newIORef source) >>= flip runRandomFromSource re
 
@@ -96,8 +101,3 @@ $(R.monadRandom [d|
         instance P.Member Random effs => R.MonadRandom (P.Semantic effs) where
             getRandomPrim = getRandomPrim
     |])
-
-{-
-instance FR.Member Random effs => R.MonadRandom (FR.Eff effs) where
-  getRandomPrim = getRandomPrim -- this is confusing.  LHS is class member, RHS is function above
--}

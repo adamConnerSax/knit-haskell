@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Knit.Effects.Docs
+Module      : Knit.Effect.Docs
 Description : Polysemy effect for creating a list of named documents
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
@@ -23,7 +23,7 @@ Each can be created and then stored in the
 list maintained by this effect.  Then, when the effects are "run", this list can be processed to produce the required
 output.
 -}
-module Knit.Effects.Docs
+module Knit.Effect.Docs
   (
     -- * Effect
     Docs

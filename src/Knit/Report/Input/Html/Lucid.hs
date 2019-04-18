@@ -21,11 +21,8 @@ import Knit.Report.Input.Html (addLazyTextHtml)
 import qualified Lucid                         as LH
 
 import qualified Polysemy                      as P
-import           Polysemy                       ( Member
-                                                , Semantic
-                                                )
-import qualified Knit.Effects.Pandoc           as PE
-import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc           as PE
+import qualified Knit.Effect.PandocMonad      as PM
 
 -- | Add Lucid Html
 addLucid

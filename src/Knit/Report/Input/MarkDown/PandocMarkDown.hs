@@ -13,28 +13,28 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-Functions to add Pandoc MarkDon fragments to the current Pandoc.
+Functions to add Pandoc MarkDown fragments to the current Pandoc.
 -}
 module Knit.Report.Input.MarkDown.PandocMarkDown
   (
     -- * Default Options
     markDownReaderOptions
-  -- * functions to add various thing to the current Pandoc
+
+    -- * functions to add various thing to the current Pandoc
   , addMarkDown
   , addMarkDownWithOptions
   )
 where
 
 import qualified Data.Text                     as T
-import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Text.Pandoc                   as PA
-import qualified Text.Pandoc.Extensions        as PA
 
 import qualified Polysemy                      as P
-import qualified Knit.Effects.Pandoc           as PE
-import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc           as PE
+import qualified Knit.Effect.PandocMonad      as PM
 
 -- | Base Pandoc MarkDown reader options
+markDownReaderOptions :: PA.ReaderOptions
 markDownReaderOptions = PA.def
   { PA.readerStandalone = True
   , PA.readerExtensions = PA.extensionsFromList
@@ -50,7 +50,7 @@ markDownReaderOptions = PA.def
                             ]
   }
 
--- | Add a Pandoc MarkDown fragment
+-- | Add a Pandoc MarkDown fragment with the given options
 addMarkDownWithOptions
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => PA.ReaderOptions
@@ -58,6 +58,7 @@ addMarkDownWithOptions
   -> P.Semantic effs ()
 addMarkDownWithOptions opts = PE.addFrom PE.ReadMarkDown opts
 
+-- | Add a Pandoc MarkDown fragment with default options
 addMarkDown 
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text

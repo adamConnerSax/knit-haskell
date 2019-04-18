@@ -29,12 +29,12 @@ source-repository head
                        
 library
   ghc-options: -Wall -funbox-strict-fields
-  exposed-modules: Knit.Effects.Logger
-                 , Knit.Effects.Docs
-                 , Knit.Effects.Html
-                 , Knit.Effects.RandomFu
-                 , Knit.Effects.PandocMonad
-                 , Knit.Effects.Pandoc
+  exposed-modules: Knit.Effect.Logger
+                 , Knit.Effect.Docs
+                 , Knit.Effect.Html
+                 , Knit.Effect.RandomFu
+                 , Knit.Effect.PandocMonad
+                 , Knit.Effect.Pandoc
                  , Knit.Report.Input.Html
                  , Knit.Report.Input.Html.Lucid
                  , Knit.Report.Input.Html.Blaze

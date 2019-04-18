@@ -9,7 +9,8 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-Functions to support some simple reports using Blaze.  Particularly to support adding latex and hvega charts.
+Functions to support some simple reports using only Blaze.
+
 Using the Pandoc framework instead is recommended.  
 -}
 module Knit.Report.Other.Blaze
@@ -29,16 +30,13 @@ import qualified Data.ByteString.Lazy.Char8    as BS
 import           Data.Monoid                    ( (<>) )
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
-import qualified Data.Text.Lazy                as LT
 import qualified Graphics.Vega.VegaLite        as GV
 import qualified Text.Blaze.Html5              as H
 import           Text.Blaze.Html5               ( (!) )
 import qualified Text.Blaze.Html5.Attributes   as HA
 import qualified Text.Pandoc                   as P
 
-import qualified Knit.Effects.Html             as FH
-
--- | convert Latex to Blaze Html
+-- | Convert Latex to Blaze Html
 latexToHtml :: T.Text -> H.Html
 latexToHtml lText = do
   let
@@ -61,6 +59,8 @@ mathJaxScript =
     ! HA.async ""
     $ ""
 
+
+
 vegaScripts2 :: H.Html
 vegaScripts2 = do
   H.script ! HA.src "https://cdn.jsdelivr.net/npm/vega@4.4.0" $ ""
@@ -79,13 +79,14 @@ vegaScripts3 = do
         "https://cdn.jsdelivr.net/npm/vega-embed@3.29.1/build/vega-embed.js"
     $ ""
 
+-- | Add headers for using Tufte css
 tufteSetup :: H.Html
 tufteSetup = do
   H.link ! HA.rel "stylesheet" ! HA.href
     "https://cdnjs.cloudflare.com/ajax/libs/tufte-css/1.4/tufte.min.css"
   H.meta ! HA.name "viewport" ! HA.content "width=device-width, initial-scale=1"
 
--- | wrap given html in appropriate headers for the hvega and latex functions to work
+-- | Wrap given html in appropriate headers for the hvega and latex functions to work
 makeReportHtml :: T.Text -> H.Html -> H.Html
 makeReportHtml title reportHtml = H.html $ do
   H.docTypeHtml $ do
@@ -96,7 +97,7 @@ makeReportHtml title reportHtml = H.html $ do
       vegaScripts2
     H.body $ H.article $ reportHtml
 
--- | add an hvega visualization with the given id
+-- | Add an hvega visualization with the given id
 placeVisualization :: T.Text -> GV.VegaLite -> H.Html
 placeVisualization idText vl =
   let vegaScript :: T.Text =
@@ -111,7 +112,7 @@ placeVisualization idText vl =
   in  H.figure ! HA.id (H.toValue idText) $ do
         H.script ! HA.type_ "text/javascript" $ H.preEscapedToHtml script
 
--- | add the given Html as a new section
+-- | Add the given Html as a new section
 placeTextSection :: H.Html -> H.Html
 placeTextSection x = H.section x
 

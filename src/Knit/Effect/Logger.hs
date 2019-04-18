@@ -15,7 +15,7 @@
 {-# LANGUAGE InstanceSigs    #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Knit.Effects.Logger
+Module      : Knit.Effect.Logger
 Description : Polysemy logging effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
@@ -29,7 +29,7 @@ by severity.
 
 Designed to be compatible with <http://hackage.haskell.org/package/monad-logger monad-logger>.
 -}
-module Knit.Effects.Logger
+module Knit.Effect.Logger
   (
     -- * Logging Types
     LogSeverity(..)

@@ -17,12 +17,13 @@ Functions and Pandoc option sets for adding Html fragments into a Pandoc documen
 -}
 module Knit.Report.Input.Html
   (
-    -- * Default Options
-    htmlReaderOptions
-  , htmlReaderOptionsWithHeader
-  -- * functions to add html formatted as Text to the current Pandoc
-  , addStrictTextHtml
+    -- * Add html formatted as Text
+    addStrictTextHtml
   , addLazyTextHtml
+
+    -- * Default Options
+  , htmlReaderOptions
+  , htmlReaderOptionsWithHeader
   )
 where
 
@@ -30,31 +31,29 @@ import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as LT
 import qualified Text.Pandoc        as P
 import qualified Text.Pandoc.Extensions        as PA
-import qualified Lucid                         as LH
 
 import qualified Polysemy                      as P
-import           Polysemy                       ( Member
-                                                , Semantic
-                                                )
-import qualified Knit.Effects.Pandoc           as PE
-import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc           as PE
+import qualified Knit.Effect.PandocMonad      as PM
 
 
--- | Base Html reader options 
+-- | Base Html reader options
+htmlReaderOptions :: P.ReaderOptions
 htmlReaderOptions =
   P.def { P.readerExtensions = PA.extensionsFromList [PA.Ext_raw_html] }
 
 -- | Html reader options for complete document
+htmlReaderOptionsWithHeader :: P.ReaderOptions
 htmlReaderOptionsWithHeader = htmlReaderOptions { P.readerStandalone = True }
 
--- | add Strict Text Html to current Pandoc
+-- | Add Strict Text Html to current Pandoc
 addStrictTextHtml
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
   -> P.Semantic effs ()
 addStrictTextHtml = PE.addFrom PE.ReadHtml htmlReaderOptions
 
--- | add Lazy Text Html to current Pandoc
+-- | Add Lazy Text Html to current Pandoc
 addLazyTextHtml
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => LT.Text

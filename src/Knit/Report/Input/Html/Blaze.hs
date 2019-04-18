@@ -8,7 +8,7 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-Functions to add Lucid fragments into a Pandoc generated report.
+Functions to add Blaze fragments into a Pandoc generated report.
 -}
 module Knit.Report.Input.Html.Blaze
   (
@@ -22,11 +22,8 @@ import qualified Text.Blaze.Html               as BH
 import qualified Text.Blaze.Html.Renderer.Text as BH
 
 import qualified Polysemy                      as P
-import           Polysemy                       ( Member
-                                                , Semantic
-                                                )
-import qualified Knit.Effects.Pandoc           as PE
-import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc           as PE
+import qualified Knit.Effect.PandocMonad      as PM
 
 
 -- | Add Blaze Html 

@@ -17,17 +17,20 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Control.Monad.Freer.Pandoc
-Description : freer-simple logging effect
+Module      : Knit.Effect.PandocMonad
+Description : Polysemy PandocMonad effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-freer-simple PandocMonad effect.  Allows a freer-simple stack to satisfy a PandocMonad constraint.  This still needs to run on top of PandocIO
-but that will likely be addressed at some point in the future, just requiring IO at base and the Logging and Random effects.
+Polysemy PandocMonad effect.
+Allows a polysemy "stack" to satisfy a PandocMonad constraint.
+This still needs to run on top of PandocIO
+but that will likely be addressed at some point in the future,
+just requiring IO at base and the Logging and Random effects.
 -}
-module Knit.Effects.PandocMonad
+module Knit.Effect.PandocMonad
   (
     -- * Types
     Pandoc
@@ -40,33 +43,22 @@ module Knit.Effects.PandocMonad
   )
 where
 
-import qualified Knit.Effects.Logger           as Log
+import qualified Knit.Effect.Logger           as Log
 
 import qualified Polysemy                      as P
 import qualified Polysemy.IO                   as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.Error                as P
-import           Polysemy.Internal.Lift         (Lift(Lift,unLift))
-
-{-
-import qualified Control.Monad.Freer           as FR
-import qualified Control.Monad.Freer.Error     as FR
-import qualified Control.Monad.Freer.TH        as FR
--}
-
 import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
 
 import           Data.ByteString               as BS
 import           Data.ByteString.Lazy          as LBS
 import qualified Data.Text                     as T
-import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Except           ( MonadError(..) )
 import           Data.Time.Clock                ( UTCTime )
 import           Data.Time.LocalTime            ( TimeZone )
 import           System.Random                  ( StdGen )
-
-
 
 -- | Pandoc Effect
 data Pandoc m r where
@@ -90,20 +82,20 @@ data Pandoc m r where
 
 P.makeSemantic ''Pandoc
 
--- | split off the error piece so we can handle directly
+-- | Split off the error piece. We will handle directly.
 instance (P.Member Pandoc effs, P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Semantic effs) where
   throwError = P.throw
   catchError = P.catch
 
 -- we handle logging within the existing effect system
--- | map pandoc severities to our logging system
+-- | Map pandoc severities to our logging system.
 pandocSeverity :: PA.LogMessage -> Log.LogSeverity
 pandocSeverity lm = case PA.messageVerbosity lm of
   PA.ERROR   -> Log.Error
   PA.WARNING -> Log.Warning
   PA.INFO    -> Log.Info
 
--- | handle the logging aspect with our logger
+-- | Handle the logging with the knit-haskell logging effect.
 logPandocMessage
   :: P.Member (Log.Logger Log.LogEntry) effs
   => PA.LogMessage
@@ -112,7 +104,7 @@ logPandocMessage lm = send $ Log.Log $ Log.LogEntry
   (pandocSeverity lm)
   (T.pack . PA.showLogMessage $ lm)
 
--- * Constraint Helper
+-- | Constraint helper for using this set of effects.
 type PandocEffects effs =
   ( P.Member Pandoc effs
   , P.Member (P.Error PA.PandocError) effs
@@ -135,16 +127,16 @@ instance PandocEffects effs => PA.PandocMonad (P.Semantic effs) where
   getModificationTime = getModificationTime
   getCommonState = getCommonState
   putCommonState = putCommonState
+  getsCommonState = getsCommonState
   modifyCommonState = modifyCommonState
   logOutput = logPandocMessage
   trace = trace
 
 -- for now.  But we can split this up into IO
 -- must run before logger, right?
--- | run the Pandoc effect in another monad which satisfies the PandocMonad constraint.  Someday this will become a MonadIO constraint.
+-- | Run the Pandoc effect in another monad which satisfies the PandocMonad constraint.
 runPandoc
   :: forall m effs a. (PA.PandocMonad m, P.Member (P.Lift m) effs)
---     , P.Member (Log.Logger Log.LogEntry) effs
   => P.Semantic (Pandoc ': effs) a
   -> P.Semantic effs a
 runPandoc = P.interpret
@@ -182,8 +174,9 @@ runIOInPandocIO :: P.Member (P.Lift PA.PandocIO) effs => P.Semantic (P.Lift IO '
 runIOInPandocIO = P.interpret ((P.sendM @PA.PandocIO) . liftIO . unLift)
 -}
 
--- | run the Pandoc effects, and log messages with the given severity, over IO.  If there is a Pandoc error,
--- you will get a Left in the resulting Either.
+-- | Run the Pandoc effects,
+-- and log messages with the given severity, over IO.
+-- If there is a Pandoc error, you will get a Left in the resulting Either.
 runPandocAndLoggingToIO
   :: [Log.LogSeverity]
   -> P.Semantic
@@ -200,19 +193,5 @@ runPandocAndLoggingToIO lss =
     . Log.filteredLogEntriesToIO lss
     . runPandoc @PA.PandocIO
 
-
-{-
-runPandocAndLogViaLoggingT :: [Log.LogSeverity]
-                        ->  FR.Eff '[Pandoc, (Log.Logger Log.LogEntry), Log.PrefixLog, FR.Error PA.PandocError, PA.PandocIO] a
-                        -> IO (Either PA.PandocError a)
-runPandocAndLogViaLoggingT lss = fmap mergeEithers
-                                 . PA.runIO
-                                 . FR.runM
-                                 . FR.runError
-                                 . (flip ML.runLoggingT handler . lift) . Log.logToMonadLogLE lss
-                                 . runPandoc where
-  handler = FR.raise . liftIO . print . Log.renderWithPrefix id
-
--}
 
 

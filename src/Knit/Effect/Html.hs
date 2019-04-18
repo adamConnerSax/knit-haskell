@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Knit.Effects.Html
+Module      : Knit.Effect.Html
 Description : Polysemy writer effects for creating Lucid/Blaze documents
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
@@ -16,7 +16,7 @@ Stability   : experimental
 Create a Lucid or Blaze html document (using a Writer to intersperse html and other code) and then use the 'Knit.Haskell.Docs' <https://github.com/isovector/polysemy#readme polysemy> effect
 to store that document for processing/output later.
 -}
-module Knit.Effects.Html
+module Knit.Effect.Html
   (
     -- * Lucid
     -- ** Effects
@@ -55,11 +55,11 @@ import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                     as T
 
-import           Knit.Effects.Docs              ( Docs
-                                                , NamedDoc(..)
-                                                , newDoc
-                                                , toNamedDocList
-                                                )
+import           Knit.Effect.Docs              ( Docs
+                                               , NamedDoc(..)
+                                               , newDoc
+                                               , toNamedDocList
+                                               )
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
 --newtype FreerHtml = FreerHtml { unFreer :: H.Html () }

@@ -10,7 +10,7 @@
 {-# LANGUAGE LambdaCase  #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
-Module      : Control.Monad.Freer.Pandoc
+Module      : Knit.Effect.Pandoc
 Description : freer-simple logging effect
 Copyright   : (c) Adam Conner-Sax 2019
 License     : BSD-3-Clause
@@ -23,7 +23,7 @@ to many Pandoc-writeable formats.  Currently only a subset of formats are suppor
 e.g., hvega requires html output because it uses javascript.
 Those requirements are then checked before output is rendered and an error thrown if the input is not supported.
 -}
-module Knit.Effects.Pandoc
+module Knit.Effect.Pandoc
   (
     -- * Effects
     ToPandoc
@@ -73,13 +73,13 @@ import           Polysemy.Internal              ( send )
 import qualified Polysemy.Writer               as P
 
 
-import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effect.PandocMonad      as PM
 
-import           Knit.Effects.Docs              ( Docs
-                                                , NamedDoc(..)
-                                                , newDoc
-                                                , toNamedDocList
-                                                )
+import           Knit.Effect.Docs              ( Docs
+                                               , NamedDoc(..)
+                                               , newDoc
+                                               , toNamedDocList
+                                               )
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
 --newtype FreerHtml = FreerHtml { unFreer :: H.Html () }
@@ -119,7 +119,7 @@ data Requirement
   deriving (Show, Ord, Eq, Bounded, Enum)
 
 handlesAll :: PandocWriteFormat a -> S.Set Requirement  -> Bool
-handlesAll f reqs = Mon.getAll $ F.fold (fmap (Mon.All . handles f)  $ S.toList reqs) where
+handlesAll f rs = Mon.getAll $ F.fold (fmap (Mon.All . handles f)  $ S.toList rs) where
   handles :: PandocWriteFormat a -> Requirement -> Bool
   handles WriteHtml5 VegaSupport         = True
   handles WriteHtml5String VegaSupport   = True
@@ -159,7 +159,7 @@ addFrom
   -> PA.ReaderOptions
   -> a
   -> P.Semantic effs ()
-addFrom prf pro doc = send $ AddFrom prf pro doc
+addFrom prf pro doc' = send $ AddFrom prf pro doc'
 
 require :: P.Member ToPandoc effs => Requirement -> P.Semantic effs ()
 require r = send $ Require r
@@ -180,9 +180,9 @@ toPandoc
   -> PA.ReaderOptions
   -> a
   -> m PA.Pandoc
-toPandoc prf pro x = read pro x
+toPandoc prf pro x = readF pro x
  where
-  read = case prf of
+  readF = case prf of
     ReadDocX       -> PA.readDocx
     ReadMarkDown   -> PA.readMarkdown
     ReadCommonMark -> PA.readCommonMark
@@ -198,9 +198,9 @@ fromPandoc
   -> PA.WriterOptions
   -> PandocWithRequirements
   -> m a
-fromPandoc pwf pwo (PandocWithRequirements pdoc reqs) =
-  case handlesAll pwf reqs of
-    False -> throwError $ PA.PandocSomeError $ "One of " ++ (show $ S.toList reqs) ++ " cannot be output to " ++ show pwf
+fromPandoc pwf pwo (PandocWithRequirements pdoc rs) =
+  case handlesAll pwf rs of
+    False -> throwError $ PA.PandocSomeError $ "One of " ++ (show $ S.toList rs) ++ " cannot be output to " ++ show pwf
     True -> write pwo pdoc
       where
         write = case pwf of
@@ -253,8 +253,8 @@ namedPandocFrom
   -> NamedDoc PandocWithRequirements
   -> m (NamedDoc a)
 namedPandocFrom pwf pwo (NamedDoc n pdoc) = do
-  doc <- fromPandoc pwf pwo pdoc
-  return $ NamedDoc n doc
+  doc' <- fromPandoc pwf pwo pdoc
+  return $ NamedDoc n doc'
 
 -- | Given a write format and options, convert a list of named Pandocs to a list of named docs in the requested format
 pandocsToNamed

@@ -21,8 +21,8 @@ import qualified Data.Text                     as T
 import qualified Text.Pandoc                   as PA
 
 import qualified Polysemy                      as P
-import qualified Knit.Effects.Pandoc           as PE
-import qualified Knit.Effects.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc           as PE
+import qualified Knit.Effect.PandocMonad      as PM
 
 -- | Add LaTeX
 addLatex
