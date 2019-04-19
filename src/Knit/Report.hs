@@ -124,32 +124,31 @@ type KnitEffectsMany m =
 type KnitEffectsManyC m = (P.Member (P.Lift m) (KnitEffectsMany m))
 
 knitHtmls
-  :: forall
-       r
-   . (  forall a
-   . P.Semantic r a
-  -> P.Semantic (KnitEffectsMany PA.PandocIO) a
-  ) -- ^ run any other effects.  Could be @id@.
+  :: forall m r
+   . ( PA.PandocMonad m
+     , MonadIO m
+     , MonadError PA.PandocError m
+     , KnitEffectsManyC m
+     )
+  => (forall a . P.Semantic r a -> P.Semantic (KnitEffectsMany m) a) -- ^ run any other effects.  Could be @id@.
   -> Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Semantic r () -- ^ Knit effects "over" m
-  -> IO [KP.NamedDoc TL.Text] -- ^  named documents, converted to Html as Text.
+  -> m [KP.NamedDoc TL.Text] -- ^  named documents, converted to Html as Text.
 knitHtmls runOthers loggingPrefixM ls writeConfig x = do
   res :: Either PA.PandocError [KP.NamedDoc TL.Text] <-
-    fmap KPM.mergeEithers
-    . PA.runIO
-    . P.runM
-    . PI.runIO @PA.PandocIO
+    P.runM
+    . PI.runIO @m --PA.PandocIO
     . PE.runError
     . KLog.filteredLogEntriesToIO ls
-    . KPM.runPandoc @PA.PandocIO
+    . KPM.runPandoc @m -- PA.PandocIO
     . maybe id KLog.wrapPrefix loggingPrefixM
     . KD.toNamedDocListWithM
         (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
     $ runOthers x
   case res of
-    Left  err       -> (putStrLn $ "Pandoc Error" ++ show err) >> return []
+    Left  err       -> throwError err
     Right namedDocs -> return namedDocs
 
 type KnitEffectsOne m =
