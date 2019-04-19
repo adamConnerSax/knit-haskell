@@ -35,15 +35,20 @@ module Knit.Effect.PandocMonad
     -- * Types
     Pandoc
   , PandocEffects
-  -- * functions to run in IO
+
+  -- * Interpreters
   , runPandoc
   , runPandocAndLoggingToIO
-  -- * re-exports
+
+  -- * Helpers
+  , mergeEithers
+
+  -- * Re-Exports
   , PA.PandocError
   )
 where
 
-import qualified Knit.Effect.Logger           as Log
+import qualified Knit.Effect.Logger            as Log
 
 import qualified Polysemy                      as P
 import qualified Polysemy.IO                   as P
@@ -136,7 +141,8 @@ instance PandocEffects effs => PA.PandocMonad (P.Semantic effs) where
 -- must run before logger, right?
 -- | Run the Pandoc effect in another monad which satisfies the PandocMonad constraint.
 runPandoc
-  :: forall m effs a. (PA.PandocMonad m, P.Member (P.Lift m) effs)
+  :: forall m effs a
+   . (PA.PandocMonad m, P.Member (P.Lift m) effs)
   => P.Semantic (Pandoc ': effs) a
   -> P.Semantic effs a
 runPandoc = P.interpret
@@ -186,7 +192,7 @@ runPandocAndLoggingToIO
   -> IO (Either PA.PandocError a)
 runPandocAndLoggingToIO lss =
   fmap mergeEithers
-    . PA.runIO    
+    . PA.runIO
     . P.runM
     . P.runIO @PA.PandocIO --use PandocIO to interpret (Lift IO), basically.
     . P.runError

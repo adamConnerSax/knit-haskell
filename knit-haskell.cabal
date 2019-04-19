@@ -47,6 +47,7 @@ library
                  , Knit.Report.Input.Latex
                  , Knit.Report.Input.MarkDown.PandocMarkDown
                  , Knit.Report.Input.Visualization.Hvega
+                 , Knit.Report.Output
                  , Knit.Report.Output.Html
                  , Knit.Report
                  , Knit.Report.Other.Lucid
