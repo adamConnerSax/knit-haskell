@@ -28,15 +28,20 @@ Import either effect directly if you need it.
 -}
 module Knit.Report
   (
-  -- * Inputs
-    module Knit.Report.Input.MarkDown.PandocMarkDown
+    -- * Knit
+    knitHtml
+  , knitHtmls
+
+    -- * Inputs
+  , module Knit.Report.Input.MarkDown.PandocMarkDown
   , module Knit.Report.Input.Html
   , module Knit.Report.Input.Html.Blaze
   , module Knit.Report.Input.Html.Lucid
   , module Knit.Report.Input.Latex
   , module Knit.Report.Input.Visualization.Hvega
 
-  -- * Output Formats
+    -- * Output Formats
+  , module Knit.Report.Output
   , module Knit.Report.Output.Html
 
     -- * Effects
@@ -79,6 +84,7 @@ import           Knit.Report.Input.Latex        ( addLatex )
 import           Knit.Report.Input.Visualization.Hvega
                                                 ( addHvega )
 
+import           Knit.Report.Output             ( PandocWriterConfig(..) )
 import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 , mindocOptionsF
                                                 )
@@ -98,7 +104,7 @@ import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.Class             as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
 
-import           Knit.Report.Output             ( PandocWriterConfig )
+
 import qualified Knit.Report.Output.Html       as KO
 import qualified Knit.Effect.Docs              as KD
 import qualified Knit.Effect.Pandoc            as KP

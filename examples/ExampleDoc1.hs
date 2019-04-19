@@ -24,21 +24,14 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let runEffects =
-        K.runPandocAndLoggingToIO K.logAll
-          . K.wrapPrefix "Example1.Main"
-          . fmap BH.renderHtml
-      pandocToHtml =  K.pandocWriterToBlazeDocument
-        (Just "pandoc-templates/minWithVega-pandoc.html")
-        templateVars
-        K.mindocOptionsF
-  htmlAsTextE <- runEffects $ pandocToHtml $ makeDoc   
-  case htmlAsTextE of
-    Right htmlAsText ->
+  let pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
+  resM <- K.knitHtml id (Just "Example1.Main") K.logAll pandocWriterConfig makeDoc
+  case resM of
+    Just htmlAsText ->
       T.writeFile "examples/html/example1.html"
         $ TL.toStrict
         $ htmlAsText
-    Left err -> putStrLn $ "pandoc error: " ++ show err
+    Nothing -> return ()
 
 md1 :: T.Text
 md1 = [here|
