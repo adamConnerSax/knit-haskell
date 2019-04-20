@@ -111,6 +111,7 @@ import qualified Knit.Effect.Pandoc            as KP
 import qualified Knit.Effect.PandocMonad       as KPM
 import qualified Knit.Effect.Logger            as KLog
 
+{-
 type KnitEffectsMany m =
   '[ KD.Docs KP.PandocWithRequirements
    , KPM.Pandoc
@@ -120,23 +121,32 @@ type KnitEffectsMany m =
    , P.Lift IO
    , P.Lift m
    ]
+-}
+type KnitEffectsMany m r =
+  ( Member (KD.Docs KP.PandocWithRequirements) r
+  , Member (KPM.Pandoc) r
+  , Member (KLog.Logger KLog.LogEntry) r
+  , Member (KLog.PrefixLog) r
+  , Member (PE.Error PA.PandocError) r
+  , Member (P.Lift IO) r
+  , Member (P.Lift m) r
+  )
 
-type KnitEffectsManyC m = (P.Member (P.Lift m) (KnitEffectsMany m))
+--type KnitEffectsManyC m = (P.Member (P.Lift m) (KnitEffectsMany m))
 
 knitHtmls
   :: forall m r
    . ( PA.PandocMonad m
      , MonadIO m
      , MonadError PA.PandocError m
-     , KnitEffectsManyC m
+     , KnitEffectsMany m r
      )
-  => (forall a . P.Semantic r a -> P.Semantic (KnitEffectsMany m) a) -- ^ run any other effects.  Could be @id@.
-  -> Maybe T.Text -- ^ outer logging prefix
+  => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Semantic r () -- ^ Knit effects "over" m
   -> m [KP.NamedDoc TL.Text] -- ^  named documents, converted to Html as Text.
-knitHtmls runOthers loggingPrefixM ls writeConfig x = do
+knitHtmls loggingPrefixM ls writeConfig x = do
   res :: Either PA.PandocError [KP.NamedDoc TL.Text] <-
     P.runM
     . PI.runIO @m --PA.PandocIO
@@ -146,11 +156,11 @@ knitHtmls runOthers loggingPrefixM ls writeConfig x = do
     . maybe id KLog.wrapPrefix loggingPrefixM
     . KD.toNamedDocListWithM
         (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
-    $ runOthers x
+        x
   case res of
     Left  err       -> throwError err
     Right namedDocs -> return namedDocs
-
+{-
 type KnitEffectsOne m =
   '[ KP.ToPandoc
    , KPM.Pandoc
@@ -160,6 +170,7 @@ type KnitEffectsOne m =
    , P.Lift IO
    , P.Lift m
    ]
+
 
 type KnitEffectsOneC m = (P.Member (P.Lift m) (KnitEffectsMany m))
 
@@ -186,3 +197,4 @@ knitHtml runOthers loggingPrefixM ls writeConfig x = do
   case res of
     Left  err       -> (putStrLn $ "Pandoc Error" ++ show err) >> return Nothing
     Right namedDocs -> return $ Just namedDocs
+-}
