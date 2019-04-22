@@ -3,11 +3,14 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-|
 Module      : Knit.Report
 Description : Re-export all the things required for pandoc-built reports.
@@ -29,8 +32,8 @@ Import either effect directly if you need it.
 module Knit.Report
   (
     -- * Knit
-    knitHtml
-  , knitHtmls
+--    knitHtml
+    knitHtmls
 
     -- * Inputs
   , module Knit.Report.Input.MarkDown.PandocMarkDown
@@ -95,6 +98,7 @@ import           Control.Monad.Except           ( MonadError(..)
                                                 )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
+import           GHC.Exts                       ( Constraint )
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as PE
@@ -111,8 +115,8 @@ import qualified Knit.Effect.Pandoc            as KP
 import qualified Knit.Effect.PandocMonad       as KPM
 import qualified Knit.Effect.Logger            as KLog
 
-{-
-type KnitEffectsMany m =
+
+type KnitEffectStack m =
   '[ KD.Docs KP.PandocWithRequirements
    , KPM.Pandoc
    , KLog.Logger KLog.LogEntry
@@ -121,45 +125,80 @@ type KnitEffectsMany m =
    , P.Lift IO
    , P.Lift m
    ]
--}
+
+-- re-invent "LastMember?"
+-- nope
+type family LastMember (eff :: k) (r :: [k]) :: Constraint where
+  LastMember eff '[] = ()
+  LastMember eff (e : es) = (P.Member eff es, LastMember eff es)
+
+runSemT
+  :: (Monad m, LastMember (P.Lift m) r)
+  => (P.Semantic r a -> P.Semantic '[P.Lift m] b)
+  -> P.Semantic r a
+  -> m b
+runSemT consume = P.runM . consume
+
 type KnitEffectsMany m r =
   ( Member (KD.Docs KP.PandocWithRequirements) r
   , Member (KPM.Pandoc) r
   , Member (KLog.Logger KLog.LogEntry) r
   , Member (KLog.PrefixLog) r
   , Member (PE.Error PA.PandocError) r
-  , Member (P.Lift IO) r
+--  , Member (P.Lift IO) r
   , Member (P.Lift m) r
   )
 
 --type KnitEffectsManyC m = (P.Member (P.Lift m) (KnitEffectsMany m))
 
-knitHtmls
+consumeKnitEffects
   :: forall m r
    . ( PA.PandocMonad m
      , MonadIO m
      , MonadError PA.PandocError m
-     , KnitEffectsMany m r
+--     , KnitEffectsMany m r
+--     , Mem
+--     , Member (P.Lift m) (KnitEffectStack m)
+     , LastMember (P.Lift m) (KnitEffectStack m)
      )
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
-  -> P.Semantic r () -- ^ Knit effects "over" m
-  -> m [KP.NamedDoc TL.Text] -- ^  named documents, converted to Html as Text.
-knitHtmls loggingPrefixM ls writeConfig x = do
-  res :: Either PA.PandocError [KP.NamedDoc TL.Text] <-
-    P.runM
-    . PI.runIO @m --PA.PandocIO
+  -> P.Semantic (KnitEffectStack m) ()
+  -> P.Semantic
+       '[P.Lift m]
+       (Either PA.PandocError [KP.NamedDoc TL.Text])
+consumeKnitEffects loggingPrefixM ls writeConfig =
+  PI.runIO @m --PA.PandocIO
     . PE.runError
     . KLog.filteredLogEntriesToIO ls
     . KPM.runPandoc @m -- PA.PandocIO
     . maybe id KLog.wrapPrefix loggingPrefixM
     . KD.toNamedDocListWithM
         (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
-        x
+
+
+knitHtmls
+  :: forall m r
+   . ( PA.PandocMonad m
+     , MonadIO m
+     , MonadError PA.PandocError m
+     , LastMember (P.Lift m) (KnitEffectStack m)
+     )
+  => Maybe T.Text -- ^ outer logging prefix
+  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
+  -> P.Semantic (KnitEffectStack m) () -- ^ Knit effects "over" m
+  -> m [KP.NamedDoc TL.Text] -- ^  named documents, converted to Html as Text.
+knitHtmls loggingPrefixM ls writeConfig x = do
+  res :: Either PA.PandocError [KP.NamedDoc TL.Text] <- runSemT
+    (consumeKnitEffects loggingPrefixM ls writeConfig)
+    x
   case res of
     Left  err       -> throwError err
     Right namedDocs -> return namedDocs
+
+
 {-
 type KnitEffectsOne m =
   '[ KP.ToPandoc
