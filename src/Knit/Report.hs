@@ -120,7 +120,8 @@ import qualified Knit.Effect.Logger            as KLog
 
 
 
-
+-- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
+-- This uses PandocIO to handle the effects Pandoc requires and then "runs" it, leaving an IO effect.
 knitHtmlsViaPandocIO
   :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
   => Maybe T.Text -- ^ outer logging prefix
@@ -134,6 +135,8 @@ knitHtmlsViaPandocIO loggingPrefixM ls writeConfig x = do
     Left  err  -> (putStrLn $ "Pandoc Error: " ++ show err) >> return []
     Right docs -> return docs
 
+-- | Create HTML Text from pandoc fragments
+-- This uses PandocIO to handle the effects Pandoc requires and then "runs" it, leaving an IO effect.
 knitHtmlViaPandocIO
   :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
   => Maybe T.Text -- ^ outer logging prefix
@@ -147,6 +150,8 @@ knitHtmlViaPandocIO loggingPrefixM ls writeConfig x = do
     Left  err -> (putStrLn $ "Pandoc Error: " ++ show err) >> return Nothing
     Right doc -> return $ Just doc
 
+-- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
+-- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtmls
   :: forall m
    . ( PA.PandocMonad m
@@ -167,6 +172,8 @@ knitHtmls loggingPrefixM ls writeConfig x = do
     Left  err       -> throwError err
     Right namedDocs -> return namedDocs
 
+-- | Create HTML Text from pandoc fragments
+-- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtml
   :: forall m
    . ( PA.PandocMonad m
