@@ -1,6 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 module Main where
 
@@ -25,7 +26,7 @@ templateVars = M.fromList
 main :: IO ()
 main = do
   let pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
-  resM <- K.knitHtml id (Just "Example1.Main") K.logAll pandocWriterConfig makeDoc
+  resM <- K.knitHtmlViaPandocIO (Just "Example1.Main") K.logAll pandocWriterConfig makeDoc
   case resM of
     Just htmlAsText ->
       T.writeFile "examples/html/example1.html"
