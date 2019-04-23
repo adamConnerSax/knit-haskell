@@ -35,6 +35,7 @@ module Knit.Report
     knitHtml
   , knitHtmls
   , knitHtmlViaPandocIO
+  , knitHtmlsViaPandocIO
 
     -- * Inputs
   , module Knit.Report.Input.MarkDown.PandocMarkDown
@@ -106,7 +107,7 @@ import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
 
 import qualified Text.Pandoc                   as PA
-import qualified Text.Pandoc.Class             as PA
+--import qualified Text.Pandoc.Class             as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
 
 
@@ -118,64 +119,33 @@ import qualified Knit.Effect.Logger            as KLog
 
 
 
-type family LastMember (eff :: k) (r :: [k]) :: Constraint where
-  LastMember eff '[] = ()
-  LastMember eff (e : es) = (P.Member eff es, LastMember eff es)
 
-runSemT
-  :: (Monad m, LastMember (P.Lift m) r)
-  => (P.Semantic r a -> P.Semantic '[P.Lift m] b)
-  -> P.Semantic r a
-  -> m b
-runSemT consume = P.runM . consume
 
-type KnitEffectStack m =
-  '[ KPM.Pandoc
-   , KLog.Logger KLog.LogEntry
-   , KLog.PrefixLog
-   , PE.Error PA.PandocError
-   , P.Lift IO
-   , P.Lift m
-   ]
-
-consumeKnitEffectStack
-  :: forall m a
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
-  => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
-  -> P.Semantic (KnitEffectStack m) a
-  -> P.Semantic '[P.Lift m] (Either PA.PandocError a)
-consumeKnitEffectStack loggingPrefixM ls =
-  PI.runIO @m
-    . PE.runError
-    . KLog.filteredLogEntriesToIO ls
-    . KPM.runPandoc @m -- PA.PandocIO
-    . maybe id KLog.wrapPrefix loggingPrefixM
-
-type KnitEffectDocsStack m = (KD.Docs KP.PandocWithRequirements ': KnitEffectStack m)
-
-consumeKnitEffectMany
-  :: forall m
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
+knitHtmlsViaPandocIO
+  :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
-  -> P.Semantic (KnitEffectDocsStack m) ()
-  -> P.Semantic
-       '[P.Lift m]
-       (Either PA.PandocError [KP.NamedDoc TL.Text])
-consumeKnitEffectMany loggingPrefixM ls writeConfig =
-  consumeKnitEffectStack @m loggingPrefixM ls . KD.toNamedDocListWithM
-    (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
+  -> P.Semantic (KnitEffectDocsStack PA.PandocIO) () -- ^ Knit effects "over" PandocIO
+  -> IO [KP.NamedDoc TL.Text]
+knitHtmlsViaPandocIO loggingPrefixM ls writeConfig x = do
+  res <- PA.runIO $ knitHtmls loggingPrefixM ls writeConfig x
+  case res of
+    Left  err  -> (putStrLn $ "Pandoc Error: " ++ show err) >> return []
+    Right docs -> return docs
 
+knitHtmlViaPandocIO
+  :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
+  => Maybe T.Text -- ^ outer logging prefix
+  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
+  -> P.Semantic (KnitEffectDocStack PA.PandocIO) () -- ^ Knit effects "over" PandocIO
+  -> IO (Maybe TL.Text) -- ^  document, converted to Html as Text.
+knitHtmlViaPandocIO loggingPrefixM ls writeConfig x = do
+  res <- PA.runIO $ knitHtml loggingPrefixM ls writeConfig x
+  case res of
+    Left  err -> (putStrLn $ "Pandoc Error: " ++ show err) >> return Nothing
+    Right doc -> return $ Just doc
 
 knitHtmls
   :: forall m
@@ -197,7 +167,80 @@ knitHtmls loggingPrefixM ls writeConfig x = do
     Left  err       -> throwError err
     Right namedDocs -> return namedDocs
 
+knitHtml
+  :: forall m
+   . ( PA.PandocMonad m
+     , MonadIO m
+     , MonadError PA.PandocError m
+     , LastMember (P.Lift m) (KnitEffectStack m)
+     )
+  => Maybe T.Text -- ^ outer logging prefix
+  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
+  -> P.Semantic (KnitEffectDocStack m) () -- ^ Knit effects "over" m
+  -> m TL.Text -- ^  document, converted to Html as Text.
+knitHtml loggingPrefixM ls writeConfig x = do
+  res <- runSemT (consumeKnitEffectOne @m loggingPrefixM ls writeConfig) x
+  case res of
+    Left  err     -> throwError err
+    Right docText -> return docText
+
+-- From here down is unexported.  
+
+type KnitEffectStack m =
+  '[ KPM.Pandoc
+   , KLog.Logger KLog.LogEntry
+   , KLog.PrefixLog
+   , PE.Error PA.PandocError
+   , P.Lift IO
+   , P.Lift m
+   ]
+
+type KnitEffectDocsStack m = (KD.Docs KP.PandocWithRequirements ': KnitEffectStack m)
 type KnitEffectDocStack m = (KP.ToPandoc ': KnitEffectStack m)
+
+type family LastMember (eff :: k) (r :: [k]) :: Constraint where
+  LastMember eff '[] = ()
+  LastMember eff (e : es) = (P.Member eff (e ': es), LastMember eff es)
+
+runSemT
+  :: Monad m
+  => (P.Semantic r a -> P.Semantic '[P.Lift m] b)
+  -> P.Semantic r a
+  -> m b
+runSemT consume = P.runM . consume
+
+consumeKnitEffectStack
+  :: forall m a
+   . (PA.PandocMonad m, MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
+  => Maybe T.Text -- ^ outer logging prefix
+  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> P.Semantic (KnitEffectStack m) a
+  -> P.Semantic '[P.Lift m] (Either PA.PandocError a)
+consumeKnitEffectStack loggingPrefixM ls =
+  PI.runIO @m
+    . PE.runError
+    . KLog.filteredLogEntriesToIO ls
+    . KPM.runPandoc @m -- PA.PandocIO
+    . maybe id KLog.wrapPrefix loggingPrefixM
+
+consumeKnitEffectMany
+  :: forall m
+   . ( PA.PandocMonad m
+     , MonadIO m
+     , MonadError PA.PandocError m
+     , LastMember (P.Lift m) (KnitEffectStack m)
+     )
+  => Maybe T.Text -- ^ outer logging prefix
+  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
+  -> P.Semantic (KnitEffectDocsStack m) ()
+  -> P.Semantic
+       '[P.Lift m]
+       (Either PA.PandocError [KP.NamedDoc TL.Text])
+consumeKnitEffectMany loggingPrefixM ls writeConfig =
+  consumeKnitEffectStack @m loggingPrefixM ls . KD.toNamedDocListWithM
+    (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
 
 consumeKnitEffectOne
   :: forall m
@@ -217,33 +260,27 @@ consumeKnitEffectOne loggingPrefixM ls writeConfig =
 
 
 
-knitHtml
-  :: forall m
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
-  => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
-  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
-  -> P.Semantic (KnitEffectDocStack m) () -- ^ Knit effects "over" m
-  -> m TL.Text -- ^  document, converted to Html as Text.
-knitHtml loggingPrefixM ls writeConfig x = do
-  res <- runSemT (consumeKnitEffectOne @m loggingPrefixM ls writeConfig) x
-  case res of
-    Left  err     -> throwError err
-    Right docText -> return docText
 
-knitHtmlViaPandocIO
-  :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
+{-
+type KnitEffectC m r = (
+    P.Member KPM.Pandoc r
+  , KLog.LogWithPrefixesLE r
+  , P.Member (PE.Error PA.PandocError) r
+  , P.Member (P.Lift IO) r
+  , P.Member (P.Lift m) r
+  )
+
+consumeKnitEffectPoly
+  :: forall m r a
+   . (PA.PandocMonad m, MonadIO m, KnitEffectC m r, LastMember (P.Lift m) r)
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
-  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
-  -> P.Semantic (KnitEffectDocStack PA.PandocIO) () -- ^ Knit effects "over" m
-  -> IO (Maybe TL.Text) -- ^  document, converted to Html as Text.
-knitHtmlViaPandocIO loggingPrefixM ls writeConfig x = do
-  res <- PA.runIO $ knitHtml loggingPrefixM ls writeConfig x
-  case res of
-    Left  err -> (putStrLn $ "Pandoc Error: " ++ show err) >> return Nothing
-    Right doc -> return $ Just doc
+  -> P.Semantic r a
+  -> P.Semantic '[P.Lift m] (Either PA.PandocError a)
+consumeKnitEffectPoly loggingPrefixM ls =
+  PI.runIO @m
+    . PE.runError
+    . KLog.filteredLogEntriesToIO ls
+    . KPM.runPandoc @m -- PA.PandocIO
+    . maybe id KLog.wrapPrefix loggingPrefixM
+-}

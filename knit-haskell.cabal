@@ -32,7 +32,7 @@ Build-type: Simple
 source-repository head
     Type: git
     Location: https://github.com/adamConnerSax/knit-haskell
-                       
+                                      
 library
   ghc-options: -Wall -funbox-strict-fields
   exposed-modules: Knit.Effect.Logger
