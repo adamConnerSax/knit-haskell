@@ -1,21 +1,20 @@
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE GADTs             #-}
 module Main where
 
 import qualified Knit.Report as K    
 
-import           Control.Monad.IO.Class          (MonadIO(liftIO))
 import qualified Data.Map                      as M
-import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                as T
 import           Data.String.Here (here)
 import qualified Graphics.Vega.VegaLite        as V
 
+templateVars :: M.Map String String
 templateVars = M.fromList
   [ ("lang"     , "English")
   , ("author"   , "Adam Conner-Sax")
@@ -57,6 +56,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## An example hvega visualization"
   K.addHvega "someID" exampleVis
 
+exampleVis :: V.VegaLite
 exampleVis =
   let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
       enc = V.encoding

@@ -24,6 +24,7 @@ import           Control.Monad.Reader       (ReaderT
                                             , runReaderT
                                             )
 
+templateVars :: M.Map String String
 templateVars = M.fromList
   [ ("lang"     , "English")
   , ("author"   , "Adam Conner-Sax")
@@ -94,7 +95,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown $ "some std normal draws: "
   K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip draws someNormalDoubles
   
-
+exampleVis :: V.VegaLite
 exampleVis =
   let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
       enc = V.encoding

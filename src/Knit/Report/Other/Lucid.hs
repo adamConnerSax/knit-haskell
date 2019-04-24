@@ -91,5 +91,5 @@ placeVisualization idText vl =
 
 -- | add the given Html as a new section
 placeTextSection :: H.Html () -> H.Html ()
-placeTextSection x = H.section_ [{- attributes/styles here -}] x
+placeTextSection  = H.section_ [{- attributes/styles here -}]
 

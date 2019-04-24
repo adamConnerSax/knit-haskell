@@ -88,14 +88,13 @@ tufteSetup = do
 
 -- | Wrap given html in appropriate headers for the hvega and latex functions to work
 makeReportHtml :: T.Text -> H.Html -> H.Html
-makeReportHtml title reportHtml = H.html $ do
-  H.docTypeHtml $ do
-    H.head $ do
-      H.title (H.toHtml title)
-      tufteSetup
-      mathJaxScript
-      vegaScripts2
-    H.body $ H.article $ reportHtml
+makeReportHtml title reportHtml = H.html $ H.docTypeHtml $ do
+  H.head $ do
+    H.title (H.toHtml title)
+    tufteSetup
+    mathJaxScript
+    vegaScripts2
+  H.body $ H.article $ reportHtml
 
 -- | Add an hvega visualization with the given id
 placeVisualization :: T.Text -> GV.VegaLite -> H.Html
@@ -109,10 +108,13 @@ placeVisualization idText vl =
           <> "vegaEmbed(\'#"
           <> idText
           <> "\',vlSpec);"
-  in  H.figure ! HA.id (H.toValue idText) $ do
-        H.script ! HA.type_ "text/javascript" $ H.preEscapedToHtml script
+  in  H.figure
+      ! HA.id (H.toValue idText)
+      $ H.script
+      ! HA.type_ "text/javascript"
+      $ H.preEscapedToHtml script
 
 -- | Add the given Html as a new section
 placeTextSection :: H.Html -> H.Html
-placeTextSection x = H.section x
+placeTextSection = H.section
 

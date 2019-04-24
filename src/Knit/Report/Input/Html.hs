@@ -1,5 +1,4 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
@@ -29,12 +28,12 @@ where
 
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as LT
-import qualified Text.Pandoc        as P
+import qualified Text.Pandoc                   as P
 import qualified Text.Pandoc.Extensions        as PA
 
 import qualified Polysemy                      as P
-import qualified Knit.Effect.Pandoc           as PE
-import qualified Knit.Effect.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc            as PE
+import qualified Knit.Effect.PandocMonad       as PM
 
 
 -- | Base Html reader options
@@ -58,4 +57,4 @@ addLazyTextHtml
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => LT.Text
   -> P.Semantic effs ()
-addLazyTextHtml = addStrictTextHtml . LT.toStrict 
+addLazyTextHtml = addStrictTextHtml . LT.toStrict

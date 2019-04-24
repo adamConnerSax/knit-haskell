@@ -17,7 +17,8 @@ description:         knit-haskell is a beginning attempt at bringing some of the
                      latex and <http://hackage.haskell.org/package/lucid Lucid>
                      or <http://hackage.haskell.org/package/blaze-html Blaze> html.
                      Support is also included for including
-                     <http://hackage.haskell.org/package/hvega hvega> visualizations. 
+                     <http://hackage.haskell.org/package/hvega hvega> visualizations.
+                     More information is available in the <https://github.com/adamConnerSax/knit-haskell/blob/master/Readme.md readme>.
 bug-reports:         https://github.com/adamConnerSax/knit-haskell/issues
 license:             BSD-3-Clause
 license-file:        LICENSE

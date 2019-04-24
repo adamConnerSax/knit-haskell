@@ -67,6 +67,7 @@ import           Polysemy                       ( Member
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
+import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
 import qualified Control.Monad.Log             as ML
@@ -172,9 +173,9 @@ prefixInState
    . P.Semantic (PrefixLog ': effs) a
   -> P.Semantic (P.State [T.Text] ': effs) a
 prefixInState = P.reinterpret $ \case
-  AddPrefix t  -> P.modify (\ps -> t : ps)
+  AddPrefix t  -> P.modify (t :)
   RemovePrefix -> P.modify @[T.Text] tail -- type application required here since tail is polymorphic
-  GetPrefix    -> (P.get >>= (return . T.intercalate "." . List.reverse))
+  GetPrefix    -> fmap (T.intercalate "." . List.reverse) P.get
 
 -- | Interpret the 'LogPrefix' effect in State and run that.
 runPrefix :: P.Semantic (PrefixLog ': effs) a -> P.Semantic effs a
@@ -216,7 +217,7 @@ filterLog
   -> [LogSeverity]
   -> Handler m a
   -> Handler m a
-filterLog filterF lss h a = if filterF lss a then h a else return ()
+filterLog filterF lss h a = when (filterF lss a) $ h a
 
 -- | Simple handler, uses a function from message to Text and then outputs all messages in IO.
 -- Can be used as base for any other handler that gives @Text@.

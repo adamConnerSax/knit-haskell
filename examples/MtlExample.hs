@@ -10,7 +10,6 @@ import qualified Knit.Report as K
 
 import           Control.Monad.IO.Class          (MonadIO)
 import qualified Data.Map                      as M
---import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                as T
@@ -19,6 +18,7 @@ import qualified Graphics.Vega.VegaLite        as V
 
 import           Control.Monad.Reader (ReaderT, ask, runReaderT)
 
+templateVars :: M.Map String String
 templateVars = M.fromList
   [ ("lang"     , "English")
   , ("author"   , "Adam Conner-Sax")
@@ -80,6 +80,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## An example of getting env from a base monad, and time from the Pandoc Effects."
   K.addMarkDown $ envText <> "\n\n" <> (T.pack $ show curTime)
 
+exampleVis :: V.VegaLite
 exampleVis =
   let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
       enc = V.encoding

@@ -1,18 +1,16 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE DeriveFunctor       #-}
-{-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE FlexibleContexts              #-}
+{-# LANGUAGE OverloadedStrings             #-}
+{-# LANGUAGE RankNTypes                    #-}
+{-# LANGUAGE GADTs                         #-}
+{-# LANGUAGE LambdaCase                    #-}
+{-# LANGUAGE DataKinds                     #-}
+{-# LANGUAGE PolyKinds                     #-}
+{-# LANGUAGE TypeOperators                 #-}
+{-# LANGUAGE ScopedTypeVariables           #-}
+{-# LANGUAGE TypeApplications              #-}
+{-# LANGUAGE TemplateHaskell               #-}
+{-# LANGUAGE UndecidableInstances          #-}
+{-# LANGUAGE AllowAmbiguousTypes           #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.RandomFu
@@ -34,67 +32,82 @@ module Knit.Effect.RandomFu
   (
     -- * Effect
     Random
-    
+
     -- * Actions
   , sampleRVar
   , sampleDist
-  
+
   -- * Interpretations 
   , runRandomIOSimple
   , runRandomIOPureMT
   , runRandomFromSource
-  ) where
+  )
+where
 
-import qualified Polysemy         as P
+import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 
-import           Data.IORef (newIORef)
-import qualified Data.Random as R
-import qualified Data.Random.Source as R
-import qualified Data.Random.Internal.Source as R
-import qualified Data.Random.Source.PureMT  as R
+import           Data.IORef                     ( newIORef )
+import qualified Data.Random                   as R
+import qualified Data.Random.Source            as R
+import qualified Data.Random.Internal.Source   as R
+import qualified Data.Random.Source.PureMT     as R
 
 
-import           Control.Monad.IO.Class (MonadIO(..))
+import           Control.Monad.IO.Class         ( MonadIO(..) )
 
 -- | Random Effect
 data Random m r where
-  SampleRVar ::  R.RVar t -> Random m t 
-  GetRandomPrim :: R.Prim t -> Random m t 
+  SampleRVar ::  R.RVar t -> Random m t
+  GetRandomPrim :: R.Prim t -> Random m t
 
 -- | Convert a random-fu RVar to the Random Effect
 sampleRVar :: (P.Member Random effs) => R.RVar t -> P.Semantic effs t
 sampleRVar = send . SampleRVar
 
 -- | Convert a random-fu Distribution to the Random Effect
-sampleDist :: (P.Member Random effs, R.Distribution d t) => d t -> P.Semantic effs t
+sampleDist
+  :: (P.Member Random effs, R.Distribution d t) => d t -> P.Semantic effs t
 sampleDist = sampleRVar . R.rvar
 
 getRandomPrim :: P.Member Random effs => R.Prim t -> P.Semantic effs t
 getRandomPrim = send . GetRandomPrim
 
 -- | Run in IO using default random-fu IO source
-runRandomIOSimple :: forall effs a. MonadIO (P.Semantic effs)
+runRandomIOSimple
+  :: forall effs a
+   . MonadIO (P.Semantic effs)
   => P.Semantic (Random ': effs) a
   -> P.Semantic effs a
-runRandomIOSimple = P.interpret f where
-  f :: forall m x. (Random m x -> P.Semantic effs x)
+runRandomIOSimple = P.interpret f
+ where
+  f :: forall m x . (Random m x -> P.Semantic effs x)
   f r = case r of
-    SampleRVar rv -> liftIO $ R.sample rv
+    SampleRVar    rv -> liftIO $ R.sample rv
     GetRandomPrim pt -> liftIO $ R.getRandomPrim pt
 
 -- | Run using the given source
-runRandomFromSource :: forall s effs a. R.RandomSource (P.Semantic effs) s
-  => s -> P.Semantic (Random ': effs) a -> P.Semantic effs a
-runRandomFromSource source = P.interpret f where
-  f :: forall m x. (Random m x -> P.Semantic effs x)
+runRandomFromSource
+  :: forall s effs a
+   . R.RandomSource (P.Semantic effs) s
+  => s
+  -> P.Semantic (Random ': effs) a
+  -> P.Semantic effs a
+runRandomFromSource source = P.interpret f
+ where
+  f :: forall m x . (Random m x -> P.Semantic effs x)
   f r = case r of
-    SampleRVar rv -> R.runRVar (R.sample rv) source 
+    SampleRVar    rv -> R.runRVar (R.sample rv) source
     GetRandomPrim pt -> R.runRVar (R.getRandomPrim pt) source
 
 -- | Run in 'IO', using the given 'PureMT' source stored in an 'IORef'
-runRandomIOPureMT :: MonadIO (P.Semantic effs) => R.PureMT -> P.Semantic (Random ': effs) a -> P.Semantic effs a
-runRandomIOPureMT source re = liftIO (newIORef source) >>= flip runRandomFromSource re
+runRandomIOPureMT
+  :: MonadIO (P.Semantic effs)
+  => R.PureMT
+  -> P.Semantic (Random ': effs) a
+  -> P.Semantic effs a
+runRandomIOPureMT source re =
+  liftIO (newIORef source) >>= flip runRandomFromSource re
 
 -- | supply instance of MonadRandom for functions which require it
 $(R.monadRandom [d|

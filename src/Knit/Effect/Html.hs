@@ -1,9 +1,9 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts              #-}
+{-# LANGUAGE DataKinds                     #-}
+{-# LANGUAGE PolyKinds                     #-}
+{-# LANGUAGE GADTs                         #-}
+{-# LANGUAGE TypeOperators                 #-}
+{-# LANGUAGE ScopedTypeVariables           #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.Html
@@ -62,11 +62,11 @@ import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                     as T
 
-import           Knit.Effect.Docs              ( Docs
-                                               , NamedDoc(..)
-                                               , newDoc
-                                               , toNamedDocList
-                                               )
+import           Knit.Effect.Docs               ( Docs
+                                                , NamedDoc(..)
+                                                , newDoc
+                                                , toNamedDocList
+                                                )
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
 --newtype FreerHtml = FreerHtml { unFreer :: H.Html () }

@@ -1,5 +1,4 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
@@ -30,8 +29,8 @@ import qualified Data.Text                     as T
 import qualified Text.Pandoc                   as PA
 
 import qualified Polysemy                      as P
-import qualified Knit.Effect.Pandoc           as PE
-import qualified Knit.Effect.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc            as PE
+import qualified Knit.Effect.PandocMonad       as PM
 
 -- | Base Pandoc MarkDown reader options
 markDownReaderOptions :: PA.ReaderOptions
@@ -56,10 +55,10 @@ addMarkDownWithOptions
   => PA.ReaderOptions
   -> T.Text
   -> P.Semantic effs ()
-addMarkDownWithOptions opts = PE.addFrom PE.ReadMarkDown opts
+addMarkDownWithOptions = PE.addFrom PE.ReadMarkDown
 
 -- | Add a Pandoc MarkDown fragment with default options
-addMarkDown 
+addMarkDown
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
   -> P.Semantic effs ()

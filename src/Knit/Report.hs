@@ -1,5 +1,4 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -152,8 +151,8 @@ knitHtml
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Semantic (KnitEffectDocStack m) () -- ^ Knit effects "over" m
   -> m (Either PA.PandocError TL.Text) -- ^  document, converted to Html as Text, or error
-knitHtml loggingPrefixM ls writeConfig x =
-  runSemT (consumeKnitEffectOne loggingPrefixM ls writeConfig) x
+knitHtml loggingPrefixM ls writeConfig =
+  runSemT (consumeKnitEffectOne loggingPrefixM ls writeConfig)
 
 -- | Constraints required to build a document while also using effects from a base monad m.
 type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
