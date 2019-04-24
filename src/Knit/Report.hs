@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE Rank2Types           #-}
@@ -21,6 +21,8 @@ Stability   : experimental
 
 This module re-exports the basic pieces to build reports using Pandoc
 as well as providing some functions to do the "knitting"--produce the documents--for some common setups.
+That is, it is intended as one-stop-shopping for using this library to produce Html from various fragments which
+Pandoc can read.
 
 Notes:
 
@@ -36,6 +38,8 @@ module Knit.Report
   , knitHtmls
   , knitHtmlViaPandocIO
   , knitHtmlsViaPandocIO
+  , liftKnit
+  , KnitBase
 
     -- * Inputs
   , module Knit.Report.Input.MarkDown.PandocMarkDown
@@ -54,11 +58,24 @@ module Knit.Report
   , module Knit.Effect.Pandoc
   , module Knit.Effect.PandocMonad
   , module Knit.Effect.Logger
+
+    -- * Pandoc
+  , PandocMonad
+  , PandocError
+  , PandocIO
+  , runIO
+
+    -- * IO    
+  , MonadIO
+
+    -- * Error
+  , MonadError
   )
 where
 
 import           Polysemy                       ( Member
                                                 , Semantic
+                                                , Lift
                                                 )
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
@@ -92,6 +109,12 @@ import           Knit.Report.Input.Visualization.Hvega
 import           Knit.Report.Output             ( PandocWriterConfig(..) )
 import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 , mindocOptionsF
+                                                )
+
+import           Text.Pandoc                    ( PandocError )
+import           Text.Pandoc.Class              ( PandocMonad
+                                                , PandocIO
+                                                , runIO
                                                 )
 
 
@@ -151,6 +174,7 @@ knitHtmlViaPandocIO loggingPrefixM ls writeConfig x = do
     Right doc -> return $ Just doc
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
+-- In use, you may need a type-application to specify m.
 -- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtmls
   :: forall m
@@ -173,6 +197,7 @@ knitHtmls loggingPrefixM ls writeConfig x = do
     Right namedDocs -> return namedDocs
 
 -- | Create HTML Text from pandoc fragments
+-- In use, you may need a type-application to specify m.
 -- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtml
   :: forall m
@@ -191,6 +216,11 @@ knitHtml loggingPrefixM ls writeConfig x = do
   case res of
     Left  err     -> throwError err
     Right docText -> return docText
+
+type KnitBase m effs = (P.Member (P.Lift m) effs)
+
+liftKnit :: Member (Lift m) r => m a -> Semantic r a
+liftKnit = P.sendM
 
 -- From here down is unexported.  
 
