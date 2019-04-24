@@ -44,8 +44,11 @@ getEnv = MyStack $ ask
 
 main :: IO ()
 main = do
-  let pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
-  resE <- runExampleApp "This is from the MyApp environment." $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig $ KR.runRandomIOSimple $ makeDoc
+  let pandocWriterConfig =
+        K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
+  resE <- runExampleApp "This is from the MyApp environment."
+          $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig
+          $ KR.runRandomIOSimple $ makeDoc
   case resE of
     Right htmlAsText ->
       T.writeFile "examples/html/random_example.html"
