@@ -11,6 +11,12 @@ knit-haskell is the beginning of an attempt to emulate parts of the RMarkdown/kn
 * Insert [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown), html ([blaze](http://hackage.haskell.org/package/blaze-html), [lucid](http://hackage.haskell.org/package/lucid) or Text) or [latex](https://en.wikipedia.org/wiki/LaTeX) into a document.
 * Insert [hvega](http://hackage.haskell.org/package/hvega) visualizations (via [blaze](http://hackage.haskell.org/package/blaze-html) HTML) into a document
 
+## Examples
+There are a few examples in the "examples" directory.  
+* "SimpleExample.hs" demonstrates the bare bones features of the library.  Creating a document from a few fragments and then "knitting" it into HTML text and writign that to a file.
+* MtlExample.hs demonstrates the same simple features as above, but runs them atop an example mtl stack, allowing access to the mtl stack's functionality during document assembly, to show how you can do that.
+* RandomExample.hs builds on the mtl example to show how you can also add a polysemy effect to your document-building. 
+
 ## Notes
 * This uses [polysemy](https://github.com/isovector/polysemy#readme) for its effect management rather than mtl.  Effects are provided for logging and generating [random-fu](http://hackage.haskell.org/package/random-fu) style random numbers.  If the ```Random``` effect is included in the effect list, the effect monad is an instance of [MonadRandom](http://hackage.haskell.org/package/random-fu-0.2.7.0/docs/Data-Random.html#t:MonadRandom). Pandoc effects and writer effects for document building are also provided.
 

@@ -3,18 +3,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Main where
 
 import qualified Knit.Report as K    
 
-import           Control.Monad.IO.Class          (MonadIO(liftIO))
+import           Control.Monad.IO.Class          (MonadIO)
 import qualified Data.Map                      as M
-import qualified Text.Blaze.Html.Renderer.Text as BH
+--import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                as T
 import           Data.String.Here (here)
 import qualified Graphics.Vega.VegaLite        as V
+
+import           Control.Monad.Reader (ReaderT, ask, runReaderT)
 
 templateVars = M.fromList
   [ ("lang"     , "English")
@@ -23,16 +26,27 @@ templateVars = M.fromList
 --  , ("tufte","True")
   ]
 
+-- A demo application stack 
+newtype MyApp env a = MyStack { unMyApp :: ReaderT env IO a } deriving (Functor, Applicative, Monad, MonadIO)
+
+type ExampleApp = MyApp T.Text
+
+runExampleApp :: T.Text -> ExampleApp a -> IO a
+runExampleApp t = flip runReaderT t . unMyApp
+
+getEnv :: MyApp env env
+getEnv = MyStack $ ask
+
 main :: IO ()
 main = do
   let pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
-  resM <- K.knitHtmlViaPandocIO (Just "Example1.Main") K.logAll pandocWriterConfig makeDoc
-  case resM of
-    Just htmlAsText ->
-      T.writeFile "examples/html/example_simple.html"
+  resE <- runExampleApp "This is from the MyApp environment." $ K.knitHtml (Just "MtlExample.Main") K.logAll pandocWriterConfig makeDoc
+  case resE of
+    Right htmlAsText ->
+      T.writeFile "examples/html/mtl_example.html"
         $ TL.toStrict
         $ htmlAsText
-    Nothing -> return ()
+    Left err -> putStrLn $ "Pandoc error: " ++ show err
 
 md1 :: T.Text
 md1 = [here|
@@ -46,16 +60,25 @@ md1 = [here|
 makeDoc :: (K.Member K.ToPandoc effs
            , K.LogWithPrefixesLE effs
            , K.PandocEffects effs
-           , MonadIO (K.Semantic effs)) => K.Semantic effs ()
+           , MonadIO (K.Semantic effs)
+           , K.KnitBase ExampleApp effs) => K.Semantic effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1
+
   K.logLE K.Info "adding some latex..."
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   K.addHvega "someID" exampleVis
+
+  K.logLE K.Info "Retrieving some text from the base monad and current date-time."
+  envText <- K.liftKnit @ExampleApp getEnv
+  curTime <- K.getCurrentTime 
+  K.addMarkDown "## An example of getting env from a base monad, and time from the Pandoc Effects."
+  K.addMarkDown $ envText <> "\n\n" <> (T.pack $ show curTime)
 
 exampleVis =
   let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []

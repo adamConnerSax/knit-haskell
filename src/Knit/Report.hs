@@ -20,7 +20,7 @@ Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
 This module re-exports the basic pieces to build reports using Pandoc
-as well as providing some functions to do the "knitting"--produce the documents--for some common setups.
+as well as providing functions to do the "knitting"--produce the documents.
 That is, it is intended as one-stop-shopping for using this library to produce Html from various fragments which
 Pandoc can read.
 
@@ -30,14 +30,13 @@ Notes:
 Import either effect directly if you need it.
 2. Logger functions are imported but assume you will use the 'LogEntry' type.
 3. The PandocMarkDown module is exported so if you want to use a different markdown flavor you may need to hide "addMarkDown" when you import this module.
+4. If you use any other effects in your polysemy stack (e.g., Random or RandomFu), you will need to interpret/run them before calling knitHtml/knitHtmls.
 -}
 module Knit.Report
   (
     -- * Knit
     knitHtml
   , knitHtmls
-  , knitHtmlViaPandocIO
-  , knitHtmlsViaPandocIO
   , liftKnit
   , KnitBase
 
@@ -61,9 +60,7 @@ module Knit.Report
 
     -- * Pandoc
   , PandocMonad
-  , PandocError
   , PandocIO
-  , runIO
 
     -- * IO    
   , MonadIO
@@ -83,10 +80,7 @@ import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , PandocWriteFormat(..)
                                                 , Pandocs
                                                 )
-import           Knit.Effect.PandocMonad        ( Pandoc
-                                                , PandocEffects
-                                                , runPandocAndLoggingToIO
-                                                )
+import           Knit.Effect.PandocMonad
 import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , logAll
                                                 , nonDiagnostic
@@ -114,7 +108,6 @@ import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
 import           Text.Pandoc                    ( PandocError )
 import           Text.Pandoc.Class              ( PandocMonad
                                                 , PandocIO
-                                                , runIO
                                                 )
 
 
@@ -142,80 +135,35 @@ import qualified Knit.Effect.Logger            as KLog
 
 
 
-
--- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
--- This uses PandocIO to handle the effects Pandoc requires and then "runs" it, leaving an IO effect.
-knitHtmlsViaPandocIO
-  :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
-  => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
-  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
-  -> P.Semantic (KnitEffectDocsStack PA.PandocIO) () -- ^ Knit effects "over" PandocIO
-  -> IO [KP.NamedDoc TL.Text]
-knitHtmlsViaPandocIO loggingPrefixM ls writeConfig x = do
-  res <- PA.runIO $ knitHtmls loggingPrefixM ls writeConfig x
-  case res of
-    Left  err  -> (putStrLn $ "Pandoc Error: " ++ show err) >> return []
-    Right docs -> return docs
-
--- | Create HTML Text from pandoc fragments
--- This uses PandocIO to handle the effects Pandoc requires and then "runs" it, leaving an IO effect.
-knitHtmlViaPandocIO
-  :: (LastMember (P.Lift PA.PandocIO) (KnitEffectStack PA.PandocIO))
-  => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
-  -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
-  -> P.Semantic (KnitEffectDocStack PA.PandocIO) () -- ^ Knit effects "over" PandocIO
-  -> IO (Maybe TL.Text) -- ^  document, converted to Html as Text.
-knitHtmlViaPandocIO loggingPrefixM ls writeConfig x = do
-  res <- PA.runIO $ knitHtml loggingPrefixM ls writeConfig x
-  case res of
-    Left  err -> (putStrLn $ "Pandoc Error: " ++ show err) >> return Nothing
-    Right doc -> return $ Just doc
-
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify m.
 -- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtmls
   :: forall m
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
+   . (MonadIO m
+--     , MonadError PA.PandocError m
+               , LastMember (P.Lift m) (KnitEffectStack m))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Semantic (KnitEffectDocsStack m) () -- ^ Knit effects "over" m
-  -> m [KP.NamedDoc TL.Text] -- ^  named documents, converted to Html as Text.
-knitHtmls loggingPrefixM ls writeConfig x = do
-  res :: Either PA.PandocError [KP.NamedDoc TL.Text] <- runSemT
-    (consumeKnitEffectMany loggingPrefixM ls writeConfig)
-    x
-  case res of
-    Left  err       -> throwError err
-    Right namedDocs -> return namedDocs
+  -> m (Either PA.PandocError [KP.NamedDoc TL.Text]) -- ^  named documents, converted to Html as Text or error
+knitHtmls loggingPrefixM ls writeConfig =
+  runSemT (consumeKnitEffectMany loggingPrefixM ls writeConfig)
 
 -- | Create HTML Text from pandoc fragments
 -- In use, you may need a type-application to specify m.
 -- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtml
   :: forall m
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
+   . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Semantic (KnitEffectDocStack m) () -- ^ Knit effects "over" m
-  -> m TL.Text -- ^  document, converted to Html as Text.
-knitHtml loggingPrefixM ls writeConfig x = do
-  res <- runSemT (consumeKnitEffectOne @m loggingPrefixM ls writeConfig) x
-  case res of
-    Left  err     -> throwError err
-    Right docText -> return docText
+  -> m (Either PA.PandocError TL.Text) -- ^  document, converted to Html as Text, or error
+knitHtml loggingPrefixM ls writeConfig x =
+  runSemT (consumeKnitEffectOne loggingPrefixM ls writeConfig) x
 
 type KnitBase m effs = (P.Member (P.Lift m) effs)
 
@@ -249,25 +197,21 @@ runSemT consume = P.runM . consume
 
 consumeKnitEffectStack
   :: forall m a
-   . (PA.PandocMonad m, MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
+   . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> P.Semantic (KnitEffectStack m) a
   -> P.Semantic '[P.Lift m] (Either PA.PandocError a)
 consumeKnitEffectStack loggingPrefixM ls =
-  PI.runIO @m
+  PI.runIO @m -- interpret (Lift IO) using m
     . PE.runError
     . KLog.filteredLogEntriesToIO ls
-    . KPM.runPandoc @m -- PA.PandocIO
+    . KPM.interpretInIO -- PA.PandocIO
     . maybe id KLog.wrapPrefix loggingPrefixM
 
 consumeKnitEffectMany
   :: forall m
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
+   . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
@@ -281,11 +225,7 @@ consumeKnitEffectMany loggingPrefixM ls writeConfig =
 
 consumeKnitEffectOne
   :: forall m
-   . ( PA.PandocMonad m
-     , MonadIO m
-     , MonadError PA.PandocError m
-     , LastMember (P.Lift m) (KnitEffectStack m)
-     )
+   . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
@@ -294,8 +234,6 @@ consumeKnitEffectOne
 consumeKnitEffectOne loggingPrefixM ls writeConfig =
   fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack @m loggingPrefixM ls)
     . KO.pandocWriterToBlazeDocument writeConfig
-
-
 
 
 {-
