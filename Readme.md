@@ -17,8 +17,8 @@ All of that is handled via writer-like effects, so additions to the documents ca
 * [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
 * HTML ([blaze](http://hackage.haskell.org/package/blaze-html), [lucid](http://hackage.haskell.org/package/lucid) or Text)
 * [latex](https://en.wikipedia.org/wiki/LaTeX)
-* [colonnade tables](https://hackage.haskell.org/package/colonnade) into a document.
-* [hvega](http://hackage.haskell.org/package/hvega) visualizations (via [blaze](http://hackage.haskell.org/package/blaze-html) HTML) into a document
+* [colonnade tables](https://hackage.haskell.org/package/colonnade)
+* [hvega](http://hackage.haskell.org/package/hvega) visualizations (via [blaze](http://hackage.haskell.org/package/blaze-html) HTML) 
 
 ## Examples
 There are a few examples in the "examples" directory.  
