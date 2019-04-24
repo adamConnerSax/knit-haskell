@@ -27,7 +27,7 @@ import           Control.Monad.Reader       (ReaderT
 templateVars = M.fromList
   [ ("lang"     , "English")
   , ("author"   , "Adam Conner-Sax")
-  , ("pagetitle", "knit-haskell example #1")
+  , ("pagetitle", "knit-haskell mtl example with random effect")
 --  , ("tufte","True")
   ]
 
