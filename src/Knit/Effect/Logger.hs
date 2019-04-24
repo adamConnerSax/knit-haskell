@@ -107,12 +107,12 @@ logEntryToWithSeverity (LogEntry s t) =
   ML.WithSeverity (logSeverityToSeverity s) t
 
 
--- | Severity list used output everything.
+-- | "LogSeverity" list used in order to output everything.
 logAll :: [LogSeverity]
 logAll = [minBound .. maxBound]
 
--- | Output all but Diagnostic.
--- Diagnostic messages are sometimes useful for debugging but can get noisy depending on how you use it.
+-- | 'LogSeverity' list used to output all but 'Diagnostic'.
+-- 'Diagnostic' messages are sometimes useful for debugging but can get noisy depending on how you use it.
 nonDiagnostic :: [LogSeverity]
 nonDiagnostic = List.tail logAll
 

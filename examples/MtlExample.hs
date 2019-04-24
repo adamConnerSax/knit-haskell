@@ -1,8 +1,8 @@
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Main where
 
@@ -58,9 +58,7 @@ md1 = [here|
 |]
 
 makeDoc :: (K.Member K.ToPandoc effs
-           , K.LogWithPrefixesLE effs
            , K.PandocEffects effs
-           , MonadIO (K.Semantic effs)
            , K.KnitBase ExampleApp effs) => K.Semantic effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."

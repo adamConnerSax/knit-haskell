@@ -60,7 +60,7 @@ htmlFullDocWriterOptions
   => Maybe FilePath -- ^ path to template to include, @Nothing@ for no template.
   -> M.Map String String -- ^ template Variable substitutions
   -> m PA.WriterOptions
-htmlFullDocWriterOptions pathM templateVars = do
+htmlFullDocWriterOptions pathM tVars = do
   template <- case pathM of
     Nothing -> PA.getDefaultTemplate "Html5"
     Just fp -> do
@@ -70,7 +70,7 @@ htmlFullDocWriterOptions pathM templateVars = do
         else PA.logOutput (PA.IgnoredIOError ("Couldn't find " ++ show fp))
           >> PA.getDefaultTemplate "Html5"
   return $ htmlWriterOptions { PA.writerTemplate      = Just template
-                             , PA.writerVariables     = M.toList templateVars
+                             , PA.writerVariables     = M.toList tVars
                              , PA.writerSetextHeaders = True
                              }
 

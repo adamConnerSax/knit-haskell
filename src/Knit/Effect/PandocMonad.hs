@@ -127,7 +127,6 @@ import qualified System.Directory              as IO
 import qualified System.Directory              as Directory
 import qualified Debug.Trace
 import qualified Control.Exception             as E
---import qualified Paths_pandoc                  as Paths -- ??
 
 -- | Pandoc Effect
 data Pandoc m r where
@@ -152,8 +151,9 @@ data Pandoc m r where
 
 P.makeSemantic ''Pandoc
 
--- | Split off the error piece. We will handle directly.
-instance (P.Member Pandoc effs, P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Semantic effs) where
+-- TODO: Understand the error pieces better.  Some things are thrown in IO, not sure we catch those??
+-- | Split off the error piece. We will handle directly with the polysemy @Error@ effect
+instance (P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Semantic effs) where
   throwError = P.throw
   catchError = P.catch
 
@@ -208,6 +208,7 @@ type PandocEffectsIO effs =
   ( PandocEffects effs
   , P.Member (P.Lift IO) effs)
 
+-- | Interpret the Pandoc effect using @IO@, @Knit.Effect.Logger@ and @PolySemy.Error PandocError@ 
 interpretInIO
   :: forall effs a
    . ( P.Member (Log.Logger Log.LogEntry) effs
@@ -244,9 +245,7 @@ interpretInIO = fmap snd . stateful f PA.def
     , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ msg) (return ())
     )
 
--- for now.  But we can split this up into IO
--- must run before logger, right?
--- | Run the Pandoc effect in another monad which satisfies the PandocMonad constraint.
+-- | Interpret the Pandoc effect in another monad (which must satisy the PandocMonad constraint) and @Knit.Effect.Logger@
 interpretInPandocMonad
   :: forall m effs a
    . ( PA.PandocMonad m
@@ -333,6 +332,8 @@ openURLWithState cs u
       Right r -> return (cs', r)
       Left  e -> P.throw $ PA.PandocHttpError u e
 
+-- | Stateful version of the Pandoc @report@ function, outputting relevant log messages
+-- and adding them to the log kept in the state.
 report
   :: (P.Member (Log.Logger Log.LogEntry) effs)
   => PA.CommonState

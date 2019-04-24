@@ -26,8 +26,8 @@ templateVars = M.fromList
 main :: IO ()
 main = do
   let pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
-  resM <- K.knitHtml (Just "SimpleExample.Main") K.logAll pandocWriterConfig makeDoc
-  case resM of
+  resE <- K.knitHtml (Just "SimpleExample.Main") K.logAll pandocWriterConfig makeDoc
+  case resE of
     Right htmlAsText ->
       T.writeFile "examples/html/example_simple.html"
         $ TL.toStrict
@@ -43,9 +43,9 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: (K.Member K.ToPandoc effs
-           , K.LogWithPrefixesLE effs
-           , K.PandocEffects effs)
+makeDoc :: (K.Member K.ToPandoc effs -- required for the single-document variant
+           , K.PandocEffects effs -- all effects for knitting
+           ) 
         => K.Semantic effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."

@@ -31,7 +31,7 @@ module Knit.Effect.Pandoc
 
   -- * Requirement Support
   , Requirement(..)
-  , PandocWithRequirements 
+  , PandocWithRequirements
   -- * Format ADTs
   , PandocReadFormat(..)
   , PandocWriteFormat(..)
@@ -64,7 +64,7 @@ import qualified Data.Foldable                 as F
 import qualified Data.Monoid                   as Mon
 import           Data.Set                      as S
 import qualified Text.Blaze.Html               as Blaze
-import Control.Monad.Except (throwError)
+import           Control.Monad.Except           ( throwError )
 
 
 
@@ -73,13 +73,13 @@ import           Polysemy.Internal              ( send )
 import qualified Polysemy.Writer               as P
 
 
-import qualified Knit.Effect.PandocMonad      as PM
+import qualified Knit.Effect.PandocMonad       as PM
 
-import           Knit.Effect.Docs              ( Docs
-                                               , NamedDoc(..)
-                                               , newDoc
-                                               , toNamedDocList
-                                               )
+import           Knit.Effect.Docs               ( Docs
+                                                , NamedDoc(..)
+                                                , newDoc
+                                                , toNamedDocList
+                                                )
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
 --newtype FreerHtml = FreerHtml { unFreer :: H.Html () }
@@ -119,21 +119,23 @@ data Requirement
   | LatexSupport -- ^ Supported in Html output (via MathJax) and Latex output.
   deriving (Show, Ord, Eq, Bounded, Enum)
 
-handlesAll :: PandocWriteFormat a -> S.Set Requirement  -> Bool
-handlesAll f rs = Mon.getAll $ F.fold (fmap (Mon.All . handles f)  $ S.toList rs) where
+handlesAll :: PandocWriteFormat a -> S.Set Requirement -> Bool
+handlesAll f rs = Mon.getAll
+  $ F.fold (fmap (Mon.All . handles f) $ S.toList rs)
+ where
   handles :: PandocWriteFormat a -> Requirement -> Bool
-  handles WriteHtml5 VegaSupport         = True
-  handles WriteHtml5String VegaSupport   = True
-  handles WriteHtml5 LatexSupport        = True
-  handles WriteHtml5String LatexSupport  = True
-  handles WriteLaTeX LatexSupport        = True
-  handles _     _                        = False
+  handles WriteHtml5       VegaSupport  = True
+  handles WriteHtml5String VegaSupport  = True
+  handles WriteHtml5       LatexSupport = True
+  handles WriteHtml5String LatexSupport = True
+  handles WriteLaTeX       LatexSupport = True
+  handles _                _            = False
 
 data PandocWithRequirements = PandocWithRequirements { doc :: PA.Pandoc, reqs :: S.Set Requirement }
 instance Semigroup PandocWithRequirements where
   (PandocWithRequirements da ra) <> (PandocWithRequirements db rb)
     = PandocWithRequirements (da <> db) (ra <> rb)
-    
+
 instance Monoid PandocWithRequirements where
   mempty = PandocWithRequirements mempty mempty
 
@@ -200,29 +202,34 @@ fromPandoc
   -> PA.WriterOptions
   -> PandocWithRequirements
   -> m a
-fromPandoc pwf pwo (PandocWithRequirements pdoc rs) =
-  case handlesAll pwf rs of
-    False -> throwError $ PA.PandocSomeError $ "One of " ++ (show $ S.toList rs) ++ " cannot be output to " ++ show pwf
-    True -> write pwo pdoc
-      where
-        write = case pwf of
-          WriteDocX        -> PA.writeDocx
-          WriteMarkDown    -> PA.writeMarkdown
-          WriteCommonMark  -> PA.writeCommonMark
-          WriteRST         -> PA.writeRST
-          WriteLaTeX       -> PA.writeLaTeX
-          WriteHtml5       -> PA.writeHtml5
-          WriteHtml5String -> PA.writeHtml5String
+fromPandoc pwf pwo (PandocWithRequirements pdoc rs) = case handlesAll pwf rs of
+  False ->
+    throwError
+      $  PA.PandocSomeError
+      $  "One of "
+      ++ (show $ S.toList rs)
+      ++ " cannot be output to "
+      ++ show pwf
+  True -> write pwo pdoc
+   where
+    write = case pwf of
+      WriteDocX        -> PA.writeDocx
+      WriteMarkDown    -> PA.writeMarkdown
+      WriteCommonMark  -> PA.writeCommonMark
+      WriteRST         -> PA.writeRST
+      WriteLaTeX       -> PA.writeLaTeX
+      WriteHtml5       -> PA.writeHtml5
+      WriteHtml5String -> PA.writeHtml5String
 
 -- | Re-interpret ToPandoc in Writer
 toWriter
   :: PM.PandocEffects effs
   => P.Semantic (ToPandoc ': effs) a
   -> P.Semantic (P.Writer PandocWithRequirements ': effs) a
-toWriter =
-  P.reinterpret $ \case
-    (AddFrom rf ro x) -> P.raise (fmap justDoc $ toPandoc rf ro x) >>= P.tell @PandocWithRequirements
-    (Require r) -> P.tell (justRequirement r)
+toWriter = P.reinterpret $ \case
+  (AddFrom rf ro x) ->
+    P.raise (fmap justDoc $ toPandoc rf ro x) >>= P.tell @PandocWithRequirements
+  (Require r) -> P.tell (justRequirement r)
 
 -- | Run ToPandoc by interpreting in Writer and then running that Writer.
 runPandocWriter
@@ -239,14 +246,14 @@ newPandocPure
   :: P.Member Pandocs effs
   => T.Text -- ^ name for document
   -> PandocWithRequirements -- ^ document and union of all input requirements
-  -> P.Semantic effs () 
+  -> P.Semantic effs ()
 newPandocPure = newDoc
 
 -- | Add the Pandoc stored in the writer-style ToPandoc effect to the named docs collection with the given name.
 newPandoc
   :: (PM.PandocEffects effs, P.Member Pandocs effs)
   => T.Text -- ^ name of document
-  -> P.Semantic (ToPandoc ': effs) () 
+  -> P.Semantic (ToPandoc ': effs) ()
   -> P.Semantic effs ()
 newPandoc n l = fmap fst (P.runWriter $ toWriter l) >>= newPandocPure n
 
@@ -270,7 +277,7 @@ pandocsToNamed
   -> P.Semantic (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
   -> P.Semantic effs [NamedDoc a] -- ^ documents in requested format, within the effects monad
 pandocsToNamed pwf pwo =
-  (traverse (namedPandocFrom pwf pwo) =<<) . toNamedDocList 
+  (traverse (namedPandocFrom pwf pwo) =<<) . toNamedDocList
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE

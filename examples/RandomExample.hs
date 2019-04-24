@@ -8,6 +8,7 @@ module Main where
 
 import qualified Knit.Report               as K
 import qualified Knit.Effect.RandomFu      as KR
+import qualified Colonnade                 as C
 
 import           Control.Monad.IO.Class     (MonadIO)
 import qualified Data.Map                  as M
@@ -62,10 +63,8 @@ md1 = [here|
 |]
 
 makeDoc :: (K.Member K.ToPandoc effs
-           , K.LogWithPrefixesLE effs
            , K.PandocEffects effs
-           , MonadIO (K.Semantic effs)
-           , K.Member KR.Random effs
+           , K.Member KR.Random effs -- this one needs to be handled before knitting
            , K.KnitBase ExampleApp effs) => K.Semantic effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
@@ -86,9 +85,11 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown $ envText <> "\n\n" <> (T.pack $ show curTime)
 
   K.logLE K.Info "Using another polysemy effect, here RandomFu"
-  someNormalDoubles <- KR.sampleRVar $ mapM (const $ R.stdNormal @Double) [0..20 :: Int]
-  K.addMarkDown "## An example of using the RandomFu effect to get random numbers"
-  K.addMarkDown $ "some std normal draws: " <> T.pack (show someNormalDoubles)
+  let draws = [1..20 :: Int]
+  someNormalDoubles <- KR.sampleRVar $ mapM (const $ R.stdNormal @Double) draws
+  K.addMarkDown "## An example of using the RandomFu effect to get random numbers and using Colonnade to make tables."
+  K.addMarkDown $ "some std normal draws: "
+  K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip draws someNormalDoubles
   
 
 exampleVis =

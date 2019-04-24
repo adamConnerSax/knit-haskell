@@ -24,12 +24,15 @@ as well as providing functions to do the "knitting"--produce the documents.
 That is, it is intended as one-stop-shopping for using this library to produce Html from various fragments which
 Pandoc can read.
 
+<https://github.com/adamConnerSax/knit-haskell/tree/master/examples Examples> are available, and might be useful for seeing how all this works.
+
 Notes:
 
-1. The "Knit.Effect.RandomFu" effect is not imported since the names might clash with Polysemy.Random.
+1. The "Knit.Effect.RandomFu" effect is not imported since the names might clash with "Polysemy.Random".
 Import either effect directly if you need it.
-2. Logger functions are imported but assume you will use the 'LogEntry' type.
-3. The PandocMarkDown module is exported so if you want to use a different markdown flavor you may need to hide "addMarkDown" when you import this module.
+2. You can add logging from within document creation using 'logLE'.
+3. The "Knit.Report.Input.MarkDown.PandocMarkDown" module is exported
+so if you want to use a different markdown flavor you may need to hide "addMarkDown" when you import this module.
 4. If you use any other effects in your polysemy stack (e.g., Random or RandomFu), you will need to interpret/run them before calling knitHtml/knitHtmls.
 -}
 module Knit.Report
@@ -41,6 +44,7 @@ module Knit.Report
   , KnitBase
 
     -- * Inputs
+  , module Knit.Report.Input.Table.Colonnade
   , module Knit.Report.Input.MarkDown.PandocMarkDown
   , module Knit.Report.Input.Html
   , module Knit.Report.Input.Html.Blaze
@@ -48,7 +52,7 @@ module Knit.Report
   , module Knit.Report.Input.Latex
   , module Knit.Report.Input.Visualization.Hvega
 
-    -- * Output Formats
+    -- * Output 
   , module Knit.Report.Output
   , module Knit.Report.Output.Html
 
@@ -57,16 +61,6 @@ module Knit.Report
   , module Knit.Effect.Pandoc
   , module Knit.Effect.PandocMonad
   , module Knit.Effect.Logger
-
-    -- * Pandoc
-  , PandocMonad
-  , PandocIO
-
-    -- * IO    
-  , MonadIO
-
-    -- * Error
-  , MonadError
   )
 where
 
@@ -89,6 +83,11 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , filteredLogEntriesToIO
                                                 , LogWithPrefixesLE
                                                 )
+import           Knit.Report.Input.Table.Colonnade
+                                                ( addColonnadeTextTable
+                                                , addColonnadeHtmlTable
+                                                , addColonnadeCellTable
+                                                )
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )
 import           Knit.Report.Input.Html         ( addStrictTextHtml
@@ -106,14 +105,8 @@ import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 )
 
 import           Text.Pandoc                    ( PandocError )
-import           Text.Pandoc.Class              ( PandocMonad
-                                                , PandocIO
-                                                )
 
-
-import           Control.Monad.Except           ( MonadError(..)
-                                                , MonadIO
-                                                )
+import           Control.Monad.Except           ( MonadIO )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import           GHC.Exts                       ( Constraint )
@@ -123,7 +116,6 @@ import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
 
 import qualified Text.Pandoc                   as PA
---import qualified Text.Pandoc.Class             as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
 
 
@@ -140,9 +132,7 @@ import qualified Knit.Effect.Logger            as KLog
 -- This allows use of any underlying monad to handle the Pandoc effects.  
 knitHtmls
   :: forall m
-   . (MonadIO m
---     , MonadError PA.PandocError m
-               , LastMember (P.Lift m) (KnitEffectStack m))
+   . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
   => Maybe T.Text -- ^ outer logging prefix
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
@@ -165,13 +155,16 @@ knitHtml
 knitHtml loggingPrefixM ls writeConfig x =
   runSemT (consumeKnitEffectOne loggingPrefixM ls writeConfig) x
 
-type KnitBase m effs = (P.Member (P.Lift m) effs)
+-- | Constraints required to build a document while also using effects from a base monad m.
+type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
 
+-- | lift an action in a base monad into a Polysemy monad
 liftKnit :: Member (Lift m) r => m a -> Semantic r a
 liftKnit = P.sendM
 
 -- From here down is unexported.  
 
+-- | The exact stack we are interpreting when we knit
 type KnitEffectStack m =
   '[ KPM.Pandoc
    , KLog.Logger KLog.LogEntry
@@ -181,13 +174,18 @@ type KnitEffectStack m =
    , P.Lift m
    ]
 
+-- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KD.Docs KP.PandocWithRequirements ': KnitEffectStack m)
+
+-- | Add a single-doc writer to the front of the effect list
 type KnitEffectDocStack m = (KP.ToPandoc ': KnitEffectStack m)
 
+-- | require that the effect @eff@ be last in the list of effects @r@
 type family LastMember (eff :: k) (r :: [k]) :: Constraint where
   LastMember eff '[] = ()
   LastMember eff (e : es) = (P.Member eff (e ': es), LastMember eff es)
 
+-- | run all effects, given that last one is @Lift m@
 runSemT
   :: Monad m
   => (P.Semantic r a -> P.Semantic '[P.Lift m] b)
@@ -195,6 +193,7 @@ runSemT
   -> m b
 runSemT consume = P.runM . consume
 
+-- | run all effects in @KnitEffectStack m@ except the final @Lift m@
 consumeKnitEffectStack
   :: forall m a
    . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
@@ -209,6 +208,7 @@ consumeKnitEffectStack loggingPrefixM ls =
     . KPM.interpretInIO -- PA.PandocIO
     . maybe id KLog.wrapPrefix loggingPrefixM
 
+-- | run all effects in @KnitEffectDocsStack m@ except the final @Lift m@
 consumeKnitEffectMany
   :: forall m
    . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
@@ -223,6 +223,7 @@ consumeKnitEffectMany loggingPrefixM ls writeConfig =
   consumeKnitEffectStack @m loggingPrefixM ls . KD.toNamedDocListWithM
     (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
 
+-- | run all effects in @KnitEffectDocStack m@ except the final @Lift m@
 consumeKnitEffectOne
   :: forall m
    . (MonadIO m, LastMember (P.Lift m) (KnitEffectStack m))
