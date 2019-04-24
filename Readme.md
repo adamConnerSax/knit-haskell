@@ -13,9 +13,9 @@ knit-haskell is the beginning of an attempt to emulate parts of the RMarkdown/kn
 
 ## Examples
 There are a few examples in the "examples" directory.  
-* "SimpleExample.hs" demonstrates the bare bones features of the library.  Creating a document from a few fragments and then "knitting" it into HTML text and writign that to a file.
-* MtlExample.hs demonstrates the same simple features as above, but runs them atop an example mtl stack, allowing access to the mtl stack's functionality during document assembly, to show how you can do that.
-* RandomExample.hs builds on the mtl example to show how you can also add a polysemy effect to your document-building. 
+* [SimpleExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/SimpleExample.hs) demonstrates the bare bones features of the library.  Creating a document from a few fragments and then "knitting" it into HTML text and writign that to a file.
+* [MtlExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MtlExample.hs) demonstrates the same simple features as above, but runs them atop an example mtl stack, allowing access to the mtl stack's functionality during document assembly, to show how you can do that.
+* [RandomExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs) builds on the mtl example to show how you can also add a polysemy effect to your document-building. This one also demonstrates a use of colonnade for adding a formatted table to the document.
 
 ## Notes
 * You should be able to get everything you need by just importing the "Knit.Report" module.  That has the main functions for "knitting" documents from fragments and re-exports all the required functions to input the supported fragment types and export Html.
