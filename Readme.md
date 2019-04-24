@@ -25,6 +25,8 @@ There are a few examples in the "examples" directory.
 My goal was the production of Html and that is the only output format that supports the hvega charting since hvega itself is just a wrapper that builds javascript to render in a browser.  And so far that is the only supported output format.
 
 * This is very much a WIP. So it's rough around the edges and in the middle.  If you find it useful but have suggestions, please submit issues on github.
+* I'm very interested in adding to the "zoo" of input fragments.  Any PRs of that sort would be most welcome!
+* I'm also interested in widening the possible output types--currently only HTML is supported--but that is quite limited now by hvega which only works in html output.  But support could be added for other output types if hvega input is not required.
 
 
 [travis]:        <https://travis-ci.org/adamConnerSax/knit-haskell>
