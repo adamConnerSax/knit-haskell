@@ -30,14 +30,10 @@ where
 import qualified Colonnade                     as C
 import qualified Text.Blaze.Colonnade          as BC
 import qualified Text.Blaze.Html               as BH
-import qualified Text.Blaze.Html.Renderer.Text as BH
 import qualified Text.Blaze.Html5.Attributes   as BHA
 import           Knit.Report.Input.Html.Blaze   ( addBlaze )
-import           Knit.Report.Input.MarkDown.PandocMarkDown
-                                                ( addMarkDown )
 
 import           Data.Text                      ( Text )
-import qualified Data.Text.Lazy                as TL
 import qualified Polysemy                      as P
 import qualified Knit.Effect.Pandoc            as PE
 import qualified Knit.Effect.PandocMonad       as PM

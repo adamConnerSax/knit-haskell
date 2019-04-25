@@ -58,6 +58,7 @@ module Knit.Report
     -- * Effects
   , module Polysemy
   , module Knit.Effect.Pandoc
+  , module Knit.Effect.Docs
   , module Knit.Effect.PandocMonad
   , module Knit.Effect.Logger
   )
@@ -72,7 +73,9 @@ import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , PandocReadFormat(..)
                                                 , PandocWriteFormat(..)
                                                 , Pandocs
+                                                , newPandoc
                                                 )
+import           Knit.Effect.Docs               ( NamedDoc(..) )
 import           Knit.Effect.PandocMonad
 import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , logAll
