@@ -23,6 +23,7 @@ All of that is handled via writer-like effects, so additions to the documents ca
 ## Examples
 There are a few examples in the "examples" directory.  
 * [SimpleExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/SimpleExample.hs) demonstrates the bare bones features of the library.  Creating a document from a few fragments and then "knitting" it into HTML text and writing that to a file.
+* [MultiDocExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MultiDocExample.hs) demonstrates how to build multiple documents.
 * [MtlExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MtlExample.hs) demonstrates the same simple features as above, but runs them atop an example mtl stack, allowing access to the mtl stack's functionality during document assembly.
 * [RandomExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs) builds on the mtl example to show how you can also add a polysemy effect to your document-building. This one also demonstrates a use of [colonnade](https://hackage.haskell.org/package/colonnade) for adding a formatted table to the document.
 
