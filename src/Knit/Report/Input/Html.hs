@@ -49,12 +49,12 @@ htmlReaderOptionsWithHeader = htmlReaderOptions { P.readerStandalone = True }
 addStrictTextHtml
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addStrictTextHtml = PE.addFrom PE.ReadHtml htmlReaderOptions
 
 -- | Add Lazy Text Html to current Pandoc
 addLazyTextHtml
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => LT.Text
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addLazyTextHtml = addStrictTextHtml . LT.toStrict

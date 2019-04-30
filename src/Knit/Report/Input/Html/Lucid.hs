@@ -17,16 +17,16 @@ module Knit.Report.Input.Html.Lucid
   )
 where
 
-import Knit.Report.Input.Html (addLazyTextHtml)
+import           Knit.Report.Input.Html         ( addLazyTextHtml )
 import qualified Lucid                         as LH
 
 import qualified Polysemy                      as P
-import qualified Knit.Effect.Pandoc           as PE
-import qualified Knit.Effect.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc            as PE
+import qualified Knit.Effect.PandocMonad       as PM
 
 -- | Add Lucid Html
 addLucid
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => LH.Html ()
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addLucid = addLazyTextHtml . LH.renderText

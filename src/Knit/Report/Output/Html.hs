@@ -79,7 +79,7 @@ htmlFullDocWriterOptions pathM tVars = do
 markDownTextToBlazeFragment
   :: PM.PandocEffects effs
   => T.Text -- ^ markDown Text
-  -> P.Semantic effs BH.Html
+  -> P.Sem effs BH.Html
 markDownTextToBlazeFragment =
   PE.fromPandocE PE.WriteHtml5 htmlWriterOptions
     . PE.addFrom PE.ReadMarkDown markDownReaderOptions
@@ -91,7 +91,7 @@ toBlazeDocument
   :: PM.PandocEffects effs
   => PandocWriterConfig
   -> PE.PandocWithRequirements -- ^ Document and union of input requirements 
-  -> P.Semantic effs BH.Html
+  -> P.Sem effs BH.Html
 toBlazeDocument writeConfig pdocWR = do
   writerOptions <- htmlFullDocWriterOptions (templateFP writeConfig)
                                             (templateVars writeConfig)
@@ -102,8 +102,8 @@ toBlazeDocument writeConfig pdocWR = do
 pandocWriterToBlazeDocument
   :: PM.PandocEffects effs
   => PandocWriterConfig -- ^ Configuration info for the Pandoc writer
-  -> P.Semantic (PE.ToPandoc ': effs) () -- ^ Effects stack to run to get Pandoc
-  -> P.Semantic effs BH.Html -- ^ Blaze Html (in remaining effects)
+  -> P.Sem (PE.ToPandoc ': effs) () -- ^ Effects stack to run to get Pandoc
+  -> P.Sem effs BH.Html -- ^ Blaze Html (in remaining effects)
 pandocWriterToBlazeDocument writeConfig pw =
   PE.runPandocWriter pw >>= toBlazeDocument writeConfig
 

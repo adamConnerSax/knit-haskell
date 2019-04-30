@@ -78,11 +78,11 @@ type Lucid = P.Writer (LH.Html ())
 type Blaze = P.Writer BH.Html
 
 -- | Add a Lucid html fragment to the current Lucid doc.
-lucid :: P.Member Lucid effs => LH.Html () -> P.Semantic effs ()
+lucid :: P.Member Lucid effs => LH.Html () -> P.Sem effs ()
 lucid = P.tell
 
 -- | Add a Blaze html fragment to the current Blaze doc.
-blaze :: P.Member Blaze effs => BH.Html -> P.Semantic effs ()
+blaze :: P.Member Blaze effs => BH.Html -> P.Sem effs ()
 blaze = P.tell
 
 -- | Type-Alias for the 'Knit.Effects.Docs' effect (multi-document Writer), specialized to Lucid docs.
@@ -99,8 +99,8 @@ type BlazeDocs = Docs BH.Html
 newLucidDoc
   :: P.Member LucidDocs effs
   => T.Text
-  -> P.Semantic (Lucid ': effs) ()
-  -> P.Semantic effs ()
+  -> P.Sem (Lucid ': effs) ()
+  -> P.Sem effs ()
 newLucidDoc n l = (fmap fst $ P.runWriter l) >>= newDoc n
 
 -- | take the current Blaze HTML in the writer and add it to the set of named docs with the given name
@@ -109,33 +109,33 @@ newLucidDoc n l = (fmap fst $ P.runWriter l) >>= newDoc n
 newBlazeDoc
   :: P.Member BlazeDocs effs
   => T.Text
-  -> P.Semantic (Blaze ': effs) ()
-  -> P.Semantic effs ()
+  -> P.Sem (Blaze ': effs) ()
+  -> P.Sem effs ()
 newBlazeDoc n l = (fmap fst $ P.runWriter l) >>= newDoc n
 
 -- | Interpret the LucidDocs effect (via Writer), producing a list of named Lucid docs, suitable for writing to disk.
 lucidToNamedText
-  :: P.Semantic (LucidDocs ': effs) () -> P.Semantic effs [NamedDoc TL.Text]
+  :: P.Sem (LucidDocs ': effs) () -> P.Sem effs [NamedDoc TL.Text]
 lucidToNamedText = fmap (fmap (fmap LH.renderText)) . toNamedDocList -- monad, list, NamedDoc itself
 
 -- | Interpret the BlazeDocs effect (via Writer), producing a list of named Blaze docs.
 blazeToNamedText
-  :: P.Semantic (BlazeDocs ': effs) () -> P.Semantic effs [NamedDoc TL.Text]
+  :: P.Sem (BlazeDocs ': effs) () -> P.Sem effs [NamedDoc TL.Text]
 blazeToNamedText = fmap (fmap (fmap BH.renderHtml)) . toNamedDocList -- monad, list, NamedDoc itself
 
 -- | Interprest the Lucid effect (via Writer), producing a Lucid @Html ()@ from the currently written doc
-lucidHtml :: P.Semantic (Lucid ': effs) () -> P.Semantic effs (LH.Html ())
+lucidHtml :: P.Sem (Lucid ': effs) () -> P.Sem effs (LH.Html ())
 lucidHtml = fmap fst . P.runWriter
 
 -- | Interpret the Lucid effect (via Writer), producing @Text@ from the currently written doc
-lucidToText :: P.Semantic (Lucid ': effs) () -> P.Semantic effs TL.Text
+lucidToText :: P.Sem (Lucid ': effs) () -> P.Sem effs TL.Text
 lucidToText = fmap LH.renderText . lucidHtml
 
 -- | Interpret the Blaze effect (via Writer), producing a Blaze @Html@ from the currently written doc.
-blazeHtml :: P.Semantic (Blaze ': effs) () -> P.Semantic effs BH.Html
+blazeHtml :: P.Sem (Blaze ': effs) () -> P.Sem effs BH.Html
 blazeHtml = fmap fst . P.runWriter
 
 -- | Interpret the Blaze effect (via Writer), producing @Text@ from the currently written doc.
-blazeToText :: P.Semantic (Blaze ': effs) () -> P.Semantic effs TL.Text
+blazeToText :: P.Sem (Blaze ': effs) () -> P.Sem effs TL.Text
 blazeToText = fmap BH.renderHtml . blazeHtml
 

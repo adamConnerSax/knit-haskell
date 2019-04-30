@@ -54,13 +54,13 @@ addMarkDownWithOptions
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => PA.ReaderOptions
   -> T.Text
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addMarkDownWithOptions = PE.addFrom PE.ReadMarkDown
 
 -- | Add a Pandoc MarkDown fragment with default options
 addMarkDown
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addMarkDown = addMarkDownWithOptions markDownReaderOptions
 

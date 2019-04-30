@@ -54,7 +54,7 @@ data Docs a m r where
   NewDoc :: T.Text -> a -> Docs a m ()
 
 -- | Action of the 'Docs' Effect.  Store a named document.
-newDoc :: P.Member (Docs a) effs => T.Text -> a -> P.Semantic effs ()
+newDoc :: P.Member (Docs a) effs => T.Text -> a -> P.Sem effs ()
 newDoc name doc = send $ NewDoc name doc
 
 -- | Data type to hold one named document of type @a@. 
@@ -62,18 +62,14 @@ data NamedDoc a = NamedDoc { ndName :: T.Text, ndDoc :: a } deriving (Functor, F
 
 -- | Intepret 'Docs' in @Polysemy.Writer [NamedDoc a]'
 toWriter
-  :: P.Semantic (Docs a ': effs) ()
-  -> P.Semantic (P.Writer [NamedDoc a] ': effs) ()
+  :: P.Sem (Docs a ': effs) () -> P.Sem (P.Writer [NamedDoc a] ': effs) ()
 toWriter = P.reinterpret f
  where
-  f :: Docs a m x -> P.Semantic (P.Writer [NamedDoc a] ': effs) x
+  f :: Docs a m x -> P.Sem (P.Writer [NamedDoc a] ': effs) x
   f (NewDoc n d) = P.tell [NamedDoc n d]
 
 -- | Interpret 'Docs' (via 'Polysemy.Writer'), producing a list of @NamedDoc a@
-toNamedDocList
-  :: P.Typeable a
-  => P.Semantic (Docs a ': effs) ()
-  -> P.Semantic effs [NamedDoc a]
+toNamedDocList :: P.Sem (Docs a ': effs) () -> P.Sem effs [NamedDoc a]
 toNamedDocList = fmap fst . P.runWriter . toWriter
 
 -- | Map over the doc part of @Functor m => m [NamedDoc a]@ with an @a->b@ resulting in @m [NamedDoc b]@
@@ -86,17 +82,11 @@ mapNamedDocsM f = (traverse (traverse f) =<<)
 
 -- | Combine the interpretation and mapping step.  Commonly used to "run" the effect and map the results to your deisred output format.
 toNamedDocListWith
-  :: P.Typeable a
-  => (a -> b)
-  -> P.Semantic (Docs a ': effs) ()
-  -> P.Semantic effs [NamedDoc b]
+  :: (a -> b) -> P.Sem (Docs a ': effs) () -> P.Sem effs [NamedDoc b]
 toNamedDocListWith f = mapNamedDocs f . toNamedDocList
 
 -- | Combine the interpretation and effectful mapping step.  Commonly used to "run" the effect and map the results to your deisred output format.
 toNamedDocListWithM
-  :: P.Typeable a
-  => (a -> P.Semantic effs b)
-  -> P.Semantic (Docs a ': effs) ()
-  -> P.Semantic effs [NamedDoc b]
+  :: (a -> P.Sem effs b) -> P.Sem (Docs a ': effs) () -> P.Sem effs [NamedDoc b]
 toNamedDocListWithM f = mapNamedDocsM f . toNamedDocList
 

@@ -69,7 +69,7 @@ md1 = [here|
 makeDoc :: (K.Member K.ToPandoc effs
            , K.PandocEffects effs
            , K.Member KR.Random effs -- this one needs to be handled before knitting
-           , K.KnitBase ExampleApp effs) => K.Semantic effs ()
+           , K.KnitBase ExampleApp effs) => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1

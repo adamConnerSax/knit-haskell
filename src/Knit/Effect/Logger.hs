@@ -54,7 +54,7 @@ module Knit.Effect.Logger
   , LogWithPrefixesLE
 
   -- * Re-Exports
-  , Semantic
+  , Sem
   , Member
   , Handler
   )
@@ -62,7 +62,7 @@ where
 
 import qualified Polysemy                      as P
 import           Polysemy                       ( Member
-                                                , Semantic
+                                                , Sem
                                                 )
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
@@ -122,22 +122,17 @@ data Logger a m r where
   Log :: a -> Logger a m ()
 
 -- | Add one log entry of arbitrary type.  If you want to log with another type besides @LogEntry.
-log :: P.Member (Logger a) effs => a -> P.Semantic effs ()
+log :: P.Member (Logger a) effs => a -> P.Sem effs ()
 log = send . Log
 
 -- | Add one log-entry of the @LogEntry@ type.
 logLE
-  :: P.Member (Logger LogEntry) effs
-  => LogSeverity
-  -> T.Text
-  -> P.Semantic effs ()
+  :: P.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> P.Sem effs ()
 logLE ls lm = log (LogEntry ls lm)
 
 -- | Helper function for logging with monad-logger handler.
 logWithHandler
-  :: Handler (P.Semantic effs) a
-  -> P.Semantic (Logger a ': effs) x
-  -> P.Semantic effs x
+  :: Handler (P.Sem effs) a -> P.Sem (Logger a ': effs) x -> P.Sem effs x
 logWithHandler handler = P.interpret (\(Log a) -> handler a)
 
 -- | Prefix Effect
@@ -147,20 +142,19 @@ data PrefixLog m r where
   GetPrefix :: PrefixLog m T.Text -- ^ Represents retrieving the current prefix
 
 -- | Add one level of prefix.
-addPrefix :: P.Member PrefixLog effs => T.Text -> P.Semantic effs ()
+addPrefix :: P.Member PrefixLog effs => T.Text -> P.Sem effs ()
 addPrefix = send . AddPrefix
 
 -- | Remove last prefix.
-removePrefix :: P.Member PrefixLog effs => P.Semantic effs ()
+removePrefix :: P.Member PrefixLog effs => P.Sem effs ()
 removePrefix = send RemovePrefix
 
 -- | Get current prefix 
-getPrefix :: P.Member PrefixLog effs => P.Semantic effs T.Text
+getPrefix :: P.Member PrefixLog effs => P.Sem effs T.Text
 getPrefix = send $ GetPrefix
 
 -- | Add a prefix for the block of code.
-wrapPrefix
-  :: P.Member PrefixLog effs => T.Text -> P.Semantic effs a -> P.Semantic effs a
+wrapPrefix :: P.Member PrefixLog effs => T.Text -> P.Sem effs a -> P.Sem effs a
 wrapPrefix p l = do
   addPrefix p
   res <- l
@@ -170,15 +164,15 @@ wrapPrefix p l = do
 -- | Interpret LogPrefix in @Polysemy.State [T.Text]@.
 prefixInState
   :: forall effs a
-   . P.Semantic (PrefixLog ': effs) a
-  -> P.Semantic (P.State [T.Text] ': effs) a
+   . P.Sem (PrefixLog ': effs) a
+  -> P.Sem (P.State [T.Text] ': effs) a
 prefixInState = P.reinterpret $ \case
   AddPrefix t  -> P.modify (t :)
   RemovePrefix -> P.modify @[T.Text] tail -- type application required here since tail is polymorphic
   GetPrefix    -> fmap (T.intercalate "." . List.reverse) P.get
 
 -- | Interpret the 'LogPrefix' effect in State and run that.
-runPrefix :: P.Semantic (PrefixLog ': effs) a -> P.Semantic effs a
+runPrefix :: P.Sem (PrefixLog ': effs) a -> P.Sem effs a
 runPrefix = fmap snd . P.runState [] . prefixInState
 
 -- | Monad-logger style wrapper to add prefixes to log messages.
@@ -191,8 +185,8 @@ renderWithPrefix k (WithPrefix pr a) = PP.pretty pr PP.<+> PP.align (k a)
 -- | Use @PrefixLog@ Effect to re-interpret all the logged messages to WithPrefix form.
 logPrefixed
   :: P.Member PrefixLog effs
-  => P.Semantic (Logger a ': effs) x
-  -> P.Semantic (Logger (WithPrefix a) ': effs) x
+  => P.Sem (Logger a ': effs) x
+  -> P.Sem (Logger (WithPrefix a) ': effs) x
 logPrefixed =
   P.reinterpret (\(Log a) -> getPrefix >>= (\p -> log (WithPrefix p a)))
 
@@ -202,9 +196,9 @@ logPrefixed =
 -- messages via that handler.
 logAndHandlePrefixed
   :: forall effs a x
-   . Handler (P.Semantic effs) (WithPrefix a)
-  -> P.Semantic (Logger a ': (PrefixLog ': effs)) x
-  -> P.Semantic effs x
+   . Handler (P.Sem effs) (WithPrefix a)
+  -> P.Sem (Logger a ': (PrefixLog ': effs)) x
+  -> P.Sem effs x
 logAndHandlePrefixed handler =
   runPrefix
     . logWithHandler (P.raise . handler)
@@ -233,10 +227,10 @@ prefixedLogEntryToIO = logToIO
 
 -- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the union.
 filteredLogEntriesToIO
-  :: MonadIO (P.Semantic effs)
+  :: MonadIO (P.Sem effs)
   => [LogSeverity]
-  -> P.Semantic (Logger LogEntry ': (PrefixLog ': effs)) x
-  -> P.Semantic effs x
+  -> P.Sem (Logger LogEntry ': (PrefixLog ': effs)) x
+  -> P.Sem effs x
 filteredLogEntriesToIO lss = logAndHandlePrefixed
   (filterLog f lss $ prefixedLogEntryToIO)
   where f lss' a = (severity $ discardPrefix a) `List.elem` lss'
@@ -247,24 +241,3 @@ type LogWithPrefixes a effs = (P.Member PrefixLog effs, P.Member (Logger a) effs
 -- | Constraint helper for @LogEntry@ type with prefixes
 type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
 
-{-
-TODO: Working instance of logging-effect MonadLog.  Maybe.
-
-• Illegal instance declaration for
-        ‘ML.MonadLog a (P.Semantic effs)’
-        The liberal coverage condition fails in class ‘ML.MonadLog’
-          for functional dependency: ‘m -> message’
-        Reason: lhs type ‘P.Semantic effs’ does not determine rhs type ‘a’
-        Un-determined variable: a
-    • In the instance declaration for ‘ML.MonadLog a (P.Semantic effs)’
-
-
--- not sure how to use this in practice but we might need it if we call a function with a MonadLog constraint.
--- | instance to support using an existing function with a MonadLog constraint from a freer-simple stack. 
-instance (ML.MonadLog a m, P.Member (P.Lift m) effs) => ML.MonadLog a (P.Semantic effs) where
-  logMessageFree :: (ML.MonadLog a m, P.Member (P.Lift m) effs,forall n. Monoid n => (a -> n) -> n) -> P.Semantic effs ()
-  logMessageFree inj = P.sendM @m $ ML.logMessageFree inj
-
-instance (P.Member (Logger a) effs) => ML.MonadLog a (P.Semantic effs) where
-  logMessageFree inj = mapM_ log (inj $ pure @[])
--}

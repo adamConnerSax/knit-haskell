@@ -43,7 +43,7 @@ addColonnadeTextTable
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs, Foldable f)
   => C.Colonnade C.Headed a Text -- ^ How to encode data as columns
   -> f a -- ^ collection of data
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addColonnadeTextTable colonnade rows = do
   let toCell t = BC.Cell (BHA.style "border: 1px solid black") (BH.toHtml t) -- styling here gets lost.  But maybe I can fix?
   addBlaze $ BC.encodeCellTable
@@ -57,7 +57,7 @@ addColonnadeHtmlTable
   => BH.Attribute -- ^ Attributes of <table> Html element, currently unused by knit-haskell
   -> C.Colonnade C.Headed a BH.Html -- ^ How to encode data as columns
   -> f a -- ^ collection of data
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addColonnadeHtmlTable attr colonnade rows =
   addBlaze $ BC.encodeHtmlTable attr colonnade rows
 
@@ -67,6 +67,6 @@ addColonnadeCellTable
   => BH.Attribute -- ^ Attributes of <table> Html element, currently unused by knit-haskell
   -> C.Colonnade C.Headed a BC.Cell -- ^ How to encode data as columns
   -> f a -- ^ collection of data
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addColonnadeCellTable attr colonnade rows =
   addBlaze $ BC.encodeCellTable attr colonnade rows

@@ -44,7 +44,7 @@ addHvega
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => T.Text
   -> GV.VegaLite
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addHvega vizId vl = do
   PE.require PE.VegaSupport
   addBlaze $ placeVisualization vizId vl

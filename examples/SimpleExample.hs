@@ -45,7 +45,7 @@ md1 = [here|
 makeDoc :: (K.Member K.ToPandoc effs -- required for the single-document variant
            , K.PandocEffects effs -- all effects for knitting
            ) 
-        => K.Semantic effs ()
+        => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1

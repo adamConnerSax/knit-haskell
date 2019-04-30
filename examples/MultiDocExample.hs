@@ -46,7 +46,7 @@ md1 = [here|
 makeDoc1 :: (K.Member K.ToPandoc effs -- required for the single-document variant
            , K.PandocEffects effs -- all effects for knitting
            ) 
-        => K.Semantic effs ()
+        => K.Sem effs ()
 makeDoc1 = K.wrapPrefix "makeDoc1" $ do
   K.logLE K.Info "adding some markdown."
   K.addMarkDown md1
@@ -69,7 +69,7 @@ md2 = [here|
 makeDoc2 :: (K.Member K.ToPandoc effs -- required for the single-document variant
            , K.PandocEffects effs -- all effects for knitting
            ) 
-        => K.Semantic effs ()
+        => K.Sem effs ()
 makeDoc2 = K.wrapPrefix "makeDoc2" $ do
   K.logLE K.Info "adding some markdown."
   K.addMarkDown md2

@@ -17,18 +17,18 @@ module Knit.Report.Input.Html.Blaze
   )
 where
 
-import Knit.Report.Input.Html (addLazyTextHtml)
+import           Knit.Report.Input.Html         ( addLazyTextHtml )
 import qualified Text.Blaze.Html               as BH
 import qualified Text.Blaze.Html.Renderer.Text as BH
 
 import qualified Polysemy                      as P
-import qualified Knit.Effect.Pandoc           as PE
-import qualified Knit.Effect.PandocMonad      as PM
+import qualified Knit.Effect.Pandoc            as PE
+import qualified Knit.Effect.PandocMonad       as PM
 
 
 -- | Add Blaze Html 
 addBlaze
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => BH.Html
-  -> P.Semantic effs ()
+  -> P.Sem effs ()
 addBlaze = addLazyTextHtml . BH.renderHtml

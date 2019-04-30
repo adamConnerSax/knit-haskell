@@ -62,26 +62,25 @@ data Random m r where
   GetRandomPrim :: R.Prim t -> Random m t
 
 -- | Convert a random-fu RVar to the Random Effect
-sampleRVar :: (P.Member Random effs) => R.RVar t -> P.Semantic effs t
+sampleRVar :: (P.Member Random effs) => R.RVar t -> P.Sem effs t
 sampleRVar = send . SampleRVar
 
 -- | Convert a random-fu Distribution to the Random Effect
-sampleDist
-  :: (P.Member Random effs, R.Distribution d t) => d t -> P.Semantic effs t
+sampleDist :: (P.Member Random effs, R.Distribution d t) => d t -> P.Sem effs t
 sampleDist = sampleRVar . R.rvar
 
-getRandomPrim :: P.Member Random effs => R.Prim t -> P.Semantic effs t
+getRandomPrim :: P.Member Random effs => R.Prim t -> P.Sem effs t
 getRandomPrim = send . GetRandomPrim
 
 -- | Run in IO using default random-fu IO source
 runRandomIOSimple
   :: forall effs a
-   . MonadIO (P.Semantic effs)
-  => P.Semantic (Random ': effs) a
-  -> P.Semantic effs a
+   . MonadIO (P.Sem effs)
+  => P.Sem (Random ': effs) a
+  -> P.Sem effs a
 runRandomIOSimple = P.interpret f
  where
-  f :: forall m x . (Random m x -> P.Semantic effs x)
+  f :: forall m x . (Random m x -> P.Sem effs x)
   f r = case r of
     SampleRVar    rv -> liftIO $ R.sample rv
     GetRandomPrim pt -> liftIO $ R.getRandomPrim pt
@@ -89,28 +88,28 @@ runRandomIOSimple = P.interpret f
 -- | Run using the given source
 runRandomFromSource
   :: forall s effs a
-   . R.RandomSource (P.Semantic effs) s
+   . R.RandomSource (P.Sem effs) s
   => s
-  -> P.Semantic (Random ': effs) a
-  -> P.Semantic effs a
+  -> P.Sem (Random ': effs) a
+  -> P.Sem effs a
 runRandomFromSource source = P.interpret f
  where
-  f :: forall m x . (Random m x -> P.Semantic effs x)
+  f :: forall m x . (Random m x -> P.Sem effs x)
   f r = case r of
     SampleRVar    rv -> R.runRVar (R.sample rv) source
     GetRandomPrim pt -> R.runRVar (R.getRandomPrim pt) source
 
 -- | Run in 'IO', using the given 'PureMT' source stored in an 'IORef'
 runRandomIOPureMT
-  :: MonadIO (P.Semantic effs)
+  :: MonadIO (P.Sem effs)
   => R.PureMT
-  -> P.Semantic (Random ': effs) a
-  -> P.Semantic effs a
+  -> P.Sem (Random ': effs) a
+  -> P.Sem effs a
 runRandomIOPureMT source re =
   liftIO (newIORef source) >>= flip runRandomFromSource re
 
 -- | supply instance of MonadRandom for functions which require it
 $(R.monadRandom [d|
-        instance P.Member Random effs => R.MonadRandom (P.Semantic effs) where
+        instance P.Member Random effs => R.MonadRandom (P.Sem effs) where
             getRandomPrim = getRandomPrim
     |])

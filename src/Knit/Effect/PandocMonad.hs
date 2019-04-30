@@ -73,7 +73,7 @@ where
 import qualified Knit.Effect.Logger            as Log
 
 import qualified Polysemy                      as P
-import qualified Polysemy.IO                   as P
+--import qualified Polysemy.IO                   as P
 import           Polysemy.Internal              ( send )
 import           Polysemy.Internal.Combinators  ( stateful )
 import qualified Polysemy.Error                as P
@@ -149,11 +149,11 @@ data Pandoc m r where
   LogOutput :: PA.LogMessage -> Pandoc m ()
   Trace :: String -> Pandoc m ()
 
-P.makeSemantic ''Pandoc
+P.makeSem ''Pandoc
 
 -- TODO: Understand the error pieces better.  Some things are thrown in IO, not sure we catch those??
 -- | Split off the error piece. We will handle directly with the polysemy @Error@ effect
-instance (P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Semantic effs) where
+instance (P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Sem effs) where
   throwError = P.throw
   catchError = P.catch
 
@@ -167,9 +167,7 @@ pandocSeverity lm = case PA.messageVerbosity lm of
 
 -- | Handle the logging with the knit-haskell logging effect.
 logPandocMessage
-  :: P.Member (Log.Logger Log.LogEntry) effs
-  => PA.LogMessage
-  -> P.Semantic effs ()
+  :: P.Member (Log.Logger Log.LogEntry) effs => PA.LogMessage -> P.Sem effs ()
 logPandocMessage lm = send $ Log.Log $ Log.LogEntry
   (pandocSeverity lm)
   (T.pack . PA.showLogMessage $ lm)
@@ -182,7 +180,7 @@ type PandocEffects effs =
   , P.Member (Log.Logger Log.LogEntry) effs)
 
 -- | PandocMonad instance so that pandoc functions can be run in the polysemy union effect
-instance PandocEffects effs => PA.PandocMonad (P.Semantic effs) where
+instance PandocEffects effs => PA.PandocMonad (P.Sem effs) where
   lookupEnv = lookupEnv
   getCurrentTime = getCurrentTime
   getCurrentTimeZone = getCurrentTimeZone
@@ -215,13 +213,13 @@ interpretInIO
      , P.Member (P.Lift IO) effs
      , P.Member (P.Error PA.PandocError) effs
      )
-  => P.Semantic (Pandoc ': effs) a
-  -> P.Semantic effs a
+  => P.Sem (Pandoc ': effs) a
+  -> P.Sem effs a
 interpretInIO = fmap snd . stateful f PA.def
  where
   liftPair :: forall f x y . Functor f => (x, f y) -> f (x, y)
   liftPair (x, fy) = fmap (x, ) fy
-  f :: Pandoc m x -> PA.CommonState -> P.Semantic effs (PA.CommonState, x)
+  f :: Pandoc m x -> PA.CommonState -> P.Sem effs (PA.CommonState, x)
   f (LookupEnv s)         cs = liftPair (cs, liftIO $ IO.lookupEnv s)
   f GetCurrentTime        cs = liftPair (cs, liftIO $ IO.getCurrentTime)
   f GetCurrentTimeZone    cs = liftPair (cs, liftIO IO.getCurrentTimeZone)
@@ -252,8 +250,8 @@ interpretInPandocMonad
      , P.Member (P.Lift m) effs
      , P.Member (Log.Logger Log.LogEntry) effs
      )
-  => P.Semantic (Pandoc ': effs) a
-  -> P.Semantic effs a
+  => P.Sem (Pandoc ': effs) a
+  -> P.Sem effs a
 interpretInPandocMonad = P.interpret
   (\case
     LookupEnv s            -> P.sendM @m $ PA.lookupEnv s
@@ -281,7 +279,7 @@ interpretInPandocMonad = P.interpret
 -- If there is a Pandoc error, you will get a Left in the resulting Either.
 runIO
   :: [Log.LogSeverity]
-  -> P.Semantic
+  -> P.Sem
        '[Pandoc, Log.Logger Log.LogEntry, Log.PrefixLog, P.Error
          PA.PandocError, P.Lift IO]
        a
@@ -298,9 +296,7 @@ openURLWithState
      )
   => PA.CommonState
   -> String
-  -> P.Semantic
-       effs
-       (PA.CommonState, (BS.ByteString, Maybe PA.MimeType))
+  -> P.Sem effs (PA.CommonState, (BS.ByteString, Maybe PA.MimeType))
 openURLWithState cs u
   | Just u'' <- L.stripPrefix "data:" u = do
     let mime = L.takeWhile (/= ',') u''
@@ -338,7 +334,7 @@ report
   :: (P.Member (Log.Logger Log.LogEntry) effs)
   => PA.CommonState
   -> PA.LogMessage
-  -> P.Semantic effs PA.CommonState
+  -> P.Sem effs PA.CommonState
 report cs msg = do
   let verbosity = PA.stVerbosity cs
       level     = PA.messageVerbosity msg
@@ -347,12 +343,12 @@ report cs msg = do
       cs'    = cs { PA.stLog = stLog' }
   return cs'
 
--- | Utility function to lift IO errors into Semantic
+-- | Utility function to lift IO errors into Sem
 liftIOError
   :: (P.Member (P.Error PA.PandocError) effs, P.Member (P.Lift IO) effs)
   => (String -> IO a)
   -> String
-  -> P.Semantic effs a
+  -> P.Sem effs a
 liftIOError f u = do
   res <- liftIO $ IO.tryIOError $ f u
   case res of
@@ -363,6 +359,7 @@ liftIOError f u = do
 -- or maybe the actual version on each machine has a correct local version??
 -- TODO: Fix/Understand this
 datadir :: FilePath
+datadir
   = "/home/builder/hackage-server/build-cache/tmp-install/share/x86_64-linux-ghc-8.6.3/pandoc-2.7.2"
 
 getDataFileName' :: FilePath -> IO FilePath
