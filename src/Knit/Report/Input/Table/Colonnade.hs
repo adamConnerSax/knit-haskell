@@ -23,12 +23,16 @@ module Knit.Report.Input.Table.Colonnade
     addColonnadeTextTable
   , addColonnadeHtmlTable
   , addColonnadeCellTable
+  -- * re-exports
+  , module Colonnade
+  , module Text.Blaze.Colonnade
   )
 where
 
-
 import qualified Colonnade                     as C
+import           Colonnade
 import qualified Text.Blaze.Colonnade          as BC
+import           Text.Blaze.Colonnade
 import qualified Text.Blaze.Html               as BH
 import qualified Text.Blaze.Html5.Attributes   as BHA
 import           Knit.Report.Input.Html.Blaze   ( addBlaze )

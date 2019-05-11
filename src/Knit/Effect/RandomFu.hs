@@ -11,6 +11,8 @@
 {-# LANGUAGE TemplateHaskell               #-}
 {-# LANGUAGE UndecidableInstances          #-}
 {-# LANGUAGE AllowAmbiguousTypes           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving    #-}
+{-# LANGUAGE InstanceSigs                  #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.RandomFu
@@ -53,8 +55,9 @@ import qualified Data.Random.Source            as R
 import qualified Data.Random.Internal.Source   as R
 import qualified Data.Random.Source.PureMT     as R
 
-
 import           Control.Monad.IO.Class         ( MonadIO(..) )
+
+--import           Data.Kind                      ( Constraint )
 
 -- | Random Effect
 data Random m r where
@@ -113,3 +116,13 @@ $(R.monadRandom [d|
         instance P.Member Random effs => R.MonadRandom (P.Sem effs) where
             getRandomPrim = getRandomPrim
     |])
+
+{- TODO
+newtype RandomSem r a = RandomSem { unRandomSem :: P.Sem r a } deriving (Functor, Applicative, Monad)
+
+$(R.monadRandom [d|
+        instance P.Member Random r => R.MonadRandom (RandomSem r) where
+            getRandomPrim :: R.Prim t -> RandomSem r t
+            getRandomPrim = RandomSem . getRandomPrim
+    |])
+-}
