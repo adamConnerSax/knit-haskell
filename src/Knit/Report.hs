@@ -40,6 +40,7 @@ module Knit.Report
     knitHtml
   , knitHtmls
   , liftKnit
+  , knitError
   , KnitBase
 
     -- * Inputs
@@ -164,6 +165,11 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
 -- | lift an action in a base monad into a Polysemy monad.  This is just a renaming for convenience.
 liftKnit :: Member (Lift m) r => m a -> Sem r a
 liftKnit = P.sendM
+
+-- | Throw an error with a specific message
+knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r ()
+knitError msg =
+  PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)
 
 -- From here down is unexported.  
 
