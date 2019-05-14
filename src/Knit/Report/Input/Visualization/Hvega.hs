@@ -49,12 +49,12 @@ addHvega
   => Maybe T.Text -- ^ figure id, will get next unused with prefix "figure" if Nothing
   -> Maybe T.Text -- ^ figure caption, none if Nothing
   -> GV.VegaLite
-  -> P.Sem effs ()
+  -> P.Sem effs T.Text
 addHvega idTextM captionTextM vl = do
   PE.require PE.VegaSupport
   idText <- maybe (KUI.getNextUnusedId "figure") return idTextM
   addBlaze $ placeVisualization idText captionTextM vl
-
+  return idText
 
 -- | Build (Blaze) Html for  hvega visualization with the given id
 placeVisualization :: T.Text -> Maybe T.Text -> GV.VegaLite -> BH.Html

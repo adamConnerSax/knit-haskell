@@ -7,6 +7,7 @@ v 0.3.0.0
 * Added an optional figure caption argument to Hvega and Diagrams inputs. (this is a breaking change since it requires another argument).
 * Added a state effect wrapper to facilitate getting unused ids for figures, etc.
 * Changed id argument for Hvega and Diagrams visualizations to "Maybe Text" from Text.  Will use built-in facilities for unique ids when set to Nothing.
+* Visualization "addXXX" functions now return the figure id (as "Sem r Text") so it can be referred to elsewhere.
 * Added KnitOne and KnitMany constraint-type-aliases to Knit.Report to simplify constraining doc producing functions.
 * Updated examples.  Added a diagrams example to SimpleExample and fixed id and caption arguments throughout.
 * Bumped upper bounds (network)

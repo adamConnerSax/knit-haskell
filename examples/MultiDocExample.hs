@@ -52,7 +52,8 @@ makeDoc1 = K.wrapPrefix "makeDoc1" $ do
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "adding a visualization."
   K.addMarkDown "## An example hvega visualization (Doc 1)"
-  K.addHvega Nothing Nothing exampleVis
+  _ <- K.addHvega Nothing Nothing exampleVis
+  return ()
 
 md2 :: T.Text
 md2 = [here|
@@ -72,7 +73,8 @@ makeDoc2 = K.wrapPrefix "makeDoc2" $ do
   K.addLatex "A different equation: $a^2 + b^2 = c^2$"
   K.logLE K.Info "adding a visualization."
   K.addMarkDown "## An example hvega visualization (Doc 2)"
-  K.addHvega Nothing Nothing exampleVis  
+  _ <- K.addHvega Nothing Nothing exampleVis
+  return ()
 
 exampleVis :: V.VegaLite
 exampleVis =

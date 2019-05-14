@@ -58,7 +58,7 @@ addDiagramAsSVG
   -> Double -- ^ width in pixels (?)
   -> Double -- ^ height in pixels (?)
   -> D.QDiagram DSVG.SVG D.V2 Double D.Any-- ^ diagram
-  -> P.Sem effs ()
+  -> P.Sem effs T.Text
 addDiagramAsSVG idTextM captionTextM wPixels hPixels diagram = do
   idText <- maybe (KUI.getNextUnusedId "figure") return idTextM
   let svgOptions =
@@ -74,7 +74,7 @@ addDiagramAsSVGWithOptions
   -> Maybe T.Text -- ^ caption for figure
   -> DSVG.Options DSVG.SVG D.V2 Double
   -> D.QDiagram DSVG.SVG D.V2 Double D.Any-- ^ diagram
-  -> P.Sem effs ()
+  -> P.Sem effs T.Text
 addDiagramAsSVGWithOptions idTextM captionTextM svgOptions diagram = do
   idText <- maybe (KUI.getNextUnusedId "figure") return idTextM
   addBlaze $ BH.figure BH.! BHA.id (toValue idText) $ do
@@ -82,3 +82,4 @@ addDiagramAsSVGWithOptions idTextM captionTextM svgOptions diagram = do
                                                       svgOptions
                                                       diagram
     maybe (return ()) (BH.figcaption . BH.toHtml) captionTextM
+  return idText

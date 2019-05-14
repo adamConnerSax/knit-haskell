@@ -52,7 +52,8 @@ makeDocWithKnitError = K.wrapPrefix "makeDocWithKnitError" $ do
   K.logLE K.Info "adding a visualization..."
   K.knitError "Uh oh!  Something went wrong which I am explaining with this message."
   K.addMarkDown "## An example hvega visualization"
-  K.addHvega Nothing Nothing exampleVis
+  _ <- K.addHvega Nothing Nothing exampleVis
+  return ()
 
 
 exampleVis :: V.VegaLite

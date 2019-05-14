@@ -71,7 +71,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
 
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
-  K.addHvega Nothing Nothing exampleVis
+  _ <- K.addHvega Nothing Nothing exampleVis
 
   K.logLE K.Info "Retrieving some text from the base monad and current date-time."
   envText <- K.liftKnit @ExampleApp getEnv

@@ -53,11 +53,11 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
-  K.addHvega Nothing (Just "From the cars data-set") exampleVis
+  _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
   K.addMarkDown "## An example Diagrams visualization"
   K.logLE K.Info "adding a Diagrams plot..."  
-  K.addDiagramAsSVG Nothing (Just "Example diagrams visualization using the Plots library") 300 300 samplePlot
-
+  _ <- K.addDiagramAsSVG Nothing (Just "Example diagrams visualization using the Plots library") 300 300 samplePlot
+  return ()
 
 -- example using HVega  
 exampleVis :: V.VegaLite
