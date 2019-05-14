@@ -9,6 +9,7 @@ v 0.3.0.0
 * Changed id argument for Hvega and Diagrams visualizations to "Maybe Text" from Text.  Will use built-in facilities for unique ids when set to Nothing.
 * Added KnitOne and KnitMany constraint-type-aliases to Knit.Report to simplify constraining doc producing functions.
 * Updated examples.  Added a diagrams example to SimpleExample and fixed id and caption arguments throughout.
+* Bumped upper bounds (network)
 
 v 0.2.0.0
 * Documentation Fixes
