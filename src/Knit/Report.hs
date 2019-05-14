@@ -166,7 +166,8 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
 liftKnit :: Member (Lift m) r => m a -> Sem r a
 liftKnit = P.sendM
 
--- | Throw an error with a specific message
+-- | Throw an error with a specific message.  This will emerge as a 'PandocSomeError' in order
+-- to avoid complicating the error type.
 knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r ()
 knitError msg =
   PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)

@@ -1,5 +1,6 @@
 v 0.3.0.0 
 * Added exports of "Colonnade" and "Text.Blaze.Colonnade" to "Knit.Report.Input.Table.Colonnade"
+* Added "knitError" function to Knit.Report to allow user throwing of errors.  These will become PandocSomeError and handled as a PandocError.
 
 
 v 0.2.0.0
