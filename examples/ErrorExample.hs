@@ -42,10 +42,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDocWithKnitError :: (K.Member K.ToPandoc effs -- required for the single-document variant
-                    , K.PandocEffects effs -- all effects for knitting
-                    ) 
-                 => K.Sem effs ()
+makeDocWithKnitError :: K.KnitOne effs => K.Sem effs ()
 makeDocWithKnitError = K.wrapPrefix "makeDocWithKnitError" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1
@@ -55,7 +52,7 @@ makeDocWithKnitError = K.wrapPrefix "makeDocWithKnitError" $ do
   K.logLE K.Info "adding a visualization..."
   K.knitError "Uh oh!  Something went wrong which I am explaining with this message."
   K.addMarkDown "## An example hvega visualization"
-  K.addHvega "someID" exampleVis
+  K.addHvega Nothing Nothing exampleVis
 
 
 exampleVis :: V.VegaLite

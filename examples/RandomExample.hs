@@ -66,8 +66,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: (K.Member K.ToPandoc effs
-           , K.PandocEffects effs
+makeDoc :: ( K.KnitOne effs
            , K.Member KR.Random effs -- this one needs to be handled before knitting
            , K.KnitBase ExampleApp effs) => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
@@ -80,7 +79,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
 
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
-  K.addHvega "someID" exampleVis
+  K.addHvega Nothing Nothing exampleVis
 
   K.logLE K.Info "Retrieving some text from the base monad and current date-time."
   envText <- K.liftKnit @ExampleApp getEnv
