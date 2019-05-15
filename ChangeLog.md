@@ -1,3 +1,7 @@
+v 0.3.0.1
+* Examples were "executables" and are now "tests" so that depending on knit-haskell does not pull in the dependencies of the examples.
+
+
 v 0.3.0.0 
 * Added exports of "Colonnade" and "Text.Blaze.Colonnade" to "Knit.Report.Input.Table.Colonnade"
 * Added "knitError" function to Knit.Report to allow user throwing of errors.  These will become PandocSomeError and handled as a PandocError.
