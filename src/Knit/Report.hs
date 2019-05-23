@@ -173,7 +173,7 @@ liftKnit = P.sendM
 -- | Throw an error with a specific message.  This will emerge as a 'PandocSomeError' in order
 -- to avoid complicating the error type.
 -- NB: The Member constraint is satisfied by KnitEffectStack m.
-knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r ()
+knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r a
 knitError msg =
   PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)
 

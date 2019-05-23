@@ -1,7 +1,7 @@
 cabal-version:       2.2
 
 name:                knit-haskell
-version:             0.3.0.1
+version:             0.4.0.0
 synopsis:            a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description:         knit-haskell is a beginning attempt at bringing some of the benefits of
                      Rmarkdown to Haskell.

@@ -1,3 +1,6 @@
+v 0.4.0.0 
+* Changed return type of 'Knit.Report.knitError' to 'Sem r a' (from 'Sem r ()')
+
 v 0.3.0.1
 * Examples were "executables" and are now "tests" so that depending on knit-haskell does not pull in the dependencies of the examples.
 
