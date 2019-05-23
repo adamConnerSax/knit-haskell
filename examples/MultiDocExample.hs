@@ -43,10 +43,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc1 :: (K.Member K.ToPandoc effs -- required for the single-document variant
-           , K.PandocEffects effs -- all effects for knitting
-           ) 
-        => K.Sem effs ()
+makeDoc1 :: K.KnitOne effs => K.Sem effs ()
 makeDoc1 = K.wrapPrefix "makeDoc1" $ do
   K.logLE K.Info "adding some markdown."
   K.addMarkDown md1
@@ -55,7 +52,8 @@ makeDoc1 = K.wrapPrefix "makeDoc1" $ do
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "adding a visualization."
   K.addMarkDown "## An example hvega visualization (Doc 1)"
-  K.addHvega "someID" exampleVis
+  _ <- K.addHvega Nothing Nothing exampleVis
+  return ()
 
 md2 :: T.Text
 md2 = [here|
@@ -66,10 +64,7 @@ md2 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc2 :: (K.Member K.ToPandoc effs -- required for the single-document variant
-           , K.PandocEffects effs -- all effects for knitting
-           ) 
-        => K.Sem effs ()
+makeDoc2 :: K.KnitOne effs => K.Sem effs ()
 makeDoc2 = K.wrapPrefix "makeDoc2" $ do
   K.logLE K.Info "adding some markdown."
   K.addMarkDown md2
@@ -78,7 +73,8 @@ makeDoc2 = K.wrapPrefix "makeDoc2" $ do
   K.addLatex "A different equation: $a^2 + b^2 = c^2$"
   K.logLE K.Info "adding a visualization."
   K.addMarkDown "## An example hvega visualization (Doc 2)"
-  K.addHvega "someID" exampleVis  
+  _ <- K.addHvega Nothing Nothing exampleVis
+  return ()
 
 exampleVis :: V.VegaLite
 exampleVis =
@@ -89,3 +85,4 @@ exampleVis =
         . V.color [ V.MName "Origin", V.MmType V.Nominal ]
       bkg = V.background "rgba(0, 0, 0, 0.05)"
   in V.toVegaLite [ bkg, cars, V.mark V.Circle [], enc [] ]  
+

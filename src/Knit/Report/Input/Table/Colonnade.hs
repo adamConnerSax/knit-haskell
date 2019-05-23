@@ -23,7 +23,7 @@ module Knit.Report.Input.Table.Colonnade
     addColonnadeTextTable
   , addColonnadeHtmlTable
   , addColonnadeCellTable
-  -- * re-exports
+  -- * Re-exports
   , module Colonnade
   , module Text.Blaze.Colonnade
   )

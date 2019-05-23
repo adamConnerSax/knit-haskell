@@ -40,6 +40,10 @@ module Knit.Report
     knitHtml
   , knitHtmls
   , liftKnit
+  , knitError
+  , KnitEffects
+  , KnitOne
+  , KnitMany
   , KnitBase
 
     -- * Inputs
@@ -50,6 +54,7 @@ module Knit.Report
   , module Knit.Report.Input.Html.Lucid
   , module Knit.Report.Input.Latex
   , module Knit.Report.Input.Visualization.Hvega
+  , module Knit.Report.Input.Visualization.Diagrams
 
     -- * Output 
   , module Knit.Report.Output
@@ -61,6 +66,7 @@ module Knit.Report
   , module Knit.Effect.Docs
   , module Knit.Effect.PandocMonad
   , module Knit.Effect.Logger
+  , module Knit.Effect.UnusedId
   )
 where
 
@@ -86,10 +92,6 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , LogWithPrefixesLE
                                                 )
 import           Knit.Report.Input.Table.Colonnade
-                                                ( addColonnadeTextTable
-                                                , addColonnadeHtmlTable
-                                                , addColonnadeCellTable
-                                                )
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )
 import           Knit.Report.Input.Html         ( addStrictTextHtml
@@ -100,6 +102,8 @@ import           Knit.Report.Input.Html.Lucid   ( addLucid )
 import           Knit.Report.Input.Latex        ( addLatex )
 import           Knit.Report.Input.Visualization.Hvega
                                                 ( addHvega )
+import           Knit.Report.Input.Visualization.Diagrams
+--                                         hiding ( trace ) -- trace conflicts with Pandoc.trace
 
 import           Knit.Report.Output             ( PandocWriterConfig(..) )
 import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
@@ -125,7 +129,8 @@ import qualified Knit.Effect.Docs              as KD
 import qualified Knit.Effect.Pandoc            as KP
 import qualified Knit.Effect.PandocMonad       as KPM
 import qualified Knit.Effect.Logger            as KLog
-
+import qualified Knit.Effect.UnusedId          as KUI
+import           Knit.Effect.UnusedId           ( getNextUnusedId )
 
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
@@ -165,11 +170,27 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
 liftKnit :: Member (Lift m) r => m a -> Sem r a
 liftKnit = P.sendM
 
--- From here down is unexported.  
+-- | Throw an error with a specific message.  This will emerge as a 'PandocSomeError' in order
+-- to avoid complicating the error type.
+-- NB: The Member constraint is satisfied by KnitEffectStack m.
+knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r a
+knitError msg =
+  PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)
 
+-- | Constraint alias for the effects we need when calling Knit
+type KnitEffects r = (KPM.PandocEffects r, P.Member KUI.UnusedId r)
+
+-- | Constraint alias for the effects we need to knit one document
+type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
+
+-- | Constraint alias for the effects we need to knit multiple documents.
+type KnitMany r = (KnitEffects r, P.Member (KD.Docs KP.PandocWithRequirements) r)
+
+-- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
 type KnitEffectStack m =
-  '[ KPM.Pandoc
+  '[ KUI.UnusedId
+   , KPM.Pandoc
    , KLog.Logger KLog.LogEntry
    , KLog.PrefixLog
    , PE.Error PA.PandocError
@@ -196,5 +217,6 @@ consumeKnitEffectStack loggingPrefixM ls =
     . PE.runError
     . KLog.filteredLogEntriesToIO ls
     . KPM.interpretInIO -- PA.PandocIO
+    . KUI.runUnusedId
     . maybe id KLog.wrapPrefix loggingPrefixM
 
