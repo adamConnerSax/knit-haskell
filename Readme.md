@@ -1,4 +1,4 @@
-# knit-haskell
+# knit-haskell v0.4.0.0
 
 [![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
@@ -44,6 +44,12 @@ module.  That has the main functions for "knitting" documents from fragments
 and re-exports all the required functions to input the supported fragment types and export Html.
 * This uses [polysemy](https://github.com/isovector/polysemy#readme) for its effect management rather than mtl.  
 Effects are provided for logging and generating [random-fu](http://hackage.haskell.org/package/random-fu) style random numbers.  
+Polysemy's inference and performance are improved greatly if you enable the [polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin),
+which involves:
+1. adding "polysemy-plugin" in build-depends and
+2. if you use [plots](https://hackage.haskell.org/package/plots), adding "allow-newer: plots:containers" to your cabal.project file, 
+or stack equivalent. See this repo for a cabal.project example.
+3. Add "ghc-options: -fplugin=Polysemy.Plugin" to your package configuration.
 If the ```Random``` effect is included in the effect list, the effect monad is an instance of 
 [MonadRandom](http://hackage.haskell.org/package/random-fu-0.2.7.0/docs/Data-Random.html#t:MonadRandom). 
 Pandoc effects and writer effects for document building are also provided.
