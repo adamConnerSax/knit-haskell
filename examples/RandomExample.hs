@@ -10,14 +10,17 @@ import qualified Knit.Report               as K
 import qualified Knit.Effect.RandomFu      as KR
 import qualified Colonnade                 as C
 
+import           Control.Monad              (replicateM)
 import           Control.Monad.IO.Class     (MonadIO)
 import qualified Data.Map                  as M
-import qualified Data.Random               as R
 import qualified Data.Text.IO              as T
 import qualified Data.Text.Lazy            as TL
 import qualified Data.Text                 as T
 import           Data.String.Here           (here)
 import qualified Graphics.Vega.VegaLite    as V
+
+import           Data.Random               (MonadRandom, sample, stdNormal)
+import           Data.Random.Source.PureMT (newPureMT)
 
 import           Control.Monad.Reader       (ReaderT
                                             , ask
@@ -47,10 +50,11 @@ main :: IO ()
 main = do
   let pandocWriterConfig =
         K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
+  pureMTSource <- newPureMT  
   resE <- runExampleApp "This is from the MyApp environment."
           $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig
-          $ KR.runRandomIOSimple $ makeDoc
-  case resE of
+          $ KR.runRandomFuIOPureMT pureMTSource $ makeDoc
+  case resE of 
     Right htmlAsText ->
       T.writeFile "examples/html/random_example.html"
         $ TL.toStrict
@@ -67,7 +71,7 @@ md1 = [here|
 |]
 
 makeDoc :: ( K.KnitOne effs
-           , K.Member KR.Random effs -- this one needs to be handled before knitting
+           , K.Member KR.RandomFu effs -- this one needs to be handled before knitting
            , K.KnitBase ExampleApp effs) => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
@@ -88,11 +92,19 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown $ envText <> "\n\n" <> (T.pack $ show curTime)
 
   K.logLE K.Info "Using another polysemy effect, here RandomFu"
-  let draws = [1..20 :: Int]
-  someNormalDoubles <- KR.sampleRVar $ mapM (const $ R.stdNormal @Double) draws
+  let nDraws = 20
+  someNormalDoubles <- KR.sampleRVar $ replicateM nDraws (stdNormal @Double)
   K.addMarkDown "## An example of using the RandomFu effect to get random numbers and using Colonnade to make tables."
   K.addMarkDown $ "some std normal draws: "
-  K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip draws someNormalDoubles
+  K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip [1..nDraws] someNormalDoubles
+  moreNormalDoubles <- KR.absorbMonadRandom (monadRandomFunction nDraws)
+  K.addMarkDown "## This time, using absorbMonadRandom to interoperate with a function using the MonadRandom constraint."
+  K.addMarkDown $ "some std normal draws: "
+  K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip [1..nDraws] moreNormalDoubles
+
+
+monadRandomFunction :: MonadRandom m => Int -> m [Double]
+monadRandomFunction = sample . flip replicateM (stdNormal @Double)
   
 exampleVis :: V.VegaLite
 exampleVis =

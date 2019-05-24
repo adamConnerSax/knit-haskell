@@ -1,9 +1,13 @@
 v 0.4.0.0 
-* Changed return type of 'Knit.Report.knitError' to 'Sem r a' (from 'Sem r ()')
+* Deprecated name "Random" in favor of "RandomFu" for clarity and eventual consistency with Polysemy
+* Removed orphan ```Random.MonadRandom``` instance from ```Knit.Effect.RandomFu``` because orphan instances are bad
+* Added ```absorbMonadRandom :: Member RandomFu r => (forall m. MonadRandom m => m a) -> Sem r a``` to allow some interop 
+with existing functions written using MonadRandom.
+* Changed return type of ```Knit.Report.knitError``` to ```Sem r a``` (from ```Sem r ()```)
+* Bumped lower bounds on polysemy-plugin (because of a buggy version)
 
 v 0.3.0.1
 * Examples were "executables" and are now "tests" so that depending on knit-haskell does not pull in the dependencies of the examples.
-
 
 v 0.3.0.0 
 * Added exports of "Colonnade" and "Text.Blaze.Colonnade" to "Knit.Report.Input.Table.Colonnade"
