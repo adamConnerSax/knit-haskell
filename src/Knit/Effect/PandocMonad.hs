@@ -152,6 +152,7 @@ data Pandoc m r where
 P.makeSem ''Pandoc
 
 -- TODO: Understand the error pieces better.  Some things are thrown in IO, not sure we catch those??
+-- This is an orphan instance. Yuck.
 -- | Split off the error piece. We will handle directly with the polysemy @Error@ effect
 instance (P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Sem effs) where
   throwError = P.throw
@@ -179,6 +180,7 @@ type PandocEffects effs =
   , P.Member Log.PrefixLog effs
   , P.Member (Log.Logger Log.LogEntry) effs)
 
+-- This is an orphan instance. Yuck.
 -- | PandocMonad instance so that pandoc functions can be run in the polysemy union effect
 instance PandocEffects effs => PA.PandocMonad (P.Sem effs) where
   lookupEnv = lookupEnv

@@ -5,6 +5,8 @@ v 0.4.0.0
 with existing functions written using MonadRandom.
 * Changed return type of ```Knit.Report.knitError``` to ```Sem r a``` (from ```Sem r ()```)
 * Bumped lower bounds on polysemy-plugin (because of a buggy version)
+* Removed plots example in "SimpleExample" and added a diagrams one.  Will add plots back once a version issue 
+with containers is resolved.
 
 v 0.3.0.1
 * Examples were "executables" and are now "tests" so that depending on knit-haskell does not pull in the dependencies of the examples.

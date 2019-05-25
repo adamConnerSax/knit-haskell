@@ -14,7 +14,7 @@ import qualified Data.Text                as T
 import           Data.String.Here          (here)
 import qualified Graphics.Vega.VegaLite   as V
 
-import qualified Plots                    as P
+--import qualified Plots                    as P
 
 templateVars :: M.Map String String
 templateVars = M.fromList
@@ -55,8 +55,9 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
   K.addMarkDown "## An example Diagrams visualization"
-  K.logLE K.Info "adding a Diagrams plot..."  
-  _ <- K.addDiagramAsSVG Nothing (Just "Example diagrams visualization using the Plots library") 300 300 samplePlot
+  K.logLE K.Info "adding a Diagrams plot..."
+  _ <- K.addDiagramAsSVG Nothing (Just "Example diagram") 300 300 exampleDiagram
+--  _ <- K.addDiagramAsSVG Nothing (Just "Example diagrams visualization using the Plots library") 300 300 samplePlot
   return ()
 
 -- example using HVega  
@@ -70,6 +71,27 @@ exampleVis =
       bkg = V.background "rgba(0, 0, 0, 0.05)"
   in V.toVegaLite [ bkg, cars, V.mark V.Circle [], enc [] ]  
 
+
+--sampleDiagram
+-- from <https://archives.haskell.org/projects.haskell.org/diagrams/gallery/Hilbert.html>
+
+hilbert 0 = mempty
+hilbert n = hilbert' (n-1) K.# K.reflectY <> K.vrule 1
+            <> hilbert  (n-1) <> K.hrule 1
+            <> hilbert  (n-1) <> K.vrule (-1)
+            <> hilbert' (n-1) K.# K.reflectX
+  where
+    hilbert' m = hilbert m K.# K.rotateBy (1/4)
+
+exampleDiagram :: K.Diagram K.SVG  
+exampleDiagram = K.frame 1 . K.lw K.medium . K.lc K.darkred
+          . K.strokeT $ hilbert 5
+
+
+{-
+This plot example requires the plots library which cannot currently
+be compiled with the polysemy plugin unless you use cabal.project
+and add "allow-newer : plots:containers"
 
 -- example using Plots (as an example of using Diagrams)
 samplePlot :: K.Diagram K.SVG
@@ -87,4 +109,4 @@ logAxis = P.r2Axis K.&~ do
     P.majorTicksFunction K..= P.logMajorTicks 5 -- <> pure [1]
     -- minorTicksFunction .= minorTicksHelper 5
 
---exampleDiagram :: 
+-}
