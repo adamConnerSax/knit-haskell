@@ -1,5 +1,5 @@
 v 0.4.0.0 
-* Added  ```absorbPandocMonad :: PandocEffects r => (forall m. PandocMonad m => m a) -> Sem r a``` to Knit.Effect.PandocMonad
+* Added  ```absorbPandocMonad :: PandocEffects r => (forall m. PandocMonad m => m a) -> Sem r a``` to ```Knit.Effect.PandocMonad```
 * Removed (orphan) instances: ```PandocMonad (Sem r)``` and ```MonadError PandocError (Sem r)``` in favor 
 of using ```absorbPandocMonad``` when required.
 * Deprecated name "Random" in favor of "RandomFu" for clarity and eventual consistency with Polysemy
