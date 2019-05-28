@@ -16,6 +16,7 @@
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.PandocMonad
@@ -64,6 +65,9 @@ module Knit.Effect.PandocMonad
 
   -- * Runners
   , runIO
+
+  -- * Interop
+  , absorbPandocMonad
 
   -- * Re-Exports
   , PA.PandocError
@@ -151,12 +155,6 @@ data Pandoc m r where
 
 P.makeSem ''Pandoc
 
--- TODO: Understand the error pieces better.  Some things are thrown in IO, not sure we catch those??
--- This is an orphan instance. Yuck.
--- | Split off the error piece. We will handle directly with the polysemy @Error@ effect
-instance (P.Member (P.Error PA.PandocError) effs) => MonadError PA.PandocError (P.Sem effs) where
-  throwError = P.throw
-  catchError = P.catch
 
 -- we handle logging within the existing effect system
 -- | Map pandoc severities to our logging system.
@@ -180,28 +178,42 @@ type PandocEffects effs =
   , P.Member Log.PrefixLog effs
   , P.Member (Log.Logger Log.LogEntry) effs)
 
--- This is an orphan instance. Yuck.
--- | PandocMonad instance so that pandoc functions can be run in the polysemy union effect
-instance PandocEffects effs => PA.PandocMonad (P.Sem effs) where
-  lookupEnv = lookupEnv
-  getCurrentTime = getCurrentTime
-  getCurrentTimeZone = getCurrentTimeZone
-  newStdGen = newStdGen
-  newUniqueHash = newUniqueHash
-  openURL = openURL
-  readFileLazy = readFileLazy
-  readFileStrict = readFileStrict
-  glob = glob
-  fileExists = fileExists
-  getDataFileName = getDataFileName
-  getModificationTime = getModificationTime
-  getCommonState = getCommonState
-  putCommonState = putCommonState
-  getsCommonState = getsCommonState
-  modifyCommonState = modifyCommonState
-  logOutput = logOutput --logPandocMessage
-  trace = trace
+newtype PandocMonadSem r a = PandocMonadSem { unPandocMonadSem :: P.Sem r a } deriving (Functor, Applicative, Monad)
 
+instance (P.Member (P.Error PA.PandocError) r) => MonadError PA.PandocError (PandocMonadSem r) where
+  throwError = PandocMonadSem . P.throw
+  catchError (PandocMonadSem sa) h = PandocMonadSem $ P.catch sa (unPandocMonadSem . h)
+
+instance (P.Member (P.Error PA.PandocError) r, PandocEffects r) => PA.PandocMonad (PandocMonadSem r) where
+  lookupEnv = PandocMonadSem . lookupEnv
+  getCurrentTime = PandocMonadSem $ getCurrentTime
+  getCurrentTimeZone = PandocMonadSem $ getCurrentTimeZone
+  newStdGen = PandocMonadSem $ newStdGen
+  newUniqueHash = PandocMonadSem $ newUniqueHash
+  openURL = PandocMonadSem . openURL
+  readFileLazy = PandocMonadSem . readFileLazy
+  readFileStrict = PandocMonadSem . readFileStrict
+  glob = PandocMonadSem . glob
+  fileExists = PandocMonadSem . fileExists
+  getDataFileName = PandocMonadSem . getDataFileName
+  getModificationTime = PandocMonadSem . getModificationTime
+  getCommonState = PandocMonadSem $ getCommonState
+  putCommonState = PandocMonadSem . putCommonState
+  getsCommonState = PandocMonadSem . getsCommonState
+  modifyCommonState = PandocMonadSem . modifyCommonState
+  logOutput = PandocMonadSem . logOutput --logPandocMessage
+  trace = PandocMonadSem . trace
+
+
+{- | Given an action constrained only by a PandocMonad constraint, 
+absorb it into a Polysemy monad whose
+effect list contains the required effects.
+-}
+absorbPandocMonad
+  :: (P.Member (P.Error PA.PandocError) r, PandocEffects r)
+  => (forall m . PA.PandocMonad m => m a)
+  -> P.Sem r a
+absorbPandocMonad = unPandocMonadSem
 
 -- | Constraint helper for using this set of effects in IO.
 type PandocEffectsIO effs =

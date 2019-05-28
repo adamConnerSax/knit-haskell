@@ -1,10 +1,14 @@
 v 0.4.0.0 
+* Added  ```absorbPandocMonad :: PandocEffects r => (forall m. PandocMonad m => m a) -> Sem r a``` to Knit.Effect.PandocMonad
+* Removed (orphan) instances: ```PandocMonad (Sem r)``` and ```MonadError PandocError (Sem r)``` in favor 
+of using ```absorbPandocMonad``` when required.
 * Deprecated name "Random" in favor of "RandomFu" for clarity and eventual consistency with Polysemy
-* Removed orphan ```Random.MonadRandom``` instance from ```Knit.Effect.RandomFu``` because orphan instances are bad
-* Added ```absorbMonadRandom :: Member RandomFu r => (forall m. MonadRandom m => m a) -> Sem r a``` to allow some interop 
-with existing functions written using MonadRandom.
+* Added ```absorbMonadRandom :: Member RandomFu r => (forall m. MonadRandom m => m a) -> Sem r a``` to allow some
+interoperation with actions constrained by ```MonadRandom```
+* Removed orphan ```Random.MonadRandom``` instance from ```Knit.Effect.RandomFu``` because orphan instances are bad.
 * Changed return type of ```Knit.Report.knitError``` to ```Sem r a``` (from ```Sem r ()```)
-* Bumped lower bounds on polysemy-plugin (because of a buggy version)
+* Bumped lower bound on polysemy-plugin (because of a buggy version)
+* Bumped lower bound on polysemy
 * Removed plots example in "SimpleExample" and added a diagrams one.  Will add plots back once a version issue 
 with containers is resolved.
 

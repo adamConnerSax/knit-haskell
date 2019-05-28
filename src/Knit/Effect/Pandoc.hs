@@ -228,7 +228,8 @@ toWriter
   -> P.Sem (P.Writer PandocWithRequirements ': effs) a
 toWriter = P.reinterpret $ \case
   (AddFrom rf ro x) ->
-    P.raise (fmap justDoc $ toPandoc rf ro x) >>= P.tell @PandocWithRequirements
+    P.raise (fmap justDoc $ PM.absorbPandocMonad $ toPandoc rf ro x)
+      >>= P.tell @PandocWithRequirements
   (Require r) -> P.tell (justRequirement r)
 
 -- | Run ToPandoc by interpreting in Writer and then running that Writer.
@@ -277,7 +278,8 @@ pandocsToNamed
   -> P.Sem (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
   -> P.Sem effs [NamedDoc a] -- ^ documents in requested format, within the effects monad
 pandocsToNamed pwf pwo =
-  (traverse (namedPandocFrom pwf pwo) =<<) . toNamedDocList
+  (traverse (\x -> PM.absorbPandocMonad $ namedPandocFrom pwf pwo x) =<<)
+    . toNamedDocList
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE
@@ -286,5 +288,8 @@ fromPandocE
   -> PA.WriterOptions -- ^ options for the Pandoc Writer
   -> P.Sem (ToPandoc ': effs) () -- ^ effects stack to be (partially) run to get document
   -> P.Sem effs a -- ^ document in requested format, within the effects monad
-fromPandocE pwf pwo = ((fromPandoc pwf pwo . fst) =<<) . P.runWriter . toWriter
+fromPandocE pwf pwo =
+  (((\x -> PM.absorbPandocMonad $ fromPandoc pwf pwo x) . fst) =<<)
+    . P.runWriter
+    . toWriter
 

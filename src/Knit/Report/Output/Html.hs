@@ -92,7 +92,7 @@ toBlazeDocument
   => PandocWriterConfig
   -> PE.PandocWithRequirements -- ^ Document and union of input requirements 
   -> P.Sem effs BH.Html
-toBlazeDocument writeConfig pdocWR = do
+toBlazeDocument writeConfig pdocWR = PM.absorbPandocMonad $ do
   writerOptions <- htmlFullDocWriterOptions (templateFP writeConfig)
                                             (templateVars writeConfig)
   PE.fromPandoc PE.WriteHtml5 (optionsF writeConfig writerOptions) pdocWR
