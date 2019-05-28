@@ -178,6 +178,7 @@ type PandocEffects effs =
   , P.Member Log.PrefixLog effs
   , P.Member (Log.Logger Log.LogEntry) effs)
 
+-- | Unexported newtype for creating instances which we then discharge with absorbPandocMonad
 newtype PandocMonadSem r a = PandocMonadSem { unPandocMonadSem :: P.Sem r a } deriving (Functor, Applicative, Monad)
 
 instance (P.Member (P.Error PA.PandocError) r) => MonadError PA.PandocError (PandocMonadSem r) where
@@ -201,7 +202,7 @@ instance (P.Member (P.Error PA.PandocError) r, PandocEffects r) => PA.PandocMona
   putCommonState = PandocMonadSem . putCommonState
   getsCommonState = PandocMonadSem . getsCommonState
   modifyCommonState = PandocMonadSem . modifyCommonState
-  logOutput = PandocMonadSem . logOutput --logPandocMessage
+  logOutput = PandocMonadSem . logOutput
   trace = PandocMonadSem . trace
 
 
@@ -214,6 +215,7 @@ absorbPandocMonad
   => (forall m . PA.PandocMonad m => m a)
   -> P.Sem r a
 absorbPandocMonad = unPandocMonadSem
+
 
 -- | Constraint helper for using this set of effects in IO.
 type PandocEffectsIO effs =
