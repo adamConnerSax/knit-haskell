@@ -27,10 +27,9 @@ Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
 Polysemy PandocMonad effect.
-Allows a polysemy "stack" to satisfy a PandocMonad constraint.
-This still needs to run on top of PandocIO
-but that will likely be addressed at some point in the future,
-just requiring IO at base and the Logging and Random effects.
+Allows a polysemy monad to handle functions
+actions with a PandocMonad contraint via
+polysemy effects and IO.
 -}
 module Knit.Effect.PandocMonad
   (
@@ -77,14 +76,12 @@ where
 import qualified Knit.Effect.Logger            as Log
 
 import qualified Polysemy                      as P
---import qualified Polysemy.IO                   as P
 import           Polysemy.Internal              ( send )
 import           Polysemy.Internal.Combinators  ( stateful )
 import qualified Polysemy.Error                as P
 import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
 import qualified Text.Pandoc.UTF8              as UTF8
---import qualified Text.Pandoc.Logging           as PA
 
 import qualified Data.ByteString               as BS
 import           Data.ByteString.Lazy          as LBS
