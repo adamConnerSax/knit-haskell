@@ -101,7 +101,7 @@ toBlazeDocument writeConfig pdocWR = PM.absorbPandocMonad $ do
 -- Incudes support for template and template variables and changes to the default writer options. 
 pandocWriterToBlazeDocument
   :: PM.PandocEffects effs
-  => PandocWriterConfig -- ^ Configuration info for the Pandoc writer
+  => PandocWriterConfig -- ^ Configuration info for the Pandoc writer  
   -> P.Sem (PE.ToPandoc ': effs) () -- ^ Effects stack to run to get Pandoc
   -> P.Sem effs BH.Html -- ^ Blaze Html (in remaining effects)
 pandocWriterToBlazeDocument writeConfig pw =

@@ -29,31 +29,38 @@ module Knit.Effect.Pandoc
     ToPandoc
   , FromPandoc
 
-  -- * Requirement Support
+    -- * Requirement Support
   , Requirement(..)
   , PandocWithRequirements
-  -- * Format ADTs
+
+    -- * Format ADTs
   , PandocReadFormat(..)
   , PandocWriteFormat(..)
 
-  -- * Combinators
+    -- * Combinators
   , addFrom
   , require
   , writeTo
   , toPandoc
   , fromPandoc
 
-  -- * Interpreters
+    -- * Interpreters
   , runPandocWriter
 
-  -- * Docs effect type-aliases
+    -- * Docs effect type-aliases
   , Pandocs
-  , NamedDoc(..)
 
-  -- * Docs Effect Interpreters 
+    -- * Pandoc Specific Info
+  , PandocInfo(..)
+
+    -- * Docs Effect Interpreters 
   , newPandoc
-  , pandocsToNamed
+  , pandocsToDocs
   , fromPandocE
+
+    -- * Re-exports
+  , DocWithInfo(..)
+
   )
 where
 
@@ -61,6 +68,7 @@ import qualified Text.Pandoc                   as PA
 import qualified Data.Text                     as T
 import           Data.ByteString.Lazy          as LBS
 import qualified Data.Foldable                 as F
+import qualified Data.Map                      as M
 import qualified Data.Monoid                   as Mon
 import           Data.Set                      as S
 import qualified Text.Blaze.Html               as Blaze
@@ -76,9 +84,9 @@ import qualified Polysemy.Writer               as P
 import qualified Knit.Effect.PandocMonad       as PM
 
 import           Knit.Effect.Docs               ( Docs
-                                                , NamedDoc(..)
+                                                , DocWithInfo(..)
                                                 , newDoc
-                                                , toNamedDocList
+                                                , toDocList
                                                 )
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
@@ -239,13 +247,17 @@ runPandocWriter
   -> P.Sem effs PandocWithRequirements
 runPandocWriter = fmap fst . P.runWriter . toWriter
 
+-- | Type to hold info about each document that will be required for rendering and output
+data PandocInfo = PandocInfo { pdiName :: T.Text, pdiTemplateVars :: M.Map String String }
+
 -- | Type-alias for use with the @Docs@ effect.
-type Pandocs = Docs PandocWithRequirements
+type Pandocs = Docs PandocInfo PandocWithRequirements
+
 
 -- | Add a new named Pandoc to a Pandoc Docs collection.
 newPandocPure
   :: P.Member Pandocs effs
-  => T.Text -- ^ name for document
+  => PandocInfo  -- ^ name and template variables for document
   -> PandocWithRequirements -- ^ document and union of all input requirements
   -> P.Sem effs ()
 newPandocPure = newDoc
@@ -253,33 +265,33 @@ newPandocPure = newDoc
 -- | Add the Pandoc stored in the writer-style ToPandoc effect to the named docs collection with the given name.
 newPandoc
   :: (PM.PandocEffects effs, P.Member Pandocs effs)
-  => T.Text -- ^ name of document
+  => PandocInfo  -- ^ name and template variables for document
   -> P.Sem (ToPandoc ': effs) ()
   -> P.Sem effs ()
 newPandoc n l = fmap fst (P.runWriter $ toWriter l) >>= newPandocPure n
 
 -- | Given a write format and options, convert the NamedDoc to the requested format
-namedPandocFrom
+pandocFrom
   :: PA.PandocMonad m
   => PandocWriteFormat a -- ^ format for Pandoc output
   -> PA.WriterOptions -- ^ options for the Pandoc Writer
-  -> NamedDoc PandocWithRequirements -- ^ named Pandoc with its union of requirements
-  -> m (NamedDoc a) -- ^ document in output format (in the effects monad).
-namedPandocFrom pwf pwo (NamedDoc n pdoc) = do
+  -> DocWithInfo PandocInfo PandocWithRequirements -- ^ named Pandoc with its union of requirements
+  -> m (DocWithInfo PandocInfo a) -- ^ document in output format (in the effects monad).
+pandocFrom pwf pwo (DocWithInfo i pdoc) = do
   doc' <- fromPandoc pwf pwo pdoc
-  return $ NamedDoc n doc'
+  return $ DocWithInfo i doc'
 
 -- | Given a write format and options,
 -- convert a list of named Pandocs to a list of named docs in the requested format
-pandocsToNamed
+pandocsToDocs
   :: PM.PandocEffects effs
   => PandocWriteFormat a -- ^ format for Pandoc output
   -> PA.WriterOptions -- ^ options for the Pandoc Writer
   -> P.Sem (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
-  -> P.Sem effs [NamedDoc a] -- ^ documents in requested format, within the effects monad
-pandocsToNamed pwf pwo =
-  (traverse (\x -> PM.absorbPandocMonad $ namedPandocFrom pwf pwo x) =<<)
-    . toNamedDocList
+  -> P.Sem effs [DocWithInfo PandocInfo a] -- ^ documents in requested format, within the effects monad
+pandocsToDocs pwf pwo =
+  (traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) =<<)
+    . toDocList
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE

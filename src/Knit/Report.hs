@@ -79,9 +79,10 @@ import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , PandocReadFormat(..)
                                                 , PandocWriteFormat(..)
                                                 , Pandocs
+                                                , PandocInfo (..)
                                                 , newPandoc
                                                 )
-import           Knit.Effect.Docs               ( NamedDoc(..) )
+import           Knit.Effect.Docs               ( DocWithInfo(..) )
 import           Knit.Effect.PandocMonad
 import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , logAll
@@ -143,10 +144,10 @@ knitHtmls
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Sem (KnitEffectDocsStack m) ()
-  -> m (Either PA.PandocError [KP.NamedDoc TL.Text])
-knitHtmls loggingPrefixM ls writeConfig =
-  consumeKnitEffectStack loggingPrefixM ls . KD.toNamedDocListWithM
-    (fmap BH.renderHtml . KO.toBlazeDocument writeConfig)
+  -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
+knitHtmls loggingPrefixM ls (PandocWriterConfig mFP tv oF) =
+  consumeKnitEffectStack loggingPrefixM ls . KD.toDocListWithM
+    (\(KP.PandocInfo _ tv') a -> fmap BH.renderHtml . KO.toBlazeDocument (PandocWriterConfig mFP (tv' <> tv) oF) $ a)
 
 -- | Create HTML Text from pandoc fragments
 -- In use, you may need a type-application to specify m.
@@ -184,7 +185,7 @@ type KnitEffects r = (KPM.PandocEffects r, P.Member KUI.UnusedId r)
 type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
 
 -- | Constraint alias for the effects we need to knit multiple documents.
-type KnitMany r = (KnitEffects r, P.Member (KD.Docs KP.PandocWithRequirements) r)
+type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
@@ -198,7 +199,7 @@ type KnitEffectStack m =
    , P.Lift m
    ]
 -- | Add a Multi-doc writer to the front of the effect list
-type KnitEffectDocsStack m = (KD.Docs KP.PandocWithRequirements ': KnitEffectStack m)
+type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 
 -- | Add a single-doc writer to the front of the effect list
 type KnitEffectDocStack m = (KP.ToPandoc ': KnitEffectStack m)

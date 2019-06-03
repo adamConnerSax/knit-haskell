@@ -24,12 +24,13 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let writeNamedHtml (K.NamedDoc n lt) = T.writeFile (T.unpack $ "examples/html/" <> n <> ".html") $ TL.toStrict lt
+  let writeNamedHtml (K.DocWithInfo (K.PandocInfo n _) lt)
+        = T.writeFile (T.unpack $ "examples/html/" <> n <> ".html") $ TL.toStrict lt
       writeAllHtml = fmap (const ()) . traverse writeNamedHtml
       pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
   resE <- K.knitHtmls (Just "SimpleExample.Main") K.logAll pandocWriterConfig $ do
-    K.newPandoc "multi_doc1" makeDoc1
-    K.newPandoc "multi_doc2" makeDoc2
+    K.newPandoc (K.PandocInfo "multi_doc1" M.empty) makeDoc1
+    K.newPandoc (K.PandocInfo "multi_doc2" M.empty) makeDoc2
   case resE of
     Right namedDocs -> writeAllHtml namedDocs 
     Left err -> putStrLn $ "pandoc error: " ++ show err

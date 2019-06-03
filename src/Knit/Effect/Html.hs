@@ -49,7 +49,7 @@ module Knit.Effect.Html
   , newBlazeDoc
 
     -- * Re-exports
-  , NamedDoc(..)
+  , DocWithInfo(..)
   )
 where
 
@@ -63,9 +63,9 @@ import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                     as T
 
 import           Knit.Effect.Docs               ( Docs
-                                                , NamedDoc(..)
+                                                , DocWithInfo(..)
                                                 , newDoc
-                                                , toNamedDocList
+                                                , toDocList
                                                 )
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
@@ -87,11 +87,11 @@ blaze = P.tell
 
 -- | Type-Alias for the 'Knit.Effects.Docs' effect (multi-document Writer), specialized to Lucid docs.
 -- To be used in an app that produces multiple html outputs, built up from Lucid bits.
-type LucidDocs = Docs (LH.Html ())
+type LucidDocs = Docs T.Text (LH.Html ())
 
 -- | Type-Alias for the 'Knit.Effects.Docs' effect (multi-document Writer) specialized to Blaze docs.
 -- To be used in an app that produces multiple html outputs, built up from Blaze bits.
-type BlazeDocs = Docs BH.Html
+type BlazeDocs = Docs T.Text BH.Html
 
 -- | Take the current Lucid HTML in the writer and add it to the set of named docs with the given name.
 -- NB: Only use this function for making sets of documents built exclusively from Lucid.  Otherwise use the more general Pandoc infrastructure in
@@ -115,13 +115,13 @@ newBlazeDoc n l = (fmap fst $ P.runWriter l) >>= newDoc n
 
 -- | Interpret the LucidDocs effect (via Writer), producing a list of named Lucid docs, suitable for writing to disk.
 lucidToNamedText
-  :: P.Sem (LucidDocs ': effs) () -> P.Sem effs [NamedDoc TL.Text]
-lucidToNamedText = fmap (fmap (fmap LH.renderText)) . toNamedDocList -- monad, list, NamedDoc itself
+  :: P.Sem (LucidDocs ': effs) () -> P.Sem effs [DocWithInfo T.Text TL.Text]
+lucidToNamedText = fmap (fmap (fmap LH.renderText)) . toDocList -- monad, list, NamedDoc itself
 
 -- | Interpret the BlazeDocs effect (via Writer), producing a list of named Blaze docs.
 blazeToNamedText
-  :: P.Sem (BlazeDocs ': effs) () -> P.Sem effs [NamedDoc TL.Text]
-blazeToNamedText = fmap (fmap (fmap BH.renderHtml)) . toNamedDocList -- monad, list, NamedDoc itself
+  :: P.Sem (BlazeDocs ': effs) () -> P.Sem effs [DocWithInfo T.Text TL.Text]
+blazeToNamedText = fmap (fmap (fmap BH.renderHtml)) . toDocList -- monad, list, NamedDoc itself
 
 -- | Interprest the Lucid effect (via Writer), producing a Lucid @Html ()@ from the currently written doc
 lucidHtml :: P.Sem (Lucid ': effs) () -> P.Sem effs (LH.Html ())
