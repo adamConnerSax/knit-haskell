@@ -14,7 +14,7 @@ import qualified Data.Text                as T
 import           Data.String.Here          (here)
 import qualified Graphics.Vega.VegaLite   as V
 
---import qualified Plots                    as P
+import qualified Plots                    as P
 
 templateVars :: M.Map String String
 templateVars = M.fromList
