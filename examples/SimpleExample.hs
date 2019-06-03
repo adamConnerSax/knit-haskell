@@ -54,10 +54,10 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
-  K.addMarkDown "## An example Diagrams visualization"
-  K.logLE K.Info "adding a Diagrams plot..."
+  K.addMarkDown "## Example Diagrams visualizations, the lsecond using the plots library."
+  K.logLE K.Info "adding a Diagrams example and plots example..."
   _ <- K.addDiagramAsSVG Nothing (Just "Example diagram") 300 300 exampleDiagram
---  _ <- K.addDiagramAsSVG Nothing (Just "Example diagrams visualization using the Plots library") 300 300 samplePlot
+  _ <- K.addDiagramAsSVG Nothing (Just "Example diagrams visualization using the Plots library") 300 300 samplePlot
   return ()
 
 -- example using HVega  
@@ -72,7 +72,7 @@ exampleVis =
   in V.toVegaLite [ bkg, cars, V.mark V.Circle [], enc [] ]  
 
 
---sampleDiagram
+-- sampleDiagram
 -- from <https://archives.haskell.org/projects.haskell.org/diagrams/gallery/Hilbert.html>
 
 hilbert 0 = mempty
@@ -88,11 +88,6 @@ exampleDiagram = K.frame 1 . K.lw K.medium . K.lc K.darkred
           . K.strokeT $ hilbert 5
 
 
-{-
-This plot example requires the plots library which cannot currently
-be compiled with the polysemy plugin unless you use cabal.project
-and add "allow-newer : plots:containers"
-
 -- example using Plots (as an example of using Diagrams)
 samplePlot :: K.Diagram K.SVG
 samplePlot = P.renderAxis logAxis
@@ -102,11 +97,8 @@ logData = [K.V2 1 10, K.V2 2 100, K.V2 2.5 316, K.V2 3 1000]
 logAxis :: P.Axis K.SVG K.V2 Double
 logAxis = P.r2Axis K.&~ do
   P.scatterPlot' logData
-  -- yMin ?= 200
 
   P.yAxis P.&= do
     P.logScale K..= P.LogAxis
     P.majorTicksFunction K..= P.logMajorTicks 5 -- <> pure [1]
-    -- minorTicksFunction .= minorTicksHelper 5
 
--}
