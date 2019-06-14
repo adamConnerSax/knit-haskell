@@ -12,6 +12,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE AllowAmbiguousTypes   #-}
@@ -79,6 +80,8 @@ import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 import           Polysemy.Internal.Combinators  ( stateful )
 import qualified Polysemy.Error                as P
+import qualified Polysemy.MTL                  as P
+
 import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
 import qualified Text.Pandoc.UTF8              as UTF8
@@ -131,24 +134,24 @@ import qualified Control.Exception             as E
 
 -- | Pandoc Effect
 data Pandoc m r where
-  LookupEnv :: String -> Pandoc m (Maybe String)
-  GetCurrentTime :: Pandoc m UTCTime
-  GetCurrentTimeZone :: Pandoc m TimeZone
-  NewStdGen :: Pandoc m StdGen
-  NewUniqueHash :: Pandoc m Int
-  OpenURL :: String -> Pandoc m (BS.ByteString, Maybe PA.MimeType)
-  ReadFileLazy :: FilePath -> Pandoc m LBS.ByteString
-  ReadFileStrict :: FilePath -> Pandoc m BS.ByteString
-  Glob :: String -> Pandoc m [FilePath]
-  FileExists :: FilePath -> Pandoc m Bool
-  GetDataFileName :: FilePath -> Pandoc m FilePath
-  GetModificationTime :: FilePath -> Pandoc m UTCTime
-  GetCommonState :: Pandoc m PA.CommonState
-  PutCommonState :: PA.CommonState -> Pandoc m ()
-  GetsCommonState :: (PA.CommonState -> a) -> Pandoc m a
-  ModifyCommonState :: (PA.CommonState -> PA.CommonState) -> Pandoc m  ()
-  LogOutput :: PA.LogMessage -> Pandoc m ()
-  Trace :: String -> Pandoc m ()
+  LookupEnv ::String -> Pandoc m (Maybe String)
+  GetCurrentTime ::Pandoc m UTCTime
+  GetCurrentTimeZone ::Pandoc m TimeZone
+  NewStdGen ::Pandoc m StdGen
+  NewUniqueHash ::Pandoc m Int
+  OpenURL ::String -> Pandoc m (BS.ByteString, Maybe PA.MimeType)
+  ReadFileLazy ::FilePath -> Pandoc m LBS.ByteString
+  ReadFileStrict ::FilePath -> Pandoc m BS.ByteString
+  Glob ::String -> Pandoc m [FilePath]
+  FileExists ::FilePath -> Pandoc m Bool
+  GetDataFileName ::FilePath -> Pandoc m FilePath
+  GetModificationTime ::FilePath -> Pandoc m UTCTime
+  GetCommonState ::Pandoc m PA.CommonState
+  PutCommonState ::PA.CommonState -> Pandoc m ()
+  GetsCommonState ::(PA.CommonState -> a) -> Pandoc m a
+  ModifyCommonState ::(PA.CommonState -> PA.CommonState) -> Pandoc m  ()
+  LogOutput ::PA.LogMessage -> Pandoc m ()
+  Trace ::String -> Pandoc m ()
 
 P.makeSem ''Pandoc
 
@@ -169,38 +172,138 @@ logPandocMessage lm = send $ Log.Log $ Log.LogEntry
   (T.pack . PA.showLogMessage $ lm)
 
 -- | Constraint helper for using this set of effects in IO.
-type PandocEffects effs =
-  ( P.Member Pandoc effs
+type PandocEffects effs
+  = ( P.Member Pandoc effs
   , P.Member (P.Error PA.PandocError) effs
   , P.Member Log.PrefixLog effs
-  , P.Member (Log.Logger Log.LogEntry) effs)
+  , P.Member (Log.Logger Log.LogEntry) effs
+  )
 
+-- absorption gear
+absorbPandocMonad
+  :: P.Members '[P.Error PA.PandocError, Pandoc] r
+  => (PA.PandocMonad (P.Sem r) => P.Sem r a)
+  -> P.Sem r a
+absorbPandocMonad = P.absorb @PA.PandocMonad
+
+-- Once I split this off, if I do
+--type instance P.CanonicalEffect PA.PandocMonad = Pandoc
+
+instance P.ReifiableConstraint1 (PA.PandocMonad) where
+  data Dict1 PA.PandocMonad m = PandocMonad
+    {
+      lookupEnv_ :: String -> m (Maybe String)
+    , getCurrentTime_ :: m UTCTime
+    , getCurrentTimeZone_ :: m TimeZone
+    , newStdGen_ ::m StdGen
+    , newUniqueHash_ :: m Int
+    , openURL_ ::String ->  m (BS.ByteString, Maybe PA.MimeType)
+    , readFileLazy_ ::FilePath ->  m LBS.ByteString
+    , readFileStrict_ ::FilePath ->  m BS.ByteString
+    , glob_ ::String ->  m [FilePath]
+    , fileExists_ ::FilePath ->  m Bool
+    , getDataFileName_ ::FilePath ->  m FilePath
+    , getModificationTime_ ::FilePath ->  m UTCTime
+    , getCommonState_ :: m PA.CommonState
+    , putCommonState_ ::PA.CommonState ->  m ()
+    , getsCommonState_ ::forall a. (PA.CommonState -> a) ->  m a
+    , modifyCommonState_ ::(PA.CommonState -> PA.CommonState) ->  m  ()
+    , logOutput_ ::PA.LogMessage ->  m ()
+    , trace_ ::String ->  m ()
+    }
+  reifiedInstance = P.Sub P.Dict
+
+instance (Monad m
+         , P.Reifies s' (P.Dict1 (MonadError PA.PandocError) m)) => MonadError PA.PandocError (P.ConstrainedAction PA.PandocMonad m s') where
+  throwError e = P.ConstrainedAction $ throwError_ (P.reflect $ P.Proxy @s') e
+  catchError x f = P.ConstrainedAction
+    $ catchError_ (P.reflect $ P.Proxy @s') (P.action x) (P.action . f)
+
+instance (Monad m
+         , MonadError PA.PandocError (P.ConstrainedAction PA.PandocMonad m s')
+         , P.Reifies s' (P.Dict1 PA.PandocMonad m)) => PA.PandocMonad (P.ConstrainedAction PA.PandocMonad m s') where
+  lookupEnv = ConstrainedAction . lookupEnv_ (P.reflect $ P.Proxy @s')
+  getCurrentTime =
+    ConstrainedAction $ getCurrentTime_ (P.reflect $ P.Proxy @s')
+  getCurrentTimeZone =
+    ConstrainedAction $ getCurrentTimeZone_ (P.reflect $ P.Proxy @s')
+  newStdGen     = ConstrainedAction $ newStdGen_ (P.reflect $ P.Proxy @s')
+  newUniqueHash = ConstrainedAction $ newUniqueHash_ (P.reflect $ P.Proxy @s')
+  openURL       = ConstrainedAction . openURL_ (P.reflect $ P.Proxy @s')
+  readFileLazy  = ConstrainedAction . readFileLazy_ (P.reflect $ P.Proxy @s')
+  readFileStrict =
+    ConstrainedAction . readFileStrict_ (P.reflect $ P.Proxy @s')
+  glob       = ConstrainedAction . glob_ (P.reflect $ P.Proxy @s')
+  fileExists = ConstrainedAction . fileExists_ (P.reflect $ P.Proxy @s')
+  getDataFileName =
+    ConstrainedAction . getDataFileName_ (P.reflect $ P.Proxy @s')
+  getModificationTime =
+    ConstrainedAction . getModificationTime_ (P.reflect $ P.Proxy @s')
+  getCommonState =
+    ConstrainedAction $ getCommonState_ (P.reflect $ P.Proxy @s')
+  putCommonState =
+    ConstrainedAction . putCommonState_ (P.reflect $ P.Proxy @s')
+  getsCommonState =
+    ConstrainedAction . getsCommonState_ (P.reflect $ P.Proxy @s')
+  modifyCommonState =
+    ConstrainedAction . modifyCommonState_ (P.reflect $ P.Proxy @s')
+  logOutput = ConstrainedAction . logOutput_ (P.reflect $ P.Proxy @s')
+  trace     = ConstrainedAction . trace_ (P.reflect $ P.Proxy @s')
+
+
+instance P.Members [P.Error PA.PandocError, Pandoc] r => P.IsCanonicalEffect PA.PandocMonad r where
+  canonicalDictionary = PandocMonad lookupEnv
+                                    getCurrentTime
+                                    getCurrentTimeZone
+                                    newStdGen
+                                    newUniqueHash
+                                    openURL
+                                    readFileLazy
+                                    readFileStrict
+                                    glob
+                                    fileExists
+                                    getDataFileName
+                                    getModificationTime
+                                    getCommonState
+                                    putCommonState
+                                    getsCommonState
+                                    modifyCommonState
+                                    logOutput
+                                    trace
+
+{-
 -- | Unexported newtype for creating instances which we then discharge with absorbPandocMonad
 newtype PandocMonadSem r a = PandocMonadSem { unPandocMonadSem :: P.Sem r a } deriving (Functor, Applicative, Monad)
 
 instance (P.Member (P.Error PA.PandocError) r) => MonadError PA.PandocError (PandocMonadSem r) where
   throwError = PandocMonadSem . P.throw
-  catchError (PandocMonadSem sa) h = PandocMonadSem $ P.catch sa (unPandocMonadSem . h)
+  catchError (PandocMonadSem sa) h =
+    PandocMonadSem $ P.catch sa (unPandocMonadSem . h)
 
 instance (P.Member (P.Error PA.PandocError) r, PandocEffects r) => PA.PandocMonad (PandocMonadSem r) where
-  lookupEnv = PandocMonadSem . lookupEnv
-  getCurrentTime = PandocMonadSem $ getCurrentTime
-  getCurrentTimeZone = PandocMonadSem $ getCurrentTimeZone
-  newStdGen = PandocMonadSem $ newStdGen
-  newUniqueHash = PandocMonadSem $ newUniqueHash
-  openURL = PandocMonadSem . openURL
-  readFileLazy = PandocMonadSem . readFileLazy
-  readFileStrict = PandocMonadSem . readFileStrict
-  glob = PandocMonadSem . glob
-  fileExists = PandocMonadSem . fileExists
-  getDataFileName = PandocMonadSem . getDataFileName
+  lookupEnv           = PandocMonadSem . lookupEnv
+  getCurrentTime      = PandocMonadSem $ getCurrentTime
+  getCurrentTimeZone  = PandocMonadSem $ getCurrentTimeZone
+  newStdGen           = PandocMonadSem $ newStdGen
+  newUniqueHash       = PandocMonadSem $ newUniqueHash
+  openURL             = PandocMonadSem . openURL
+  readFileLazy        = PandocMonadSem . readFileLazy
+  readFileStrict      = PandocMonadSem . readFileStrict
+  glob                = PandocMonadSem . glob
+  fileExists          = PandocMonadSem . fileExists
+  getDataFileName     = PandocMonadSem . getDataFileName
   getModificationTime = PandocMonadSem . getModificationTime
-  getCommonState = PandocMonadSem $ getCommonState
-  putCommonState = PandocMonadSem . putCommonState
-  getsCommonState = PandocMonadSem . getsCommonState
-  modifyCommonState = PandocMonadSem . modifyCommonState
-  logOutput = PandocMonadSem . logOutput
-  trace = PandocMonadSem . trace
+  getCommonState      = PandocMonadSem $ getCommonState
+  putCommonState      = PandocMonadSem . putCommonState
+  getsCommonState     = PandocMonadSem . getsCommonState
+  modifyCommonState   = PandocMonadSem . modifyCommonState
+  logOutput           = PandocMonadSem . logOutput
+  trace               = PandocMonadSem . trace
+
+
+
+
+
 
 
 {- | Given an action constrained only by a PandocMonad constraint, 
@@ -213,11 +316,10 @@ absorbPandocMonad
   -> P.Sem r a
 absorbPandocMonad = unPandocMonadSem
 
+-}
 
 -- | Constraint helper for using this set of effects in IO.
-type PandocEffectsIO effs =
-  ( PandocEffects effs
-  , P.Member (P.Lift IO) effs)
+type PandocEffectsIO effs = (PandocEffects effs, P.Member (P.Lift IO) effs)
 
 -- | Interpret the Pandoc effect using @IO@, @Knit.Effect.Logger@ and @PolySemy.Error PandocError@ 
 interpretInIO
@@ -372,8 +474,8 @@ liftIOError f u = do
 -- or maybe the actual version on each machine has a correct local version??
 -- TODO: Fix/Understand this
 datadir :: FilePath
-datadir
-  = "/home/builder/hackage-server/build-cache/tmp-install/share/x86_64-linux-ghc-8.6.3/pandoc-2.7.2"
+datadir =
+  "/home/builder/hackage-server/build-cache/tmp-install/share/x86_64-linux-ghc-8.6.3/pandoc-2.7.2"
 
 getDataFileName' :: FilePath -> IO FilePath
 getDataFileName' fp = do
