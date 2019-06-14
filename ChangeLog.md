@@ -1,4 +1,4 @@
-Unreleased changes (v 0.5.0.0)
+* v 0.5.0.0
 * Added plots example back since there is a version of plots on hackage with 
 a relaxed upper bound on containers.
 * Changed the Doc effect so that instead of Text name, it carries a polymorphic info type.  
@@ -6,6 +6,7 @@ This is then specified in the Pandoc case to be a Text name and set of template 
 This creates several other changes and will break any multi-doc examples since now 
 "newPandoc" takes a first argument of the type ```PandocInfo``` (which is just a 
 product of a ```Text``` and a ```Map String String```).
+* raised lower bound and relaxed upper bound on polysemy
 
 v 0.4.0.0 
 * Added  

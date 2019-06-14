@@ -25,7 +25,7 @@ All of that is handled via writer-like effects, so additions to the documents ca
 There are a few examples in the "examples" directory.  
 * [SimpleExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/SimpleExample.hs) 
 demonstrates the bare bones features of the library.  Creating a document from a few fragments and then 
-"knitting" it into HTML text and writing that to a file.
+"knitting" it into HTML text and writing that to a file. This includes hvega, diagrams and plots examples.
 * [MultiDocExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MultiDocExample.hs) 
 demonstrates how to build multiple documents.
 * [MtlExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MtlExample.hs) 
