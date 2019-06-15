@@ -29,7 +29,7 @@ maintainer:          adam_conner_sax@yahoo.com
 copyright:           2019 Adam Conner-Sax
 category:            Text
 extra-source-files:  ChangeLog.md
-tested-with: GHC ==8.6.4 
+tested-with: GHC ==8.6.4
 Build-type: Simple
 
 source-repository head
@@ -39,7 +39,10 @@ source-repository head
 
                                           
 library
-  ghc-options: -Wall -fplugin=Polysemy.Plugin -fno-warn-unused-top-binds -funbox-strict-fields
+  ghc-options: -Wall -fno-warn-unused-top-binds -funbox-strict-fields
+  ghc-options: -fplugin=Polysemy.Plugin
+--  ghc-options: -fdefer-type-errors -fno-warn-deferred-type-errors
+-- when generating haddocks, comment out the plugin and uncomment the one above
   exposed-modules: Knit.Effect.Logger
                  , Knit.Effect.Docs
                  , Knit.Effect.Html
