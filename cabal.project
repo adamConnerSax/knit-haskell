@@ -1,2 +1,2 @@
-packages: ./
+packages: ./ ../../Development/haskell/polysemy-zoo
 allow-newer: plots:containers

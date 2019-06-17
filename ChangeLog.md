@@ -1,4 +1,7 @@
-Unreleased changes (v 0.5.0.0)
+v 0.6.0.0
+* updated to use polysemy-zoo version of constraint absorbers in PandocMonad.
+
+v 0.5.0.0
 * Added plots example back since there is a version of plots on hackage with 
 a relaxed upper bound on containers.
 * Changed the Doc effect so that instead of Text name, it carries a polymorphic info type.  

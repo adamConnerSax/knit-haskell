@@ -80,7 +80,7 @@ import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 import           Polysemy.Internal.Combinators  ( stateful )
 import qualified Polysemy.Error                as P
-import qualified Polysemy.MTL                  as P
+import qualified Polysemy.ConstraintAbsorber   as P
 
 import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
@@ -96,6 +96,9 @@ import           Control.Monad                  ( when )
 import           Control.Monad.Except           ( MonadError(..)
                                                 , liftIO
                                                 )
+
+--import qualified Data.Constraint               as C
+
 import qualified Network.URI                   as NU
 import           Network.Socket                 ( withSocketsDo )
 import qualified Network.HTTP.Client           as NHC
@@ -180,80 +183,99 @@ type PandocEffects effs
   )
 
 -- absorption gear
+-- | absorb a @PandocMonad@ constraint into
+--  @Members [Pandoc, Error PandocError] r => Sem r@
 absorbPandocMonad
   :: P.Members '[P.Error PA.PandocError, Pandoc] r
   => (PA.PandocMonad (P.Sem r) => P.Sem r a)
   -> P.Sem r a
-absorbPandocMonad = P.absorb @PA.PandocMonad
+absorbPandocMonad = P.absorbWithSem @PA.PandocMonad @Action
+  (PandocDict lookupEnv
+              getCurrentTime
+              getCurrentTimeZone
+              newStdGen
+              newUniqueHash
+              openURL
+              readFileLazy
+              readFileStrict
+              glob
+              fileExists
+              getDataFileName
+              getModificationTime
+              getCommonState
+              putCommonState
+              getsCommonState
+              modifyCommonState
+              logOutput
+              trace
+              P.throw
+              P.catch
+  )
+  (P.Sub P.Dict)
 
--- Once I split this off, if I do
---type instance P.CanonicalEffect PA.PandocMonad = Pandoc
+-- | wrapper for the PandocMonad constrained action 
+newtype Action m s' a = Action
+    { action :: m a
+    } deriving (Functor, Applicative, Monad)
 
-instance P.ReifiableConstraint1 PA.PandocMonad where
-  data Dict1 PA.PandocMonad m = PandocMonad
-    {
-      lookupEnv_ :: String -> m (Maybe String)
-    , getCurrentTime_ :: m UTCTime
-    , getCurrentTimeZone_ :: m TimeZone
-    , newStdGen_ ::m StdGen
-    , newUniqueHash_ :: m Int
-    , openURL_ ::String ->  m (BS.ByteString, Maybe PA.MimeType)
-    , readFileLazy_ ::FilePath ->  m LBS.ByteString
-    , readFileStrict_ ::FilePath ->  m BS.ByteString
-    , glob_ ::String ->  m [FilePath]
-    , fileExists_ ::FilePath ->  m Bool
-    , getDataFileName_ ::FilePath ->  m FilePath
-    , getModificationTime_ ::FilePath ->  m UTCTime
-    , getCommonState_ :: m PA.CommonState
-    , putCommonState_ ::PA.CommonState ->  m ()
-    , getsCommonState_ ::forall a. (PA.CommonState -> a) ->  m a
-    , modifyCommonState_ ::(PA.CommonState -> PA.CommonState) ->  m  ()
-    , logOutput_ ::PA.LogMessage ->  m ()
-    , trace_ ::String ->  m ()
-    }
-  reifiedInstance = P.Sub P.Dict
+-- | A dictionary of the functions we need to supply
+-- to make an instance of PandocMonad
+-- NB: the presence of @throwError@ and @catchError_@
+-- which we need because of the MonadError superclass.
+data PandocDict m = PandocDict
+  {
+    lookupEnv_ :: String -> m (Maybe String)
+  , getCurrentTime_ :: m UTCTime
+  , getCurrentTimeZone_ :: m TimeZone
+  , newStdGen_ ::m StdGen
+  , newUniqueHash_ :: m Int
+  , openURL_ :: String ->  m (BS.ByteString, Maybe PA.MimeType)
+  , readFileLazy_ :: FilePath ->  m LBS.ByteString
+  , readFileStrict_ :: FilePath ->  m BS.ByteString
+  , glob_ :: String ->  m [FilePath]
+  , fileExists_ :: FilePath ->  m Bool
+  , getDataFileName_ :: FilePath ->  m FilePath
+  , getModificationTime_ :: FilePath ->  m UTCTime
+  , getCommonState_ :: m PA.CommonState
+  , putCommonState_ :: PA.CommonState ->  m ()
+  , getsCommonState_ :: forall a. (PA.CommonState -> a) ->  m a
+  , modifyCommonState_ :: (PA.CommonState -> PA.CommonState) ->  m  ()
+  , logOutput_ :: PA.LogMessage ->  m ()
+  , trace_ :: String ->  m ()
+  , throwError_ :: forall a. PA.PandocError -> m a
+  , catchError_ :: forall a. m a -> (PA.PandocError -> m a) -> m a
+  }
+
+
+instance (Monad m
+         , P.Reifies s' (PandocDict m)) => MonadError PA.PandocError (Action m s') where
+  throwError e = Action $ throwError_ (P.reflect $ P.Proxy @s') e
+  catchError x f =
+    Action $ catchError_ (P.reflect $ P.Proxy @s') (action x) (action . f)
+
+instance (Monad m
+         , MonadError PA.PandocError (Action m s')
+         , P.Reifies s' (PandocDict m)) => PA.PandocMonad (Action m s') where
+  lookupEnv           = Action . lookupEnv_ (P.reflect $ P.Proxy @s')
+  getCurrentTime      = Action $ getCurrentTime_ (P.reflect $ P.Proxy @s')
+  getCurrentTimeZone  = Action $ getCurrentTimeZone_ (P.reflect $ P.Proxy @s')
+  newStdGen           = Action $ newStdGen_ (P.reflect $ P.Proxy @s')
+  newUniqueHash       = Action $ newUniqueHash_ (P.reflect $ P.Proxy @s')
+  openURL             = Action . openURL_ (P.reflect $ P.Proxy @s')
+  readFileLazy        = Action . readFileLazy_ (P.reflect $ P.Proxy @s')
+  readFileStrict      = Action . readFileStrict_ (P.reflect $ P.Proxy @s')
+  glob                = Action . glob_ (P.reflect $ P.Proxy @s')
+  fileExists          = Action . fileExists_ (P.reflect $ P.Proxy @s')
+  getDataFileName     = Action . getDataFileName_ (P.reflect $ P.Proxy @s')
+  getModificationTime = Action . getModificationTime_ (P.reflect $ P.Proxy @s')
+  getCommonState      = Action $ getCommonState_ (P.reflect $ P.Proxy @s')
+  putCommonState      = Action . putCommonState_ (P.reflect $ P.Proxy @s')
+  getsCommonState     = Action . getsCommonState_ (P.reflect $ P.Proxy @s')
+  modifyCommonState   = Action . modifyCommonState_ (P.reflect $ P.Proxy @s')
+  logOutput           = Action . logOutput_ (P.reflect $ P.Proxy @s')
+  trace               = Action . trace_ (P.reflect $ P.Proxy @s')
 
 {-
-instance (Monad m
-         , P.Reifies s' (P.Dict1 (MonadError PA.PandocError) m)) => MonadError PA.PandocError (P.ConstrainedAction PA.PandocMonad m s') where
-  throwError e = P.ConstrainedAction $ throwError_ (P.reflect $ P.Proxy @s') e
-  catchError x f = P.ConstrainedAction
-    $ catchError_ (P.reflect $ P.Proxy @s') (P.action x) (P.action . f)
--}
-
-instance (Monad m
-         , MonadError PA.PandocError (P.ConstrainedAction PA.PandocMonad m s')
-         , P.Reifies s' (P.Dict1 PA.PandocMonad m)) => PA.PandocMonad (P.ConstrainedAction PA.PandocMonad m s') where
-  lookupEnv = P.ConstrainedAction . lookupEnv_ (P.reflect $ P.Proxy @s')
-  getCurrentTime =
-    P.ConstrainedAction $ getCurrentTime_ (P.reflect $ P.Proxy @s')
-  getCurrentTimeZone =
-    P.ConstrainedAction $ getCurrentTimeZone_ (P.reflect $ P.Proxy @s')
-  newStdGen = P.ConstrainedAction $ newStdGen_ (P.reflect $ P.Proxy @s')
-  newUniqueHash =
-    P.ConstrainedAction $ newUniqueHash_ (P.reflect $ P.Proxy @s')
-  openURL      = P.ConstrainedAction . openURL_ (P.reflect $ P.Proxy @s')
-  readFileLazy = P.ConstrainedAction . readFileLazy_ (P.reflect $ P.Proxy @s')
-  readFileStrict =
-    P.ConstrainedAction . readFileStrict_ (P.reflect $ P.Proxy @s')
-  glob       = P.ConstrainedAction . glob_ (P.reflect $ P.Proxy @s')
-  fileExists = P.ConstrainedAction . fileExists_ (P.reflect $ P.Proxy @s')
-  getDataFileName =
-    P.ConstrainedAction . getDataFileName_ (P.reflect $ P.Proxy @s')
-  getModificationTime =
-    P.ConstrainedAction . getModificationTime_ (P.reflect $ P.Proxy @s')
-  getCommonState =
-    P.ConstrainedAction $ getCommonState_ (P.reflect $ P.Proxy @s')
-  putCommonState =
-    P.ConstrainedAction . putCommonState_ (P.reflect $ P.Proxy @s')
-  getsCommonState =
-    P.ConstrainedAction . getsCommonState_ (P.reflect $ P.Proxy @s')
-  modifyCommonState =
-    P.ConstrainedAction . modifyCommonState_ (P.reflect $ P.Proxy @s')
-  logOutput = P.ConstrainedAction . logOutput_ (P.reflect $ P.Proxy @s')
-  trace     = P.ConstrainedAction . trace_ (P.reflect $ P.Proxy @s')
-
-
 instance P.Members [P.Error PA.PandocError, Pandoc] r => P.IsCanonicalEffect PA.PandocMonad r where
   canonicalDictionary = PandocMonad lookupEnv
                                     getCurrentTime
@@ -273,6 +295,9 @@ instance P.Members [P.Error PA.PandocError, Pandoc] r => P.IsCanonicalEffect PA.
                                     modifyCommonState
                                     logOutput
                                     trace
+                                    P.throw
+                                    P.catch
+-}
 
 {-
 -- | Unexported newtype for creating instances which we then discharge with absorbPandocMonad
