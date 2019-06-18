@@ -54,7 +54,8 @@ or stack equivalent. See this repo for a cabal.project example.
 If the ```Random``` effect is included in the effect list, the effect monad is an instance of 
 [MonadRandom](http://hackage.haskell.org/package/random-fu-0.2.7.0/docs/Data-Random.html#t:MonadRandom). 
 Pandoc effects and writer effects for document building are also provided.
-
+* Pandoc templates are included for HTML output.  See the examples for how to access them
+or specify others.
 * Though you can theoretically output to any format Pandoc can 
 write--and it would be great to add some output formats!--some 
 features only work with some output formats. 

@@ -30,7 +30,7 @@ copyright:           2019 Adam Conner-Sax
 category:            Text
 extra-source-files:  ChangeLog.md, Readme.md
 data-dir:            pandoc-templates
-data-files:          *.html *.css
+data-files:          *.html *.html5 *.css data/**/*.html4 data/**/*.html5
 
 tested-with: GHC ==8.6.4
 Build-type: Simple

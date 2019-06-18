@@ -71,6 +71,7 @@ module Knit.Effect.PandocMonad
 where
 
 import qualified Knit.Effect.Logger            as Log
+import qualified Paths_knit_haskell            as Paths
 
 import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
@@ -426,12 +427,11 @@ liftIOError f u = do
 -- this default is built into Pandoc.  I could probably do something more useful here but maybe something depends on it??
 -- or maybe the actual version on each machine has a correct local version??
 -- TODO: Fix/Understand this
-datadir :: FilePath
-datadir =
-  "/home/builder/hackage-server/build-cache/tmp-install/share/x86_64-linux-ghc-8.6.3/pandoc-2.7.2"
+datadir :: IO FilePath
+datadir = Paths.getDataDir
+--  "/home/builder/hackage-server/build-cache/tmp-install/share/x86_64-linux-ghc-8.6.3/pandoc-2.7.2"
 
 getDataFileName' :: FilePath -> IO FilePath
 getDataFileName' fp = do
-  dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir")
-                                (\_ -> return datadir)
+  dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir") (\_ -> datadir)
   return (dir ++ "/" ++ fp)
