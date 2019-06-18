@@ -56,7 +56,7 @@ module Knit.Report
   , module Knit.Report.Input.Visualization.Hvega
   , module Knit.Report.Input.Visualization.Diagrams
 
-    -- * Output 
+    -- * Output
   , module Knit.Report.Output
   , module Knit.Report.Output.Html
 
@@ -79,7 +79,7 @@ import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , PandocReadFormat(..)
                                                 , PandocWriteFormat(..)
                                                 , Pandocs
-                                                , PandocInfo (..)
+                                                , PandocInfo(..)
                                                 , newPandoc
                                                 )
 import           Knit.Effect.Docs               ( DocWithInfo(..) )
@@ -106,7 +106,7 @@ import           Knit.Report.Input.Visualization.Hvega
 import           Knit.Report.Input.Visualization.Diagrams
 --                                         hiding ( trace ) -- trace conflicts with Pandoc.trace
 
-import           Knit.Report.Output             ( PandocWriterConfig(..) )
+import           Knit.Report.Output
 import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 , mindocOptionsF
                                                 )
@@ -123,7 +123,6 @@ import qualified Polysemy.IO                   as PI
 
 import qualified Text.Pandoc                   as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
-
 
 import qualified Knit.Report.Output.Html       as KO
 import qualified Knit.Effect.Docs              as KD
@@ -144,10 +143,18 @@ knitHtmls
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Sem (KnitEffectDocsStack m) ()
-  -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
+  -> m
+       ( Either
+           PA.PandocError
+           [KP.DocWithInfo KP.PandocInfo TL.Text]
+       )
 knitHtmls loggingPrefixM ls (PandocWriterConfig mFP tv oF) =
   consumeKnitEffectStack loggingPrefixM ls . KD.toDocListWithM
-    (\(KP.PandocInfo _ tv') a -> fmap BH.renderHtml . KO.toBlazeDocument (PandocWriterConfig mFP (tv' <> tv) oF) $ a)
+    (\(KP.PandocInfo _ tv') a ->
+      fmap BH.renderHtml
+        . KO.toBlazeDocument (PandocWriterConfig mFP (tv' <> tv) oF)
+        $ a
+    )
 
 -- | Create HTML Text from pandoc fragments
 -- In use, you may need a type-application to specify m.
@@ -189,15 +196,9 @@ type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
-type KnitEffectStack m =
-  '[ KUI.UnusedId
-   , KPM.Pandoc
-   , KLog.Logger KLog.LogEntry
-   , KLog.PrefixLog
-   , PE.Error PA.PandocError
-   , P.Lift IO
-   , P.Lift m
-   ]
+type KnitEffectStack m
+  = '[KUI.UnusedId, KPM.Pandoc, KLog.Logger KLog.LogEntry, KLog.PrefixLog, PE.Error
+    PA.PandocError, P.Lift IO, P.Lift m]
 -- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 

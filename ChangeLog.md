@@ -1,5 +1,10 @@
 v 0.6.0.0
 * updated to use polysemy-zoo version of constraint absorbers in PandocMonad.
+* Hackage download should now include templates and associated css
+* Added mkPandocWriterConfig and addCss function in Knit.Report.Output to handle loading things in 
+the included directory, which may be installed in a platform independent way.
+* Added two more html templates, pandoc-bootstrap-KH.html and pandoc-adaptive-bootstrap-KH.html
+with pandoc-bootstrap.css and used them in some of the examples.
 
 v 0.5.0.0
 * Added plots example back since there is a version of plots on hackage with 

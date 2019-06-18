@@ -26,7 +26,8 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
+  let template = K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
+  pandocWriterConfig <- K.mkPandocWriterConfig template templateVars K.mindocOptionsF
   resE <- K.knitHtml (Just "SimpleExample.Main") K.logAll pandocWriterConfig makeDoc
   case resE of
     Right htmlAsText ->

@@ -27,7 +27,9 @@ main = do
   let writeNamedHtml (K.DocWithInfo (K.PandocInfo n _) lt)
         = T.writeFile (T.unpack $ "examples/html/" <> n <> ".html") $ TL.toStrict lt
       writeAllHtml = fmap (const ()) . traverse writeNamedHtml
-      pandocWriterConfig = K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
+      template = K.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html"
+  tvWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css") templateVars
+  pandocWriterConfig <- K.mkPandocWriterConfig template  tvWithCss K.mindocOptionsF
   resE <- K.knitHtmls (Just "SimpleExample.Main") K.logAll pandocWriterConfig $ do
     K.newPandoc (K.PandocInfo "multi_doc1" M.empty) makeDoc1
     K.newPandoc (K.PandocInfo "multi_doc2" M.empty) makeDoc2

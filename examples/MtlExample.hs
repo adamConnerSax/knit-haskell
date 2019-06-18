@@ -39,8 +39,9 @@ getEnv = MyStack $ ask
 
 main :: IO ()
 main = do
-  let pandocWriterConfig =
-        K.PandocWriterConfig (Just "pandoc-templates/minWithVega-pandoc.html")  templateVars K.mindocOptionsF
+  let template =  K.FromIncludedTemplateDir "pandoc-bootstrap-KH.html"
+  templateVarsWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css") templateVars
+  pandocWriterConfig <- K.mkPandocWriterConfig template templateVarsWithCss K.mindocOptionsF
   resE <- runExampleApp "This is from the MyApp environment."
     $ K.knitHtml (Just "MtlExample.Main") K.logAll pandocWriterConfig makeDoc
   case resE of

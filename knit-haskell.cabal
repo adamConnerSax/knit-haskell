@@ -28,14 +28,18 @@ author:              Adam Conner-Sax
 maintainer:          adam_conner_sax@yahoo.com
 copyright:           2019 Adam Conner-Sax
 category:            Text
-extra-source-files:  ChangeLog.md
+extra-source-files:  ChangeLog.md, Readme.md
+data-dir:            pandoc-templates
+data-files:          *.html *.css
+
 tested-with: GHC ==8.6.4
 Build-type: Simple
 
 source-repository head
     Type: git
     Location: https://github.com/adamConnerSax/knit-haskell
-                                          
+
+                                              
 library
   ghc-options: -Wall -fno-warn-unused-top-binds -funbox-strict-fields
   ghc-options: -fplugin=Polysemy.Plugin
@@ -48,6 +52,7 @@ library
                  , Knit.Effect.PandocMonad
                  , Knit.Effect.Pandoc
                  , Knit.Effect.UnusedId
+                 , Knit.Report
                  , Knit.Report.Input.Table.Colonnade
                  , Knit.Report.Input.Html
                  , Knit.Report.Input.Html.Lucid
@@ -58,9 +63,9 @@ library
                  , Knit.Report.Input.Visualization.Diagrams
                  , Knit.Report.Output
                  , Knit.Report.Output.Html
-                 , Knit.Report
                  , Knit.Report.Other.Lucid
                  , Knit.Report.Other.Blaze
+                 , Paths_knit_haskell
 
   build-depends:    aeson-pretty                      >= 0.8.7 && < 0.9,
                     base                              >= 4.12.0 && < 4.13,
