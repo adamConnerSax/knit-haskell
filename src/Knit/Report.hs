@@ -74,12 +74,13 @@ import           Polysemy                       ( Member
                                                 , Sem
                                                 , Lift
                                                 )
+import qualified Polysemy.Reader               as PR
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
                                                 , PandocReadFormat(..)
                                                 , PandocWriteFormat(..)
                                                 , Pandocs
-                                                , PandocInfo (..)
+                                                , PandocInfo(..)
                                                 , newPandoc
                                                 )
 import           Knit.Effect.Docs               ( DocWithInfo(..) )
@@ -144,10 +145,18 @@ knitHtmls
   -> [KLog.LogSeverity] -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Sem (KnitEffectDocsStack m) ()
-  -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
+  -> m
+       ( Either
+           PA.PandocError
+           [KP.DocWithInfo KP.PandocInfo TL.Text]
+       )
 knitHtmls loggingPrefixM ls (PandocWriterConfig mFP tv oF) =
   consumeKnitEffectStack loggingPrefixM ls . KD.toDocListWithM
-    (\(KP.PandocInfo _ tv') a -> fmap BH.renderHtml . KO.toBlazeDocument (PandocWriterConfig mFP (tv' <> tv) oF) $ a)
+    (\(KP.PandocInfo _ tv') a ->
+      fmap BH.renderHtml
+        . KO.toBlazeDocument (PandocWriterConfig mFP (tv' <> tv) oF)
+        $ a
+    )
 
 -- | Create HTML Text from pandoc fragments
 -- In use, you may need a type-application to specify m.
@@ -166,7 +175,20 @@ knitHtml loggingPrefixM ls writeConfig =
 
 -- | Constraints required to knit a document using effects from a base monad m.
 type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
+{-
+-- | Environment for knitting.  Subject to addition of fields, so use field names rather than pattern matching
+data KnitEnv =
+  KnitEnv { artifactPathM :: Maybe T.Text
+          }
 
+type KnitEnvReader = PR.Reader KnitEnv
+
+askKnitEnv :: P.Member KnitEnvReader r => Sem r KnitEnv
+askKnitEnv = ask
+
+asksKnitEnv :: P.Member KnitEnvReader r => (KnitEnv -> a) -> Sem r a
+asksKnitEnv f = f <$> askKnitEnv
+-}
 -- | lift an action in a base monad into a Polysemy monad.  This is just a renaming for convenience.
 liftKnit :: Member (Lift m) r => m a -> Sem r a
 liftKnit = P.sendM
@@ -189,15 +211,9 @@ type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
-type KnitEffectStack m =
-  '[ KUI.UnusedId
-   , KPM.Pandoc
-   , KLog.Logger KLog.LogEntry
-   , KLog.PrefixLog
-   , PE.Error PA.PandocError
-   , P.Lift IO
-   , P.Lift m
-   ]
+type KnitEffectStack m
+  = '[KUI.UnusedId, KPM.Pandoc, KLog.Logger KLog.LogEntry, KLog.PrefixLog, PE.Error
+    PA.PandocError, P.Lift IO, P.Lift m]
 -- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 

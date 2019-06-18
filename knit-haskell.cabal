@@ -74,6 +74,7 @@ library
                     directory                         >= 1.3.3.0 && < 1.4.0.0,
                     diagrams-lib                      >= 1.4 && < 1.5.0.0,
                     diagrams-svg                      >= 1.4.1 && < 1.5.0.0,
+                    diagrams-rasterific               >= 1.3.0 && < 1.5.0.0,
                     Glob                              >= 0.10.0 && < 0.11.0,
                     http-client                       >= 0.6.4 && < 0.7.0,
                     http-client-tls                   >= 0.3.5.3 && < 0.4.0.0,
@@ -105,7 +106,7 @@ test-suite SimpleExample
     type: exitcode-stdio-1.0
     main-is: SimpleExample.hs
     hs-source-dirs: examples
-    ghc-options: -Wall
+    ghc-options: -fplugin=Polysemy.Plugin
     build-depends: base,
                    blaze-html,
                    containers,
@@ -113,7 +114,8 @@ test-suite SimpleExample
                    hvega,     
                    knit-haskell                      -any,
                    plots                             >= 0.1.1.0 && <= 0.2,
-                   polysemy,  
+                   polysemy,
+                   polysemy-plugin,  
                    text      
     default-language: Haskell2010
 
@@ -121,14 +123,15 @@ test-suite ErrorExample
     type: exitcode-stdio-1.0
     main-is: ErrorExample.hs
     hs-source-dirs: examples
-    ghc-options: -Wall 
+    ghc-options: -fplugin=Polysemy.Plugin
     build-depends: base,
                    blaze-html,
                    containers,
                    here                              >= 1.2.10 && < 1.3.0,
                    hvega,     
                    knit-haskell                      -any,
-                   polysemy,  
+                   polysemy,
+                   polysemy-plugin,  
                    text      
     default-language: Haskell2010
 
@@ -136,14 +139,15 @@ test-suite MultiDocExample
     type: exitcode-stdio-1.0
     main-is: MultiDocExample.hs
     hs-source-dirs: examples
-    ghc-options: -Wall 
+    ghc-options: -fplugin=Polysemy.Plugin
     build-depends: base,
                    blaze-html,
                    containers,
                    here                              >= 1.2.10 && < 1.3.0,
                    hvega,     
                    knit-haskell                      -any,
-                   polysemy,  
+                   polysemy,
+                   polysemy-plugin,                     
                    text      
     default-language: Haskell2010
 
@@ -151,7 +155,7 @@ test-suite MtlExample
     type: exitcode-stdio-1.0
     main-is: MtlExample.hs
     hs-source-dirs: examples
-    ghc-options: -Wall 
+    ghc-options: -fplugin=Polysemy.Plugin
     build-depends: base,
                    blaze-html,
                    containers,
@@ -160,6 +164,7 @@ test-suite MtlExample
                    knit-haskell                      -any,
                    mtl,
                    polysemy,
+                   polysemy-plugin,                     
                    text
     default-language: Haskell2010
 
@@ -167,7 +172,7 @@ test-suite RandomExample
     type: exitcode-stdio-1.0
     main-is: RandomExample.hs
     hs-source-dirs: examples
-    ghc-options: -Wall 
+    ghc-options: -fplugin=Polysemy.Plugin
     build-depends: base,
                    blaze-html,
                    colonnade,
@@ -177,6 +182,7 @@ test-suite RandomExample
                    knit-haskell                      -any,
                    mtl,
                    polysemy,
+                   polysemy-plugin,                     
                    random-fu,
                    random-source,
                    text

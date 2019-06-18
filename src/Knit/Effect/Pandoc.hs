@@ -60,7 +60,6 @@ module Knit.Effect.Pandoc
 
     -- * Re-exports
   , DocWithInfo(..)
-
   )
 where
 
@@ -93,24 +92,24 @@ import           Knit.Effect.Docs               ( Docs
 --newtype FreerHtml = FreerHtml { unFreer :: H.Html () }
 -- | Supported formats for adding to current Pandoc
 data PandocReadFormat a where
-  ReadDocX :: PandocReadFormat LBS.ByteString
-  ReadMarkDown :: PandocReadFormat T.Text
-  ReadCommonMark :: PandocReadFormat T.Text
-  ReadRST :: PandocReadFormat T.Text
-  ReadLaTeX :: PandocReadFormat T.Text
-  ReadHtml :: PandocReadFormat T.Text
+  ReadDocX ::PandocReadFormat LBS.ByteString
+  ReadMarkDown ::PandocReadFormat T.Text
+  ReadCommonMark ::PandocReadFormat T.Text
+  ReadRST ::PandocReadFormat T.Text
+  ReadLaTeX ::PandocReadFormat T.Text
+  ReadHtml ::PandocReadFormat T.Text
 
 deriving instance Show (PandocReadFormat a)
 
 -- | Supported formats for writing current Pandoc
 data PandocWriteFormat a where
-  WriteDocX :: PandocWriteFormat LBS.ByteString
-  WriteMarkDown :: PandocWriteFormat T.Text
-  WriteCommonMark :: PandocWriteFormat T.Text
-  WriteRST :: PandocWriteFormat T.Text
-  WriteLaTeX :: PandocWriteFormat T.Text
-  WriteHtml5 :: PandocWriteFormat Blaze.Html -- Blaze
-  WriteHtml5String :: PandocWriteFormat T.Text
+  WriteDocX ::PandocWriteFormat LBS.ByteString
+  WriteMarkDown ::PandocWriteFormat T.Text
+  WriteCommonMark ::PandocWriteFormat T.Text
+  WriteRST ::PandocWriteFormat T.Text
+  WriteLaTeX ::PandocWriteFormat T.Text
+  WriteHtml5 ::PandocWriteFormat Blaze.Html -- Blaze
+  WriteHtml5String ::PandocWriteFormat T.Text
 
 deriving instance Show (PandocWriteFormat a)
 
@@ -125,6 +124,7 @@ data Requirement
   =
     VegaSupport -- ^ Supported only for Html output.
   | LatexSupport -- ^ Supported in Html output (via MathJax) and Latex output.
+  | DiagramsSVGSupport -- ^ Supported only in Html output (NB: Diagrams can also produce things which can be included as images)
   deriving (Show, Ord, Eq, Bounded, Enum)
 
 handlesAll :: PandocWriteFormat a -> S.Set Requirement -> Bool
@@ -132,17 +132,19 @@ handlesAll f rs = Mon.getAll
   $ F.fold (fmap (Mon.All . handles f) $ S.toList rs)
  where
   handles :: PandocWriteFormat a -> Requirement -> Bool
-  handles WriteHtml5       VegaSupport  = True
-  handles WriteHtml5String VegaSupport  = True
-  handles WriteHtml5       LatexSupport = True
-  handles WriteHtml5String LatexSupport = True
-  handles WriteLaTeX       LatexSupport = True
-  handles _                _            = False
+  handles WriteHtml5       VegaSupport        = True
+  handles WriteHtml5String VegaSupport        = True
+  handles WriteHtml5       DiagramsSVGSupport = True
+  handles WriteHtml5String DiagramsSVGSupport = True
+  handles WriteHtml5       LatexSupport       = True
+  handles WriteHtml5String LatexSupport       = True
+  handles WriteLaTeX       LatexSupport       = True
+  handles _                _                  = False
 
 data PandocWithRequirements = PandocWithRequirements { doc :: PA.Pandoc, reqs :: S.Set Requirement }
 instance Semigroup PandocWithRequirements where
-  (PandocWithRequirements da ra) <> (PandocWithRequirements db rb)
-    = PandocWithRequirements (da <> db) (ra <> rb)
+  (PandocWithRequirements da ra) <> (PandocWithRequirements db rb) =
+    PandocWithRequirements (da <> db) (ra <> rb)
 
 instance Monoid PandocWithRequirements where
   mempty = PandocWithRequirements mempty mempty
@@ -156,12 +158,12 @@ justRequirement r = PandocWithRequirements mempty (S.singleton r)
 
 -- | Pandoc writer, add any read format to current doc
 data ToPandoc m r where
-  AddFrom  :: PandocReadFormat a -> PA.ReaderOptions -> a -> ToPandoc m () -- ^ add to current doc
-  Require :: Requirement -> ToPandoc m () -- ^ require specific support
+  AddFrom  ::PandocReadFormat a -> PA.ReaderOptions -> a -> ToPandoc m () -- ^ add to current doc
+  Require ::Requirement -> ToPandoc m () -- ^ require specific support
 
 -- | Pandoc output effect, take given doc and produce formatted output
 data FromPandoc m r where
-  WriteTo  :: PandocWriteFormat a -> PA.WriterOptions -> PA.Pandoc -> FromPandoc m a -- convert to given format
+  WriteTo  ::PandocWriteFormat a -> PA.WriterOptions -> PA.Pandoc -> FromPandoc m a -- convert to given format
 
 -- | Add a piece of a Pandoc readable type to the current doc
 addFrom
@@ -290,8 +292,7 @@ pandocsToDocs
   -> P.Sem (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
   -> P.Sem effs [DocWithInfo PandocInfo a] -- ^ documents in requested format, within the effects monad
 pandocsToDocs pwf pwo =
-  (traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) =<<)
-    . toDocList
+  (traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) =<<) . toDocList
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE
