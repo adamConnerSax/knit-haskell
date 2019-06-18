@@ -46,6 +46,7 @@ markDownReaderOptions = PA.def
                             , PA.Ext_tex_math_dollars
                             , PA.Ext_header_attributes
                             , PA.Ext_implicit_header_references
+                            , PA.Ext_implicit_figures
                             ]
   }
 
