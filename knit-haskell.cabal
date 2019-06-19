@@ -38,7 +38,7 @@ data-files:
            pandoc-data/templates/default.latex
            pandoc-data/templates/default.markdown
            pandoc-data/templates/default.commonmark
-           pandoc-data/templates/default.haddocl
+           pandoc-data/templates/default.haddock
 
 tested-with: GHC ==8.6.4
 Build-type: Simple
