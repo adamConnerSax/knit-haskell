@@ -39,7 +39,6 @@ data-files:
            pandoc-data/templates/default.commonmark
            pandoc-data/templates/default.haddock
 
-tested-with: GHC ==8.6.4
 Build-type: Simple
 
 source-repository head

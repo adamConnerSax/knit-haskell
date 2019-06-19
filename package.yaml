@@ -1,67 +1,52 @@
 name: knit-haskell
-version: '0.5.0.0'
+version: '0.6.0.0'
 synopsis: a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description: ! 'knit-haskell is a beginning attempt at bringing some of the benefits
   of
-
   Rmarkdown to Haskell.
-
   It includes an effects stack
-
   (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl)
-
-  which includes logging, randomness
-
-  (via <http://hackage.haskell.org/package/random-fu random-fu>),
-
+  which includes logging,
   a simplified interface to Pandoc and various writer-like effects to
-
   intersperse document building with regular code.
-
   Various helper functions are provided to simplify common operations,
-
   making it especially straightforward to build
-
   an HTML document from bits of markdown,
-
   latex and <http://hackage.haskell.org/package/lucid Lucid>
-
   or <http://hackage.haskell.org/package/blaze-html Blaze> html.
-
   Support is also included for including
-
   <http://hackage.haskell.org/package/hvega hvega> visualizations
-
   and diagrams from the <https://archives.haskell.org/projects.haskell.org/diagrams/
   diagrams>
-
   package.
-
   More information is available in the <https://github.com/adamConnerSax/knit-haskell/blob/master/Readme.md
   readme>.'
 category: Text
 author: Adam Conner-Sax
 maintainer: adam_conner_sax@yahoo.com
 copyright: 2019 Adam Conner-Sax
-license: BSD-3
+license: BSD3
 github: adamConnerSax/knit-haskell
 extra-source-files:
 - ChangeLog.md
+- Readme.md
 library:
   source-dirs: src
   ghc-options:
   - -Wall
-  - -fplugin=Polysemy.Plugin
   - -fno-warn-unused-top-binds
   - -funbox-strict-fields
+  - -fplugin=Polysemy.Plugin		
+#  - -fdefer-type-errors
+#  - -fno-warn-deferred-type-errors
   exposed-modules:
   - Knit.Effect.Logger
   - Knit.Effect.Docs
   - Knit.Effect.Html
-  - Knit.Effect.RandomFu
   - Knit.Effect.PandocMonad
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId
+  - Knit.Report
   - Knit.Report.Input.Table.Colonnade
   - Knit.Report.Input.Html
   - Knit.Report.Input.Html.Lucid
@@ -72,7 +57,6 @@ library:
   - Knit.Report.Input.Visualization.Diagrams
   - Knit.Report.Output
   - Knit.Report.Output.Html
-  - Knit.Report
   - Knit.Report.Other.Lucid
   - Knit.Report.Other.Blaze
   dependencies:
@@ -84,6 +68,7 @@ library:
   - case-insensitive >=1.2.0.11 && <1.3.0.0
   - colonnade >=1.1 && <1.3
   - containers >=0.5.0 && <0.7
+  - constraints >=0.10 && <0.12
   - directory >=1.3.3.0 && <1.4.0.0
   - diagrams-lib >=1.4 && <1.5.0.0
   - diagrams-svg >=1.4.1 && <1.5.0.0
@@ -100,8 +85,9 @@ library:
   - hvega >=0.1.0 && <=0.2.0.0
   - logging-effect >=1.3.3 && <1.4
   - mtl >=2.2.2 && <2.3
-  - polysemy >=0.2.0.0 && <0.5.0.0
+  - polysemy >=0.3.0.0 && <0.5.0.0
   - polysemy-plugin >=0.2.0.0 && <0.3.0.0
+  - polysemy-zoo >=0.3.0.0 && <0.4.0
   - prettyprinter >=1.2.1 && <1.4
   - lucid >=2.9.11 && <2.10
   - pandoc >=2.7.2 && <2.8
@@ -112,7 +98,7 @@ tests:
   MtlExample:
     main: MtlExample.hs
     source-dirs: examples
-    ghc-options: -Wall
+    ghc-options: -fplugin=Polysemy.Plugin
     dependencies:
     - base
     - blaze-html
@@ -122,11 +108,12 @@ tests:
     - knit-haskell
     - mtl
     - polysemy
+    - polysemy-plugin
     - text
   ErrorExample:
     main: ErrorExample.hs
     source-dirs: examples
-    ghc-options: -Wall
+    ghc-options: -fplugin=Polysemy.Plugin
     dependencies:
     - base
     - blaze-html
@@ -135,11 +122,12 @@ tests:
     - hvega
     - knit-haskell
     - polysemy
+    - polysemy-plugin
     - text
   RandomExample:
     main: RandomExample.hs
     source-dirs: examples
-    ghc-options: -Wall
+    ghc-options: -fplugin=Polysemy.Plugin
     dependencies:
     - base
     - blaze-html
@@ -150,13 +138,15 @@ tests:
     - knit-haskell
     - mtl
     - polysemy
+    - polysemy-plugin
+    - polysemy-RandomFu >=0.2.0.0
     - random-fu
     - random-source
     - text
   SimpleExample:
     main: SimpleExample.hs
     source-dirs: examples
-    ghc-options: -Wall
+    ghc-options: -fplugin=Polysemy.Plugin
     dependencies:
     - base
     - blaze-html
@@ -166,11 +156,12 @@ tests:
     - knit-haskell
     - plots >=0.1.1.0 && <=0.2
     - polysemy
+    - polysemy-plugin
     - text
   MultiDocExample:
     main: MultiDocExample.hs
     source-dirs: examples
-    ghc-options: -Wall
+    ghc-options: -fplugin=Polysemy.Plugin
     dependencies:
     - base
     - blaze-html
@@ -179,5 +170,15 @@ tests:
     - hvega
     - knit-haskell
     - polysemy
+    - polysemy-plugin
     - text
-tested-with: ghc ==8.6.4
+data-dir: data
+data-files:
+- knit-haskell-templates/*.html
+- knit-haskell-css/*.css
+- pandoc-data/templates/*.html4
+- pandoc-data/templates/*.html5
+- pandoc-data/templates/default.latex
+- pandoc-data/templates/default.markdown
+- pandoc-data/templates/default.commonmark
+- pandoc-data/templates/default.haddock

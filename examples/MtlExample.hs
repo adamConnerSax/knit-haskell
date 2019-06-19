@@ -6,17 +6,20 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Main where
 
-import qualified Knit.Report as K    
+import qualified Knit.Report                   as K
 
-import           Control.Monad.IO.Class          (MonadIO)
+import           Control.Monad.IO.Class         ( MonadIO )
 import qualified Data.Map                      as M
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
-import qualified Data.Text                as T
-import           Data.String.Here (here)
+import qualified Data.Text                     as T
+import           Data.String.Here               ( here )
 import qualified Graphics.Vega.VegaLite        as V
 
-import           Control.Monad.Reader (ReaderT, ask, runReaderT)
+import           Control.Monad.Reader           ( ReaderT
+                                                , ask
+                                                , runReaderT
+                                                )
 
 templateVars :: M.Map String String
 templateVars = M.fromList
@@ -27,7 +30,7 @@ templateVars = M.fromList
   ]
 
 -- A demo application stack 
-newtype MyApp env a = MyStack { unMyApp :: ReaderT env IO a } deriving (Functor, Applicative, Monad, MonadIO) 
+newtype MyApp env a = MyStack { unMyApp :: ReaderT env IO a } deriving (Functor, Applicative, Monad, MonadIO)
 
 type ExampleApp = MyApp T.Text
 
@@ -39,13 +42,18 @@ getEnv = MyStack $ ask
 
 main :: IO ()
 main = do
-  let template =  K.FromIncludedTemplateDir "pandoc-bootstrap-KH.html"
-  templateVarsWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css") templateVars
-  pandocWriterConfig <- K.mkPandocWriterConfig template templateVarsWithCss K.mindocOptionsF
+  let template = K.FromIncludedTemplateDir "pandoc-bootstrap-KH.html"
+  templateVarsWithCss <- K.addCss
+    (K.FromIncludedCssDir "pandoc-bootstrap.css")
+    templateVars
+  pandocWriterConfig <- K.mkPandocWriterConfig template
+                                               templateVarsWithCss
+                                               K.mindocOptionsF
   resE <- runExampleApp "This is from the MyApp environment."
     $ K.knitHtml (Just "MtlExample.Main") K.logAll pandocWriterConfig makeDoc
   case resE of
-    Right htmlAsText -> K.writeAndMakePathLT "examples/html/mtl_example.html" htmlAsText
+    Right htmlAsText ->
+      K.writeAndMakePathLT "examples/html/mtl_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc error: " ++ show err
 
 md1 :: T.Text
@@ -57,8 +65,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: ( K.KnitOne effs
-           , K.KnitBase ExampleApp effs) => K.Sem effs ()
+makeDoc :: (K.KnitOne effs, K.KnitBase ExampleApp effs) => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1
@@ -71,18 +78,22 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing Nothing exampleVis
 
-  K.logLE K.Info "Retrieving some text from the base monad and current date-time."
+  K.logLE K.Info
+          "Retrieving some text from the base monad and current date-time."
   envText <- K.liftKnit @ExampleApp getEnv
-  curTime <- K.getCurrentTime 
-  K.addMarkDown "## An example of getting env from a base monad, and time from the Pandoc Effects."
+  curTime <- K.getCurrentTime
+  K.addMarkDown
+    "## An example of getting env from a base monad, and time from the Pandoc Effects."
   K.addMarkDown $ envText <> "\n\n" <> (T.pack $ show curTime)
 
 exampleVis :: V.VegaLite
 exampleVis =
-  let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
-      enc = V.encoding
-        . V.position V.X [ V.PName "Horsepower", V.PmType V.Quantitative ]
-        . V.position V.Y [ V.PName "Miles_per_Gallon", V.PmType V.Quantitative ]
-        . V.color [ V.MName "Origin", V.MmType V.Nominal ]
+  let cars =
+          V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
+      enc =
+          V.encoding
+            . V.position V.X [V.PName "Horsepower", V.PmType V.Quantitative]
+            . V.position V.Y [V.PName "Miles_per_Gallon", V.PmType V.Quantitative]
+            . V.color [V.MName "Origin", V.MmType V.Nominal]
       bkg = V.background "rgba(0, 0, 0, 0.05)"
-  in V.toVegaLite [ bkg, cars, V.mark V.Circle [], enc [] ]  
+  in  V.toVegaLite [bkg, cars, V.mark V.Circle [], enc []]

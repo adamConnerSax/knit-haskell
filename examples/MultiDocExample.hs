@@ -5,13 +5,13 @@
 {-# LANGUAGE GADTs             #-}
 module Main where
 
-import qualified Knit.Report as K    
+import qualified Knit.Report                   as K
 
 import qualified Data.Map                      as M
 import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text                     as T
-import           Data.String.Here (here)
+import           Data.String.Here               ( here )
 import qualified Graphics.Vega.VegaLite        as V
 
 templateVars :: M.Map String String
@@ -25,15 +25,19 @@ templateVars = M.fromList
 main :: IO ()
 main = do
   let template = K.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html"
-  tvWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css") templateVars
-  pandocWriterConfig <- K.mkPandocWriterConfig template  tvWithCss K.mindocOptionsF
+  tvWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css")
+                        templateVars
+  pandocWriterConfig <- K.mkPandocWriterConfig template
+                                               tvWithCss
+                                               K.mindocOptionsF
   resE <- K.knitHtmls (Just "MTLExample.Main") K.logAll pandocWriterConfig $ do
     K.newPandoc (K.PandocInfo "multi_doc1" M.empty) makeDoc1
     K.newPandoc (K.PandocInfo "multi_doc2" M.empty) makeDoc2
   case resE of
-    Right namedDocs -> K.writeAllPandocResultsWithInfoAsHtml "examples/html" namedDocs
+    Right namedDocs ->
+      K.writeAllPandocResultsWithInfoAsHtml "examples/html" namedDocs
     Left err -> putStrLn $ "pandoc error: " ++ show err
-    
+
 md1 :: T.Text
 md1 = [here|
 ## Some example markdown
@@ -78,11 +82,13 @@ makeDoc2 = K.wrapPrefix "makeDoc2" $ do
 
 exampleVis :: V.VegaLite
 exampleVis =
-  let cars =  V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
-      enc = V.encoding
-        . V.position V.X [ V.PName "Horsepower", V.PmType V.Quantitative ]
-        . V.position V.Y [ V.PName "Miles_per_Gallon", V.PmType V.Quantitative ]
-        . V.color [ V.MName "Origin", V.MmType V.Nominal ]
+  let cars =
+          V.dataFromUrl "https://vega.github.io/vega-datasets/data/cars.json" []
+      enc =
+          V.encoding
+            . V.position V.X [V.PName "Horsepower", V.PmType V.Quantitative]
+            . V.position V.Y [V.PName "Miles_per_Gallon", V.PmType V.Quantitative]
+            . V.color [V.MName "Origin", V.MmType V.Nominal]
       bkg = V.background "rgba(0, 0, 0, 0.05)"
-  in V.toVegaLite [ bkg, cars, V.mark V.Circle [], enc [] ]  
+  in  V.toVegaLite [bkg, cars, V.mark V.Circle [], enc []]
 
