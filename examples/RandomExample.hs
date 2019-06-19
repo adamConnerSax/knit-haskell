@@ -7,7 +7,8 @@
 module Main where
 
 import qualified Knit.Report               as K
-import qualified Knit.Effect.RandomFu      as KR
+import qualified Polysemy.RandomFu         as PR
+import qualified Polysemy.ConstraintAbsorber.MonadRandom as PR
 import qualified Colonnade                 as C
 
 import           Control.Monad              (replicateM)
@@ -51,7 +52,7 @@ main = do
   pureMTSource <- newPureMT  
   resE <- runExampleApp "This is from the MyApp environment."
           $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig
-          $ KR.runRandomFuIOPureMT pureMTSource $ makeDoc
+          $ PR.runRandomIOPureMT pureMTSource $ makeDoc
   case resE of 
     Right htmlAsText -> K.writeAndMakePathLT "examples/html/random_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc error: " ++ show err
@@ -66,7 +67,7 @@ md1 = [here|
 |]
 
 makeDoc :: ( K.KnitOne effs
-           , K.Member KR.RandomFu effs -- this one needs to be handled before knitting
+           , K.Member PR.RandomFu effs -- this one needs to be handled before knitting
            , K.KnitBase ExampleApp effs) => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
@@ -88,11 +89,11 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
 
   K.logLE K.Info "Using another polysemy effect, here RandomFu"
   let nDraws = 20
-  someNormalDoubles <- KR.sampleRVar $ replicateM nDraws (stdNormal @Double)
+  someNormalDoubles <- PR.sampleRVar $ replicateM nDraws (stdNormal @Double)
   K.addMarkDown "## An example of using the RandomFu effect to get random numbers and using Colonnade to make tables."
   K.addMarkDown $ "some std normal draws: "
   K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip [1..nDraws] someNormalDoubles
-  moreNormalDoubles <- KR.absorbMonadRandom (monadRandomFunction nDraws)
+  moreNormalDoubles <- PR.absorbMonadRandom (monadRandomFunction nDraws)
   K.addMarkDown "## This time, using absorbMonadRandom to interoperate with a function using the MonadRandom constraint."
   K.addMarkDown $ "some std normal draws: "
   K.addColonnadeTextTable (C.headed "#" (T.pack . show . fst) <> C.headed "Draw" (T.pack . show . snd)) $ zip [1..nDraws] moreNormalDoubles

@@ -10,6 +10,8 @@ them if the given template fails.
 * Reorganized data directory with "pandoc-data" "knit-haskell-templates" and "knit-haskell-css"
 * Added output helpers for Pandoc results which are lazy text (html).  These create the
 required parent directories if necessary. See examples for details.
+* Removed ```Knit.Effect.RandomFu``` and modified the example which uses it to use the
+"polysemy-RandomFu" package instead.
 
 v 0.5.0.0
 * Added plots example back since there is a version of plots on hackage with 

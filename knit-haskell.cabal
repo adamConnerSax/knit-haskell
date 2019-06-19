@@ -56,7 +56,6 @@ library
   exposed-modules: Knit.Effect.Logger
                  , Knit.Effect.Docs
                  , Knit.Effect.Html
-                 , Knit.Effect.RandomFu
                  , Knit.Effect.PandocMonad
                  , Knit.Effect.Pandoc
                  , Knit.Effect.UnusedId
@@ -195,7 +194,8 @@ test-suite RandomExample
                    knit-haskell                      -any,
                    mtl,
                    polysemy,
-                   polysemy-plugin,                   
+                   polysemy-plugin,
+                   polysemy-RandomFu >= 0.2.0.0,
                    random-fu,
                    random-source,
                    text
