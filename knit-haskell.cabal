@@ -29,8 +29,16 @@ maintainer:          adam_conner_sax@yahoo.com
 copyright:           2019 Adam Conner-Sax
 category:            Text
 extra-source-files:  ChangeLog.md, Readme.md
-data-dir:            pandoc-templates
-data-files:          *.html *.css data/**/*.html4 data/**/*.html5
+data-dir:            data
+data-files:
+           knit-haskell-templates/*.html
+           knit-haskell-css/*.css
+           pandoc-data/templates/*.html4
+           pandoc-data/templates/*.html5
+           pandoc-data/templates/default.latex
+           pandoc-data/templates/default.markdown
+           pandoc-data/templates/default.commonmark
+           pandoc-data/templates/default.haddocl
 
 tested-with: GHC ==8.6.4
 Build-type: Simple

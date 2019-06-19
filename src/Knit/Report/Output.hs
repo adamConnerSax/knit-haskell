@@ -54,7 +54,7 @@ pandocTemplatePath :: TemplatePath -> IO (Maybe String)
 pandocTemplatePath DefaultTemplate                = return Nothing
 pandocTemplatePath (FullySpecifiedTemplatePath x) = return $ Just (T.unpack x)
 pandocTemplatePath (FromIncludedTemplateDir x) =
-  fmap (Just . (++ "/" ++ (T.unpack x))) Paths.getDataDir
+  fmap (Just . (++ "/knit-haskell-templates/" ++ (T.unpack x))) Paths.getDataDir
 
 -- | Type to specify path to Css,
 -- which may be in a directory installed with knit-haskell or not.
@@ -67,7 +67,7 @@ addCss :: CssPath -> TemplateVariables -> IO TemplateVariables
 addCss (FullySpecifiedCssPath x) pt = return $ appendCss x pt
 addCss (FromIncludedCssDir    x) pt = do
   dir <- Paths.getDataDir
-  let fp = (T.pack dir) <> "/" <> x
+  let fp = (T.pack dir) <> "/knit-haskell-css/" <> x
   return $ appendCss fp pt
 
 

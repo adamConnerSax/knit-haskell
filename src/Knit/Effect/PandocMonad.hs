@@ -434,4 +434,4 @@ datadir = Paths.getDataDir
 getDataFileName' :: FilePath -> IO FilePath
 getDataFileName' fp = do
   dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir") (\_ -> datadir)
-  return (dir ++ "/" ++ fp)
+  return (dir ++ "/pandoc-data/" ++ fp)
