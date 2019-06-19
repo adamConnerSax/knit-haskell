@@ -27,7 +27,7 @@ templateVars = M.fromList
   ]
 
 -- A demo application stack 
-newtype MyApp env a = MyStack { unMyApp :: ReaderT env IO a } deriving (Functor, Applicative, Monad, MonadIO)
+newtype MyApp env a = MyStack { unMyApp :: ReaderT env IO a } deriving (Functor, Applicative, Monad, MonadIO) 
 
 type ExampleApp = MyApp T.Text
 
