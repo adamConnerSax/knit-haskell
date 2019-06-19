@@ -26,10 +26,10 @@ main :: IO ()
 main = do
   let template =  K.FromIncludedTemplateDir "pandoc-bootstrap-KH.html"
   pandocWriterConfig <- K.mkPandocWriterConfig template templateVars K.mindocOptionsF
-  resSimpleE <- K.knitHtml (Just "SimpleExample.Main") K.logAll pandocWriterConfig makeDocWithKnitError
+  resSimpleE <- K.knitHtml (Just "ErrorExample.Main") K.logAll pandocWriterConfig makeDocWithKnitError
   case resSimpleE of
     Right htmlAsText ->
-      T.writeFile "examples/html/example_simple.html"
+      T.writeFile "examples/html/example_error.html"
         $ TL.toStrict
         $ htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
