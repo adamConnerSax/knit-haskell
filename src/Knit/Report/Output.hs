@@ -13,9 +13,7 @@ module Knit.Report.Output
   , addCss
 
     -- * file writing helpers
-  , writeAllPandocResultsWithInfoAsHtml
   , writeAllPandocResultsWithInfo
-  , writePandocResultWithInfoAsHtml
   , writePandocResultWithInfo
   , writeAndMakePathLT
   , writeAndMakePath
@@ -93,14 +91,6 @@ appendCss x tv =
   in  M.insert "css" newVal tv
 
 -- utilities for file output
--- | Write each lazy text from a list of 'KD.DocWithInfo'
--- to disk. File names come from the 'KP.PandocInfo'
--- Directory is a function arguments.
--- File extension is "html"
-writeAllPandocResultsWithInfoAsHtml
-  :: T.Text -> [KP.DocWithInfo KP.PandocInfo TL.Text] -> IO ()
-writeAllPandocResultsWithInfoAsHtml dir =
-  writeAllPandocResultsWithInfo dir "html"
 
 -- | Write each lazy text from a list of 'KD.DocWithInfo'
 -- to disk. File names come from the 'KP.PandocInfo'
@@ -109,16 +99,6 @@ writeAllPandocResultsWithInfo
   :: T.Text -> T.Text -> [KP.DocWithInfo KP.PandocInfo TL.Text] -> IO ()
 writeAllPandocResultsWithInfo dir extension =
   fmap (const ()) . traverse (writePandocResultWithInfo dir extension) -- fmap (const ()) :: IO [()] -> IO ()
-
--- | Write the Lazy Text in a 'KD.DocWithInfo' to disk,
--- Name comes from the 'KP.PandocInfo'
--- Directory is an argument to the function
--- File extension is "html"
--- Create the parent directory or directories, if necessary.
-writePandocResultWithInfoAsHtml
-  :: T.Text -> KD.DocWithInfo KP.PandocInfo TL.Text -> IO ()
-writePandocResultWithInfoAsHtml dir dwi =
-  writePandocResultWithInfo dir "html" dwi
 
 -- | Write the Lazy Text in a 'KD.DocWithInfo' to disk
 -- Name comes from the 'KP.PandocInfo'

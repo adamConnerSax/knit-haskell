@@ -24,17 +24,22 @@ module Knit.Report.Output.Html
   , toBlazeDocument
   , pandocWriterToBlazeDocument
 
-  -- * Options helper  
+    -- * Options helper  
   , mindocOptionsF
 
-  -- * Other helpers
+    -- * Other helpers
   , markDownTextToBlazeFragment
+
+    -- * File writing helpers
+  , writeAllPandocResultsWithInfoAsHtml
+  , writePandocResultWithInfoAsHtml
   )
 where
 
 
 import qualified Data.ByteString.Char8         as BS
 import qualified Data.Text                     as T
+import qualified Data.Text.Lazy                as TL
 import qualified Data.Map                      as M
 import qualified Text.Blaze.Html               as BH
 import qualified Text.Pandoc                   as PA
@@ -45,7 +50,7 @@ import qualified Knit.Effect.PandocMonad       as PM
 
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( markDownReaderOptions )
-import           Knit.Report.Output             ( PandocWriterConfig(..) )
+import           Knit.Report.Output            as KO
 
 -- | Base Html writer options, with support for MathJax
 htmlWriterOptions :: PA.WriterOptions
@@ -89,7 +94,7 @@ markDownTextToBlazeFragment =
 -- Incudes support for template and template variables and changes to the default writer options
 toBlazeDocument
   :: PM.PandocEffects effs
-  => PandocWriterConfig
+  => KO.PandocWriterConfig
   -> PE.PandocWithRequirements -- ^ Document and union of input requirements 
   -> P.Sem effs BH.Html
 toBlazeDocument writeConfig pdocWR = PM.absorbPandocMonad $ do
@@ -101,7 +106,7 @@ toBlazeDocument writeConfig pdocWR = PM.absorbPandocMonad $ do
 -- Incudes support for template and template variables and changes to the default writer options. 
 pandocWriterToBlazeDocument
   :: PM.PandocEffects effs
-  => PandocWriterConfig -- ^ Configuration info for the Pandoc writer  
+  => KO.PandocWriterConfig -- ^ Configuration info for the Pandoc writer  
   -> P.Sem (PE.ToPandoc ': effs) () -- ^ Effects stack to run to get Pandoc
   -> P.Sem effs BH.Html -- ^ Blaze Html (in remaining effects)
 pandocWriterToBlazeDocument writeConfig pw =
@@ -110,3 +115,24 @@ pandocWriterToBlazeDocument writeConfig pw =
 -- | options for the mindoc template
 mindocOptionsF :: PA.WriterOptions -> PA.WriterOptions
 mindocOptionsF op = op { PA.writerSectionDivs = True }
+
+
+-- file output
+-- | Write each lazy text from a list of 'KD.DocWithInfo'
+-- to disk. File names come from the 'KP.PandocInfo'
+-- Directory is a function arguments.
+-- File extension is "html"
+writeAllPandocResultsWithInfoAsHtml
+  :: T.Text -> [PE.DocWithInfo PE.PandocInfo TL.Text] -> IO ()
+writeAllPandocResultsWithInfoAsHtml dir =
+  KO.writeAllPandocResultsWithInfo dir "html"
+
+-- | Write the Lazy Text in a 'KD.DocWithInfo' to disk,
+-- Name comes from the 'KP.PandocInfo'
+-- Directory is an argument to the function
+-- File extension is "html"
+-- Create the parent directory or directories, if necessary.
+writePandocResultWithInfoAsHtml
+  :: T.Text -> PE.DocWithInfo PE.PandocInfo TL.Text -> IO ()
+writePandocResultWithInfoAsHtml dir dwi =
+  KO.writePandocResultWithInfo dir "html" dwi

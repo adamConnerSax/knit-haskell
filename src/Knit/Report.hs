@@ -109,6 +109,8 @@ import           Knit.Report.Input.Visualization.Diagrams
 import           Knit.Report.Output
 import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 , mindocOptionsF
+                                                , writeAllPandocResultsWithInfoAsHtml
+                                                , writePandocResultWithInfoAsHtml
                                                 )
 
 import           Text.Pandoc                    ( PandocError )
