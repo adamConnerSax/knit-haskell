@@ -48,8 +48,8 @@ getEnv = MyStack $ ask
 
 main :: IO ()
 main = do
-  let pandocWriterConfig =
-        K.PandocWriterConfig (Just "pandoc-templates/mindoc-pandoc-KH.html")  templateVars K.mindocOptionsF
+  let template =  K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
+  pandocWriterConfig <- K.mkPandocWriterConfig template templateVars K.mindocOptionsF
   pureMTSource <- newPureMT  
   resE <- runExampleApp "This is from the MyApp environment."
           $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig
