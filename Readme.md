@@ -46,14 +46,13 @@ Similar to "SimpleExample" but throws a user error during document assembly.
 module.  That has the main functions for "knitting" documents from fragments 
 and re-exports all the required functions to input the supported fragment types and create/write Html.
 * This uses [polysemy](https://github.com/isovector/polysemy#readme) for its effect management rather than mtl.  
-Effects are provided for logging and generating [random-fu](http://hackage.haskell.org/package/random-fu) style random numbers.  
-Polysemy's inference and performance are improved greatly if you enable the [polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin),
+Polysemy's inference and performance are greatly improved if you enable the [polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin),
 which involves:
 1. adding "polysemy-plugin" in build-depends and
 2. Add "ghc-options: -fplugin=Polysemy.Plugin" to your package configuration.
 Pandoc effects and writer effects for document building are also provided.
 * Polysemy is capable of "absorbing" some mtl-style monad constraints.  This is demonstrated in
-the [Random](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs#L96) and
+[RandomExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs#L96) and
 composable absorbers for MonadReader, MonadWriter, MonadState and MonadError
 can be found in the [polysemy-zoo](https://github.com/isovector/polysemy-zoo).
 * Pandoc templates are included for HTML output.  See the examples for how to access them

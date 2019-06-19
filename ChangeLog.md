@@ -1,4 +1,7 @@
-v 0.6.0.0
+Unreleased Changes
+
+
+v 0.6.0.0 - (Released: 2019-06-19)
 * updated to use polysemy-zoo version of constraint absorbers in PandocMonad.
 * Hackage download should now include templates and associated css
 * Added mkPandocWriterConfig and addCss function in Knit.Report.Output to handle loading things in 
