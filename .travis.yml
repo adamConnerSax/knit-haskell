@@ -3,7 +3,7 @@ dist: trusty
 
 cache:
   directories:
-    - $HOME/.cabal/store
+    - "$HOME/.cabal/store"
 
 cabal: "2.4"
 
