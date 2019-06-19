@@ -73,7 +73,8 @@ library
                  , Knit.Report.Output.Html
                  , Knit.Report.Other.Lucid
                  , Knit.Report.Other.Blaze
-                 , Paths_knit_haskell
+  other-modules:   Paths_knit_haskell
+  autogen-modules: Paths_knit_haskell                                  
 
   build-depends:    aeson-pretty                      >= 0.8.7 && < 0.9,
                     base                              >= 4.12.0 && < 4.13,
@@ -163,22 +164,22 @@ test-suite MultiDocExample
                    text      
     default-language: Haskell2010
 
---test-suite MtlExample
---    type: exitcode-stdio-1.0
---    main-is: MtlExample.hs
---    hs-source-dirs: examples
---    ghc-options: -fplugin=Polysemy.Plugin
---    build-depends: base,
---                   blaze-html,
---                   containers,
---                   here,
---                  hvega,
---                 knit-haskell                      -any,
---                   mtl,
---                   polysemy,
---                   polysemy-plugin,                   
---                  text
---    default-language: Haskell2010
+test-suite MtlExample
+    type: exitcode-stdio-1.0
+    main-is: MtlExample.hs
+    hs-source-dirs: examples
+    ghc-options: -fplugin=Polysemy.Plugin
+    build-depends: base,
+                   blaze-html,
+                   containers,
+                   here,
+                   hvega,
+                   knit-haskell                      -any,
+                   mtl,
+                   polysemy,
+                   polysemy-plugin,                   
+                   text
+    default-language: Haskell2010
 
 test-suite RandomExample
     type: exitcode-stdio-1.0

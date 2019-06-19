@@ -11,6 +11,14 @@ module Knit.Report.Output
   , TemplatePath(..)
   , CssPath(..)
   , addCss
+
+    -- * file writing helpers
+  , writeAllPandocResultsWithInfoAsHtml
+  , writeAllPandocResultsWithInfo
+  , writePandocResultWithInfoAsHtml
+  , writePandocResultWithInfo
+  , writeAndMakePathLT
+  , writeAndMakePath
   )
 where
 
@@ -18,6 +26,12 @@ import qualified Paths_knit_haskell            as Paths
 import qualified Data.Map                      as M
 import qualified Text.Pandoc                   as PA
 import qualified Data.Text                     as T
+import qualified Data.Text.IO                  as T
+import qualified Data.Text.Lazy                as TL
+import qualified System.Directory              as SD
+
+import qualified Knit.Effect.Docs              as KD
+import qualified Knit.Effect.Pandoc            as KP
 
 type TemplateVariables = M.Map String String
 type WriterOptionsF = PA.WriterOptions -> PA.WriterOptions
@@ -77,3 +91,65 @@ appendCss x tv =
   let curValM = M.lookup "css" tv
       newVal  = maybe (T.unpack x) (\y -> y ++ "," ++ T.unpack x) curValM
   in  M.insert "css" newVal tv
+
+-- utilities for file output
+-- | Write each lazy text from a list of 'KD.DocWithInfo'
+-- to disk. File names come from the 'KP.PandocInfo'
+-- Directory is a function arguments.
+-- File extension is "html"
+writeAllPandocResultsWithInfoAsHtml
+  :: T.Text -> [KP.DocWithInfo KP.PandocInfo TL.Text] -> IO ()
+writeAllPandocResultsWithInfoAsHtml dir =
+  writeAllPandocResultsWithInfo dir "html"
+
+-- | Write each lazy text from a list of 'KD.DocWithInfo'
+-- to disk. File names come from the 'KP.PandocInfo'
+-- Directory and file extension are function arguments.
+writeAllPandocResultsWithInfo
+  :: T.Text -> T.Text -> [KP.DocWithInfo KP.PandocInfo TL.Text] -> IO ()
+writeAllPandocResultsWithInfo dir extension =
+  fmap (const ()) . traverse (writePandocResultWithInfo dir extension) -- fmap (const ()) :: IO [()] -> IO ()
+
+-- | Write the Lazy Text in a 'KD.DocWithInfo' to disk,
+-- Name comes from the 'KP.PandocInfo'
+-- Directory is an argument to the function
+-- File extension is "html"
+-- Create the parent directory or directories, if necessary.
+writePandocResultWithInfoAsHtml
+  :: T.Text -> KD.DocWithInfo KP.PandocInfo TL.Text -> IO ()
+writePandocResultWithInfoAsHtml dir dwi =
+  writePandocResultWithInfo dir "html" dwi
+
+-- | Write the Lazy Text in a 'KD.DocWithInfo' to disk
+-- Name comes from the 'KP.PandocInfo'
+-- Directory and file extection are arguments to the function
+-- Create the parent directory or directories, if necessary.
+writePandocResultWithInfo
+  :: T.Text -- ^ directory
+  -> T.Text -- ^ extension
+  -> KD.DocWithInfo KP.PandocInfo TL.Text
+  -> IO ()
+writePandocResultWithInfo dir extension (KD.DocWithInfo (KP.PandocInfo n _) x)
+  = do
+    let fPath = dir <> "/" <> n <> "." <> extension
+    writeAndMakePathLT fPath x
+
+-- | Write Lazy Text (Pandoc's Html result) to disk.
+-- Create the parent directory or directories, if necessary.
+writeAndMakePathLT :: T.Text -> TL.Text -> IO ()
+writeAndMakePathLT fPath = writeAndMakePath fPath TL.toStrict
+
+-- | Write (to disk) something which can be converted to text.
+-- Create the parent directory or directories, if necessary.
+writeAndMakePath :: T.Text -> (a -> T.Text) -> a -> IO ()
+writeAndMakePath fPath toStrictText x = do
+  let (dirPath, fName) = T.breakOnEnd "/" fPath
+  putStrLn
+    $  T.unpack
+    $  "If necessary, creating "
+    <> dirPath
+    <> " (and parents), and writing "
+    <> fName
+  SD.createDirectoryIfMissing True (T.unpack dirPath)
+  T.writeFile (T.unpack fPath) $ toStrictText x
+

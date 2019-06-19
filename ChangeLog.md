@@ -8,6 +8,8 @@ with pandoc-bootstrap.css and used them in some of the examples.
 * Added the default html templates into the pandoc-templates directory where Pandoc will expect
 them if the given template fails.
 * Reorganized data directory with "pandoc-data" "knit-haskell-templates" and "knit-haskell-css"
+* Added output helpers for Pandoc results which are lazy text (html).  These create the
+required parent directories if necessary. See examples for details.
 
 v 0.5.0.0
 * Added plots example back since there is a version of plots on hackage with 

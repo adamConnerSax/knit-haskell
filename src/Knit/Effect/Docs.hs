@@ -8,7 +8,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeOperators       #-}
-
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.Docs
@@ -49,17 +48,19 @@ import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.Writer               as P
 
-import           Control.Monad (sequence, join)
+import           Control.Monad                  ( sequence
+                                                , join
+                                                )
 
 -- | GADT to represent storing a document and some info for processing it.
 data Docs i a m r where
-  NewDoc :: i -> a -> Docs i a m ()
+  NewDoc ::i -> a -> Docs i a m ()
 
 -- | Action of the 'Docs' Effect.  Store a document.
 newDoc :: P.Member (Docs i a) effs => i -> a -> P.Sem effs ()
 newDoc info doc = send $ NewDoc info doc
 
--- | Data type to hold one document with info of typ @i@ and doc of type @a@. 
+-- | Data type to hold one document with info of type @i@ and doc of type @a@. 
 data DocWithInfo i a = DocWithInfo { dwiInfo :: i, dwiDoc :: a }
 deriving instance Functor (DocWithInfo i)
 deriving instance Foldable (DocWithInfo i)
@@ -67,7 +68,8 @@ deriving instance Traversable (DocWithInfo i)
 
 -- | Intepret 'Docs' in @Polysemy.Writer [DocWithInfo i a]'
 toWriter
-  :: P.Sem (Docs i a ': effs) () -> P.Sem (P.Writer [DocWithInfo i a] ': effs) ()
+  :: P.Sem (Docs i a ': effs) ()
+  -> P.Sem (P.Writer [DocWithInfo i a] ': effs) ()
 toWriter = P.reinterpret f
  where
   f :: Docs i a m x -> P.Sem (P.Writer [DocWithInfo i a] ': effs) x
@@ -78,22 +80,28 @@ toDocList :: P.Sem (Docs i a ': effs) () -> P.Sem effs [DocWithInfo i a]
 toDocList = fmap fst . P.runWriter . toWriter
 
 -- | Map over the doc part of @Functor m => m [DocWithInfo i a]@ with an @a->b@ resulting in @m [DocWithInfo i b]@
-mapDocs :: Monad m => (i -> a -> b) -> m [DocWithInfo i a] -> m [DocWithInfo i b]
+mapDocs
+  :: Monad m => (i -> a -> b) -> m [DocWithInfo i a] -> m [DocWithInfo i b]
 mapDocs f = fmap (fmap (\(DocWithInfo i a) -> DocWithInfo i (f i a)))
 
 -- | Map over the doc part of @Monad m => m [DocWithInfo i a]@ with @a -> m b@ resulting in @m [DocWithInfo i b]@
-mapDocsM :: Monad m => (i -> a -> m b) -> m [DocWithInfo i a] -> m [DocWithInfo i b]
+mapDocsM
+  :: Monad m => (i -> a -> m b) -> m [DocWithInfo i a] -> m [DocWithInfo i b]
 mapDocsM f = join . fmap (sequence . fmap (traverse id)) . mapDocs f --(traverse (traverse f) =<<)
 
 -- | Combine the interpretation and mapping step.
 -- Commonly used to "run" the effect and map the results to your desired output format.
 toDocListWith
-  :: (i -> a -> b) -> P.Sem (Docs i a ': effs) () -> P.Sem effs [DocWithInfo i b]
+  :: (i -> a -> b)
+  -> P.Sem (Docs i a ': effs) ()
+  -> P.Sem effs [DocWithInfo i b]
 toDocListWith f = mapDocs f . toDocList
 
 -- | Combine the interpretation and effectful mapping step.
 -- Commonly used to "run" the effect and map the results to your deisred output format.
 toDocListWithM
-  :: (i -> a -> P.Sem effs b) -> P.Sem (Docs i a ': effs) () -> P.Sem effs [DocWithInfo i b]
+  :: (i -> a -> P.Sem effs b)
+  -> P.Sem (Docs i a ': effs) ()
+  -> P.Sem effs [DocWithInfo i b]
 toDocListWithM f = mapDocsM f . toDocList
 

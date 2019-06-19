@@ -194,6 +194,9 @@ type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
 -- | Constraint alias for the effects we need to knit multiple documents.
 type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
+
+
+
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
 type KnitEffectStack m
