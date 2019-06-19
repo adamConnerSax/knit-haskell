@@ -45,10 +45,7 @@ main = do
   resE <- runExampleApp "This is from the MyApp environment."
     $ K.knitHtml (Just "MtlExample.Main") K.logAll pandocWriterConfig makeDoc
   case resE of
-    Right htmlAsText ->
-      T.writeFile "examples/html/mtl_example.html"
-        $ TL.toStrict
-        $ htmlAsText
+    Right htmlAsText -> K.writeAndMakePathLT "examples/html/mtl_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc error: " ++ show err
 
 md1 :: T.Text

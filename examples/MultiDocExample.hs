@@ -24,17 +24,14 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let writeNamedHtml (K.DocWithInfo (K.PandocInfo n _) lt)
-        = T.writeFile (T.unpack $ "examples/html/" <> n <> ".html") $ TL.toStrict lt
-      writeAllHtml = fmap (const ()) . traverse writeNamedHtml
-      template = K.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html"
+  let template = K.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html"
   tvWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css") templateVars
   pandocWriterConfig <- K.mkPandocWriterConfig template  tvWithCss K.mindocOptionsF
-  resE <- K.knitHtmls (Just "SimpleExample.Main") K.logAll pandocWriterConfig $ do
+  resE <- K.knitHtmls (Just "MTLExample.Main") K.logAll pandocWriterConfig $ do
     K.newPandoc (K.PandocInfo "multi_doc1" M.empty) makeDoc1
     K.newPandoc (K.PandocInfo "multi_doc2" M.empty) makeDoc2
   case resE of
-    Right namedDocs -> writeAllHtml namedDocs 
+    Right namedDocs -> K.writeAllPandocResultsWithInfoAsHtml "examples/html" namedDocs
     Left err -> putStrLn $ "pandoc error: " ++ show err
     
 md1 :: T.Text

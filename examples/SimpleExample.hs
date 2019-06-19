@@ -8,8 +8,6 @@ module Main where
 import qualified Knit.Report              as K    
 
 import qualified Data.Map                 as M
-import qualified Data.Text.IO             as T
-import qualified Data.Text.Lazy           as TL
 import qualified Data.Text                as T
 import           Data.String.Here          (here)
 import qualified Graphics.Vega.VegaLite   as V
@@ -30,10 +28,7 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template templateVars K.mindocOptionsF
   resE <- K.knitHtml (Just "SimpleExample.Main") K.logAll pandocWriterConfig makeDoc
   case resE of
-    Right htmlAsText ->
-      T.writeFile "examples/html/example_simple.html"
-        $ TL.toStrict
-        $ htmlAsText
+    Right htmlAsText ->  K.writeAndMakePathLT "examples/html/simple_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text

@@ -13,8 +13,6 @@ import qualified Colonnade                 as C
 import           Control.Monad              (replicateM)
 import           Control.Monad.IO.Class     (MonadIO)
 import qualified Data.Map                  as M
-import qualified Data.Text.IO              as T
-import qualified Data.Text.Lazy            as TL
 import qualified Data.Text                 as T
 import           Data.String.Here           (here)
 import qualified Graphics.Vega.VegaLite    as V
@@ -55,10 +53,7 @@ main = do
           $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig
           $ KR.runRandomFuIOPureMT pureMTSource $ makeDoc
   case resE of 
-    Right htmlAsText ->
-      T.writeFile "examples/html/random_example.html"
-        $ TL.toStrict
-        $ htmlAsText
+    Right htmlAsText -> K.writeAndMakePathLT "examples/html/random_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc error: " ++ show err
 
 md1 :: T.Text
