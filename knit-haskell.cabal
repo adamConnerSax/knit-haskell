@@ -7,8 +7,7 @@ description:         knit-haskell is a beginning attempt at bringing some of the
                      Rmarkdown to Haskell.
                      It includes an effects stack
                      (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl)
-                     which includes logging, randomness
-                     (via <http://hackage.haskell.org/package/random-fu random-fu>),
+                     which includes logging,                     
                      a simplified interface to Pandoc and various writer-like effects to
                      intersperse document building with regular code.
                      Various helper functions are provided to simplify common operations,
