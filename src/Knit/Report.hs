@@ -27,12 +27,10 @@ Pandoc can read.
 
 Notes:
 
-1. The "Knit.Effect.RandomFu" effect is not imported since the names might clash with "Polysemy.Random".
-Import either effect directly if you need it.
-2. You can add logging from within document creation using 'logLE'.
-3. The "Knit.Report.Input.MarkDown.PandocMarkDown" module is exported
+1. You can add logging from within document creation using 'logLE'.
+2. The "Knit.Report.Input.MarkDown.PandocMarkDown" module is exported
 so if you want to use a different markdown flavor you may need to hide "addMarkDown" when you import this module.
-4. If you use any other effects in your polysemy stack (e.g., Random or RandomFu), you will need to interpret/run them before calling knitHtml/knitHtmls.
+3. If you use any other effects in your polysemy stack (e.g., Random or RandomFu), you will need to interpret/run them before calling knitHtml/knitHtmls.
 -}
 module Knit.Report
   (

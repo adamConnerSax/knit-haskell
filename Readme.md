@@ -52,7 +52,7 @@ which involves:
 2. Add "ghc-options: -fplugin=Polysemy.Plugin" to your package configuration.
 Pandoc effects and writer effects for document building are also provided.
 * Polysemy is capable of "absorbing" some mtl-style monad constraints.  This is demonstrated in
-[RandomExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs#L96) and
+[RandomExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs#L113) and
 composable absorbers for MonadReader, MonadWriter, MonadState and MonadError
 can be found in the [polysemy-zoo](https://github.com/isovector/polysemy-zoo).
 * Pandoc templates are included for HTML output.  See the examples for how to access them

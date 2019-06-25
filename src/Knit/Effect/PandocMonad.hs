@@ -24,9 +24,10 @@ Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
 Polysemy PandocMonad effect.
-Allows a polysemy monad to handle functions
+Allows a polysemy monad to handle
 actions with a PandocMonad contraint via
 polysemy effects and IO.
+Has an "absorber" to convert functions with a @PandocMonad@ constraint. 
 -}
 module Knit.Effect.PandocMonad
   (

@@ -1,5 +1,5 @@
-Unreleased Changes
-
+v 0.6.0.1 - (Released 2019-06-21)
+* Moved the Pandoc default templates so they will be installed where Pandoc expects them. This is hard to test!
 
 v 0.6.0.0 - (Released: 2019-06-19)
 * updated to use polysemy-zoo version of constraint absorbers in PandocMonad.
