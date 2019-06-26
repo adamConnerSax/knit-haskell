@@ -28,7 +28,7 @@ maintainer:          adam_conner_sax@yahoo.com
 copyright:           2019 Adam Conner-Sax
 category:            Text
 extra-source-files:  ChangeLog.md, Readme.md
-data-dir:            data
+data-dir: data
 data-files:
            knit-haskell-templates/*.html
            knit-haskell-css/*.css
@@ -95,7 +95,7 @@ library
                     time                              >= 1.8.0 && < 2.0.0,
                     random                            >= 1.1 && < 1.2,
                     blaze-html                        >= 0.9.1 && < 0.10,
-                    hvega                             >= 0.3.0.0 && < 0.4.0.0,
+                    hvega                             >= 0.2.0.0 && < 0.5.0.0,
                     logging-effect                    >= 1.3.3 && < 1.4,
                     mtl                               >= 2.2.2 && < 2.3,
                     polysemy                          >= 0.3.0.0 && < 0.5.0.0,

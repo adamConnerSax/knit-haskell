@@ -57,6 +57,10 @@ composable absorbers for MonadReader, MonadWriter, MonadState and MonadError
 can be found in the [polysemy-zoo](https://github.com/isovector/polysemy-zoo).
 * Pandoc templates are included for HTML output.  See the examples for how to access them
 or specify others.
+* If you use knit-haskell via an installed executable, it will find the templates that 
+cabal installs.  But if you use from a local build directory and use "cabal new-" or "cabal v2-"
+style commands, you will need to run the executable via some "cabal v2-" command as well, e.g.,
+"cabal v2-run" otherwise the templates--installed in the nix-style-build store--won't be found.
 * Though you can theoretically output to any format Pandoc can 
 write--and it would be great to add some output formats!--some 
 features only work with some output formats. 

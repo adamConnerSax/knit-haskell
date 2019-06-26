@@ -185,16 +185,23 @@ knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r a
 knitError msg =
   PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)
 
--- | Constraint alias for the effects we need when calling Knit
-type KnitEffects r = (KPM.PandocEffects r, P.Member KUI.UnusedId r)
+-- | Constraint alias for the effects we need (and run)
+-- when calling Knit.
+-- Anything inside a call to Knit can use any of these effects.
+-- Any other effects will need to be run before @knitHtml(s)@
+type KnitEffects r = (KPM.PandocEffects r
+                     , P.Members [ KUI.UnusedId
+                                 , KLog.Logger KLog.LogEntry
+                                 , KLog.PrefixLog
+                                 , PE.Error PA.PandocError
+                                 , P.Lift IO] r
+                     )
 
 -- | Constraint alias for the effects we need to knit one document
 type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
 
 -- | Constraint alias for the effects we need to knit multiple documents.
 type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
-
-
 
 
 -- From here down is unexported.  

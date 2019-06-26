@@ -425,14 +425,12 @@ liftIOError f u = do
     Left  e -> P.throw $ PA.PandocIOError u e
     Right r -> return r
 
--- this default is built into Pandoc.  I could probably do something more useful here but maybe something depends on it??
--- or maybe the actual version on each machine has a correct local version??
--- TODO: Fix/Understand this
-datadir :: IO FilePath
-datadir = Paths.getDataDir
---  "/home/builder/hackage-server/build-cache/tmp-install/share/x86_64-linux-ghc-8.6.3/pandoc-2.7.2"
-
+-- | adjust the directory the PandocMonad sees so that it will get
+-- the right files when it falls back to default.  Knit-haskell installs
+-- differently than pandoc does so that it can have its own templates as
+-- well.
 getDataFileName' :: FilePath -> IO FilePath
 getDataFileName' fp = do
-  dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir") (\_ -> datadir)
+  dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir")
+                                (\_ -> Paths.getDataDir)
   return (dir ++ "/pandoc-data/" ++ fp)
