@@ -274,13 +274,13 @@ instance (Monad m
   trace               = Action . trace_ (P.reflect $ P.Proxy @s')
 
 -- | Constraint helper for using this set of effects in IO.
-type PandocEffectsIO effs = (PandocEffects effs, P.Member (P.Lift IO) effs)
+type PandocEffectsIO effs = (PandocEffects effs, P.Member (P.Embed IO) effs)
 
 -- | Interpret the Pandoc effect using @IO@, @Knit.Effect.Logger@ and @PolySemy.Error PandocError@ 
 interpretInIO
   :: forall effs a
    . ( P.Member (Log.Logger Log.LogEntry) effs
-     , P.Member (P.Lift IO) effs
+     , P.Member (P.Embed IO) effs
      , P.Member (P.Error PA.PandocError) effs
      )
   => P.Sem (Pandoc ': effs) a
@@ -317,31 +317,31 @@ interpretInIO = fmap snd . stateful f PA.def
 interpretInPandocMonad
   :: forall m effs a
    . ( PA.PandocMonad m
-     , P.Member (P.Lift m) effs
+     , P.Member (P.Embed m) effs
      , P.Member (Log.Logger Log.LogEntry) effs
      )
   => P.Sem (Pandoc ': effs) a
   -> P.Sem effs a
 interpretInPandocMonad = P.interpret
   (\case
-    LookupEnv s            -> P.sendM @m $ PA.lookupEnv s
-    GetCurrentTime         -> P.sendM @m $ PA.getCurrentTime
-    GetCurrentTimeZone     -> P.sendM @m $ PA.getCurrentTimeZone
-    NewStdGen              -> P.sendM @m $ PA.newStdGen
-    NewUniqueHash          -> P.sendM @m $ PA.newUniqueHash
-    OpenURL             s  -> P.sendM @m $ PA.openURL s
-    ReadFileLazy        fp -> P.sendM @m $ PA.readFileLazy fp
-    ReadFileStrict      fp -> P.sendM @m $ PA.readFileStrict fp
-    Glob                fp -> P.sendM @m $ PA.glob fp
-    FileExists          fp -> P.sendM @m $ PA.fileExists fp
-    GetDataFileName     fp -> P.sendM @m $ PA.getDataFileName fp
-    GetModificationTime fp -> P.sendM @m $ PA.getModificationTime fp
-    GetCommonState         -> P.sendM @m $ PA.getCommonState
-    PutCommonState    cs   -> P.sendM @m $ PA.putCommonState cs
-    GetsCommonState   f    -> P.sendM @m $ PA.getsCommonState f
-    ModifyCommonState f    -> P.sendM @m $ PA.modifyCommonState f
+    LookupEnv s            -> P.embed @m $ PA.lookupEnv s
+    GetCurrentTime         -> P.embed @m $ PA.getCurrentTime
+    GetCurrentTimeZone     -> P.embed @m $ PA.getCurrentTimeZone
+    NewStdGen              -> P.embed @m $ PA.newStdGen
+    NewUniqueHash          -> P.embed @m $ PA.newUniqueHash
+    OpenURL             s  -> P.embed @m $ PA.openURL s
+    ReadFileLazy        fp -> P.embed @m $ PA.readFileLazy fp
+    ReadFileStrict      fp -> P.embed @m $ PA.readFileStrict fp
+    Glob                fp -> P.embed @m $ PA.glob fp
+    FileExists          fp -> P.embed @m $ PA.fileExists fp
+    GetDataFileName     fp -> P.embed @m $ PA.getDataFileName fp
+    GetModificationTime fp -> P.embed @m $ PA.getModificationTime fp
+    GetCommonState         -> P.embed @m $ PA.getCommonState
+    PutCommonState    cs   -> P.embed @m $ PA.putCommonState cs
+    GetsCommonState   f    -> P.embed @m $ PA.getsCommonState f
+    ModifyCommonState f    -> P.embed @m $ PA.modifyCommonState f
     LogOutput         msg  -> logPandocMessage msg
-    Trace             s    -> P.sendM @m $ PA.trace s
+    Trace             s    -> P.embed @m $ PA.trace s
   )
 
 -- | Run the Pandoc effects,
@@ -351,7 +351,7 @@ runIO
   :: [Log.LogSeverity]
   -> P.Sem
        '[Pandoc, Log.Logger Log.LogEntry, Log.PrefixLog, P.Error
-         PA.PandocError, P.Lift IO]
+         PA.PandocError, P.Embed IO]
        a
   -> IO (Either PA.PandocError a)
 runIO lss =
@@ -361,7 +361,7 @@ runIO lss =
 openURLWithState
   :: forall effs
    . ( P.Member (Log.Logger Log.LogEntry) effs
-     , P.Member (P.Lift IO) effs
+     , P.Member (P.Embed IO) effs
      , P.Member (P.Error PA.PandocError) effs
      )
   => PA.CommonState
@@ -415,7 +415,7 @@ report cs msg = do
 
 -- | Utility function to lift IO errors into Sem
 liftIOError
-  :: (P.Member (P.Error PA.PandocError) effs, P.Member (P.Lift IO) effs)
+  :: (P.Member (P.Error PA.PandocError) effs, P.Member (P.Embed IO) effs)
   => (String -> IO a)
   -> String
   -> P.Sem effs a

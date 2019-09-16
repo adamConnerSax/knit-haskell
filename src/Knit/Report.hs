@@ -70,7 +70,7 @@ where
 
 import           Polysemy                       ( Member
                                                 , Sem
-                                                , Lift
+                                                , Embed
                                                 )
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
@@ -172,11 +172,11 @@ knitHtml loggingPrefixM ls writeConfig =
     . KO.pandocWriterToBlazeDocument writeConfig
 
 -- | Constraints required to knit a document using effects from a base monad m.
-type KnitBase m effs = (MonadIO m, P.Member (P.Lift m) effs)
+type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 
 -- | lift an action in a base monad into a Polysemy monad.  This is just a renaming for convenience.
-liftKnit :: Member (Lift m) r => m a -> Sem r a
-liftKnit = P.sendM
+liftKnit :: Member (Embed m) r => m a -> Sem r a
+liftKnit = P.embed
 
 -- | Throw an error with a specific message.  This will emerge as a 'PandocSomeError' in order
 -- to avoid complicating the error type.
@@ -194,7 +194,7 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
                                  , PE.Error PA.PandocError
-                                 , P.Lift IO] r
+                                 , P.Embed IO] r
                      )
 
 -- | Constraint alias for the effects we need to knit one document
@@ -208,7 +208,7 @@ type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 -- | The exact stack we are interpreting when we knit
 type KnitEffectStack m
   = '[KUI.UnusedId, KPM.Pandoc, KLog.Logger KLog.LogEntry, KLog.PrefixLog, PE.Error
-    PA.PandocError, P.Lift IO, P.Lift m]
+    PA.PandocError, P.Embed IO, P.Embed m]
 -- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 
@@ -225,7 +225,7 @@ consumeKnitEffectStack
   -> m (Either PA.PandocError a)
 consumeKnitEffectStack loggingPrefixM ls =
   P.runM
-    . PI.runIO @m -- interpret (Lift IO) using m
+    . PI.embedToMonadIO @m -- interpret (Embed IO) using m
     . PE.runError
     . KLog.filteredLogEntriesToIO ls
     . KPM.interpretInIO -- PA.PandocIO
