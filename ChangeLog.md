@@ -1,3 +1,9 @@
+v 0.7.0.0
+* Changed bounds for hvega, polysemy and polysemy-zoo. Downstream changes to account for this.
+* SimpleExample now uses default template so that it also serves as a test that default templates are found.
+* Bumped version since there are many breaking changes in Polysemy and we re-export some names.
+
+
 v 0.6.0.1 - (Released 2019-06-21)
 * Moved the Pandoc default templates so they will be installed where Pandoc expects them. This is hard to test!
 
