@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4c399bc49676cb58dfc766031cf3e1ad97c26a1600047cf8b600c859f8f31aa7
+-- hash: fc512e9236fe676c2be3010fe2354011663fe3c2e4c1cd9703f1f0c0bf9194e2
 
 name:           knit-haskell
 version:        0.7.0.0
@@ -81,7 +81,7 @@ library
     , http-client >=0.6.4 && <0.7.0
     , http-client-tls >=0.3.5.3 && <0.4.0.0
     , http-types >=0.12.3 && <0.13.0
-    , hvega >=0.1.0 && <=0.2.0.0
+    , hvega >=0.2.0 && <=0.5
     , logging-effect >=1.3.3 && <1.4
     , lucid >=2.9.11 && <2.10
     , mtl >=2.2.2 && <2.3
