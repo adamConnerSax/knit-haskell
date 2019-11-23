@@ -1,3 +1,7 @@
+v0.8.0.0 (unreleased)
+* Added error handlers for ```Maybe``` and ```Either Text```.
+* Added ```knitMapError``` to absorb other types of errors.
+
 v0.7.0.0
 * Updated vega versions in pandoc templates
 * removed (internal) datadir function because we now use the function

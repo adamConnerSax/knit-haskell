@@ -39,6 +39,9 @@ module Knit.Report
   , knitHtmls
   , liftKnit
   , knitError
+  , knitMaybe
+  , knitEither
+  , knitMapError
   , KnitEffects
   , KnitOne
   , KnitMany
@@ -111,7 +114,7 @@ import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 , writePandocResultWithInfoAsHtml
                                                 )
 
-import           Text.Pandoc                    ( PandocError )
+import           Text.Pandoc                    ( PandocError(..) )
 
 import           Control.Monad.Except           ( MonadIO )
 import qualified Data.Text                     as T
@@ -185,6 +188,21 @@ knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r a
 knitError msg =
   PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)
 
+-- | Throw on 'Nothing' with given message.  This will emerge as a 'PandocSomeError' in order
+-- to avoid complicating the error type.
+knitMaybe
+  :: P.Member (PE.Error PA.PandocError) r => T.Text -> Maybe a -> P.Sem r a
+knitMaybe msg = maybe (knitError msg) return
+
+-- | Throw on 'Left' with message.  This will emerge as a 'PandocSomeError' in order
+-- to avoid complicating the error type.
+knitEither
+  :: P.Member (PE.Error PA.PandocError) r => Either T.Text a -> P.Sem r a
+knitEither = either knitError return
+
+
+
+
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
 -- Anything inside a call to Knit can use any of these effects.
@@ -214,6 +232,15 @@ type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 
 -- | Add a single-doc writer to the front of the effect list
 type KnitEffectDocStack m = (KP.ToPandoc ': KnitEffectStack m)
+
+-- | Map an error type, @e, into a 'PandocError' so it will be handled in this stack
+knitMapError
+  :: forall e r a
+   . KnitEffects r
+  => (e -> T.Text)
+  -> P.Sem (PE.Error e ': r) a
+  -> P.Sem r a
+knitMapError f = PE.mapError $ PandocSomeError . T.unpack . f
 
 -- | run all knit-effects in @KnitEffectStack m@
 consumeKnitEffectStack
