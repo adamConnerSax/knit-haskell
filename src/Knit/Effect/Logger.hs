@@ -44,9 +44,12 @@ module Knit.Effect.Logger
 
   -- * Interpreters
   , filteredLogEntriesToIO
+  , filteredAsyncLogEntriesToIO
 
   -- * Subsets for filtering
   , logAll
+  , logDebug
+  , logDiagnostic
   , nonDiagnostic
 
   -- * Constraints for convenience 
@@ -64,10 +67,16 @@ import qualified Polysemy                      as P
 import           Polysemy                       ( Member
                                                 , Sem
                                                 )
+import qualified Polysemy.Async                as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
-import           Control.Monad                  ( when )
+import qualified Control.Concurrent            as C
+import qualified Control.Concurrent.STM        as C
+
+import           Control.Monad                  ( when
+                                                , forever
+                                                )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
 import qualified Control.Monad.Log             as ML
@@ -90,10 +99,11 @@ import           Prelude                 hiding ( log )
 -- Parking this for now, since it has absorbed outsize time for no benefit except some understanding.
 
 -- | Severity of message.  Based on monad-logger.
-data LogSeverity = Diagnostic | Info | Warning | Error deriving (Show, Eq, Ord, Enum, Bounded)
+data LogSeverity = Debug Int | Diagnostic | Info | Warning | Error deriving (Show, Eq, Ord)
 
 -- | Map between @LogSeverity@ and monad-logger severity.
 logSeverityToSeverity :: LogSeverity -> ML.Severity
+logSeverityToSeverity (Debug _)  = ML.Debug
 logSeverityToSeverity Diagnostic = ML.Debug
 logSeverityToSeverity Info       = ML.Informational
 logSeverityToSeverity Warning    = ML.Warning
@@ -108,14 +118,23 @@ logEntryToWithSeverity (LogEntry s t) =
   ML.WithSeverity (logSeverityToSeverity s) t
 
 
--- | "LogSeverity" list used in order to output everything.
-logAll :: [LogSeverity]
-logAll = [minBound .. maxBound]
+-- | log everything.
+logAll :: LogSeverity -> Bool
+logAll = const True
 
--- | 'LogSeverity' list used to output all but 'Diagnostic'.
--- 'Diagnostic' messages are sometimes useful for debugging but can get noisy depending on how you use it.
-nonDiagnostic :: [LogSeverity]
-nonDiagnostic = List.tail logAll
+-- | log all but 'Debug' messages
+logDiagnostic :: LogSeverity -> Bool
+logDiagnostic (Debug _) = False
+logDiagnostic _         = True
+
+-- | log everything above 'Diagnostic'
+nonDiagnostic :: LogSeverity -> Bool
+nonDiagnostic ls = ls `elem` [Info, Warning, Error]
+
+-- | log debug messages with level lower than or equal to l
+logDebug :: Int -> LogSeverity -> Bool
+logDebug l (Debug n) = n <= l
+logDebug _ _         = True
 
 -- | The Logger effect
 data Logger a m r where
@@ -205,35 +224,66 @@ logAndHandlePrefixed handler =
     . logPrefixed @(PrefixLog ': effs)
 
 -- | Add a severity filter to a handler.
-filterLog
-  :: Monad m
-  => ([LogSeverity] -> a -> Bool)
-  -> [LogSeverity]
-  -> Handler m a
-  -> Handler m a
-filterLog filterF lss h a = when (filterF lss a) $ h a
+filterLog :: Monad m => (a -> Bool) -> Handler m a -> Handler m a
+filterLog filterF h a = when (filterF a) $ h a
 
 -- | Simple handler, uses a function from message to Text and then outputs all messages in IO.
 -- Can be used as base for any other handler that gives @Text@.
 logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
 logToIO toText = liftIO . T.putStrLn . toText
 
--- | Preferred handler for @LogEntry@ type with prefixes.
-prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
-prefixedLogEntryToIO = logToIO
+-- | log to an STM TChan.  This allows logging from different threads to log each message atomically
+logToTChan :: MonadIO m => C.TChan T.Text -> (a -> T.Text) -> Handler m a
+logToTChan ch toText = liftIO . C.atomically . C.writeTChan ch . toText
+
+-- | '(a -> Text)' function for prefixedLogEntries
+prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
+prefixedLogEntryToText =
   (PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
     (ML.renderWithSeverity PP.pretty . logEntryToWithSeverity)
   )
 
+-- | log prefixed entries directly to IO
+prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
+prefixedLogEntryToIO = logToIO prefixedLogEntryToText
+
+-- | log prefixed entries to given TChan
+prefixedLogEntryToTChan
+  :: MonadIO m => C.TChan T.Text -> Handler m (WithPrefix LogEntry)
+prefixedLogEntryToTChan ch = logToTChan ch prefixedLogEntryToText
+
 -- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the union.
 filteredLogEntriesToIO
-  :: MonadIO (P.Sem effs)
-  => [LogSeverity]
-  -> P.Sem (Logger LogEntry ': (PrefixLog ': effs)) x
-  -> P.Sem effs x
-filteredLogEntriesToIO lss = logAndHandlePrefixed
-  (filterLog f lss $ prefixedLogEntryToIO)
-  where f lss' a = (severity $ discardPrefix a) `List.elem` lss'
+  :: MonadIO (P.Sem r)
+  => (LogSeverity -> Bool)
+  -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
+  -> P.Sem r x
+filteredLogEntriesToIO lsF = logAndHandlePrefixed
+  (filterLog f $ prefixedLogEntryToIO)
+  where f a = lsF (severity $ discardPrefix a)
+
+filteredAsyncLogEntriesToIO
+  :: (MonadIO (P.Sem r), P.Member P.Async r)
+  => (LogSeverity -> Bool)
+  -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
+  -> P.Sem r x
+filteredAsyncLogEntriesToIO lsF mx = do
+  let putLogs ch =
+        forever $ (C.atomically $ C.readTChan ch) >>= putStrLn . T.unpack
+  ch <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
+  _  <- P.async $ liftIO $ putLogs ch -- launch a thread for printing them
+  logAndHandlePrefixed
+    (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
+    mx
+
+{-
+withAsyncLogging :: P.Members '[PrefixLog, P.Async] r => P.Sem r a -> P.Sem r a
+withAsyncLogging = P.interceptH $ \case
+  P.Async x ->
+    P.Async
+      $   (liftIO C.myThreadId)
+      >>= (\ti -> wrapPrefix ("(ThreadID=" <> (T.pack $ show ti)) x)
+-}
 
 -- | Constraint helper for logging with prefixes
 type LogWithPrefixes a effs = (P.Member PrefixLog effs, P.Member (Logger a) effs)

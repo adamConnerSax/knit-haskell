@@ -121,6 +121,7 @@ import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 
 import qualified Polysemy                      as P
+import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
 
@@ -143,7 +144,7 @@ import           Knit.Effect.UnusedId           ( getNextUnusedId )
 knitHtmls
   :: MonadIO m
   => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> (KLog.LogSeverity -> Bool) -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Sem (KnitEffectDocsStack m) ()
   -> m
@@ -151,8 +152,8 @@ knitHtmls
            PA.PandocError
            [KP.DocWithInfo KP.PandocInfo TL.Text]
        )
-knitHtmls loggingPrefixM ls (PandocWriterConfig mFP tv oF) =
-  consumeKnitEffectStack loggingPrefixM ls . KD.toDocListWithM
+knitHtmls loggingPrefixM logIf (PandocWriterConfig mFP tv oF) =
+  consumeKnitEffectStack loggingPrefixM logIf . KD.toDocListWithM
     (\(KP.PandocInfo _ tv') a ->
       fmap BH.renderHtml
         . KO.toBlazeDocument (PandocWriterConfig mFP (tv' <> tv) oF)
@@ -166,12 +167,12 @@ knitHtmls loggingPrefixM ls (PandocWriterConfig mFP tv oF) =
 knitHtml
   :: MonadIO m
   => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> (KLog.LogSeverity -> Bool) -- ^ what to output in log
   -> PandocWriterConfig -- ^ configuration for the Pandoc Html Writer
   -> P.Sem (KnitEffectDocStack m) ()
   -> m (Either PA.PandocError TL.Text)
-knitHtml loggingPrefixM ls writeConfig =
-  fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack loggingPrefixM ls)
+knitHtml loggingPrefixM logIf writeConfig =
+  fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack loggingPrefixM logIf)
     . KO.pandocWriterToBlazeDocument writeConfig
 
 -- | Constraints required to knit a document using effects from a base monad m.
@@ -211,6 +212,7 @@ type KnitEffects r = (KPM.PandocEffects r
                      , P.Members [ KUI.UnusedId
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
+                                 , P.Async
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
@@ -225,7 +227,7 @@ type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
 type KnitEffectStack m
-  = '[KUI.UnusedId, KPM.Pandoc, KLog.Logger KLog.LogEntry, KLog.PrefixLog, PE.Error
+  = '[KUI.UnusedId, KPM.Pandoc, KLog.Logger KLog.LogEntry, KLog.PrefixLog, P.Async, PE.Error
     PA.PandocError, P.Embed IO, P.Embed m]
 -- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
@@ -247,14 +249,15 @@ consumeKnitEffectStack
   :: forall m a
    . MonadIO m
   => Maybe T.Text -- ^ outer logging prefix
-  -> [KLog.LogSeverity] -- ^ what to output in log
+  -> (KLog.LogSeverity -> Bool) -- ^ what to output in log
   -> P.Sem (KnitEffectStack m) a
   -> m (Either PA.PandocError a)
-consumeKnitEffectStack loggingPrefixM ls =
+consumeKnitEffectStack loggingPrefixM logIf =
   P.runM
     . PI.embedToMonadIO @m -- interpret (Embed IO) using m
     . PE.runError
-    . KLog.filteredLogEntriesToIO ls
+    . P.asyncToIO
+    . KLog.filteredAsyncLogEntriesToIO logIf
     . KPM.interpretInIO -- PA.PandocIO
     . KUI.runUnusedId
     . maybe id KLog.wrapPrefix loggingPrefixM

@@ -348,14 +348,14 @@ interpretInPandocMonad = P.interpret
 -- and log messages with the given severity, over IO.
 -- If there is a Pandoc error, you will get a Left in the resulting Either.
 runIO
-  :: [Log.LogSeverity]
+  :: (Log.LogSeverity -> Bool)
   -> P.Sem
        '[Pandoc, Log.Logger Log.LogEntry, Log.PrefixLog, P.Error
          PA.PandocError, P.Embed IO]
        a
   -> IO (Either PA.PandocError a)
-runIO lss =
-  P.runM . P.runError . Log.filteredLogEntriesToIO lss . interpretInIO
+runIO logIf =
+  P.runM . P.runError . Log.filteredLogEntriesToIO logIf . interpretInIO
 
 -- copied from Pandoc code and modified as needed for Polysemy and my implementation of interpretInIO (PandocIO)
 openURLWithState

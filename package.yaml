@@ -94,6 +94,7 @@ library:
   - pandoc >=2.7.2 && <2.8
   - random-fu >=0.2.7 && <0.3
   - random-source >=0.3.0 && <0.4
+  - stm >= 2.4.5.1 && < 2.6 
   - svg-builder >=0.1.1 && <0.2
 tests:
   SimpleExample:
