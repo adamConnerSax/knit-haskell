@@ -1,10 +1,12 @@
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE Rank2Types           #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-|
 Module      : Knit.Report.DataCache
@@ -38,26 +40,47 @@ import qualified Data.Text                     as T
 import qualified Data.Serialize                as S
 
 import qualified Polysemy                      as P
+import qualified Polysemy.Error                as P
+import           Text.Pandoc                    ( PandocError(..) )
 
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f = either (Left . f) Right
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
 -- Anything inside a call to Knit can use any of these effects.
 -- Any other effects will need to be run before @knitHtml(s)@
-type KnitEffects r = (KR.KnitEffects r, K.Member (D.DataCache P.PandocError T.Text BL.ByteString) r)
+type KnitEffects r = (KR.KnitEffects r, P.Member (D.DataCache PandocError T.Text BL.ByteString) r)
 
 -- | Constraint alias for the effects we need to knit one document
-type KnitOne r = (KR.KnitOne r, P.Member (D.DataCache P.PandocError T.Text BL.ByteString) r)
+type KnitOne r = (KR.KnitOne r, P.Member (D.DataCache PandocError T.Text BL.ByteString) r)
 
 -- | Constraint alias for the effects we need to knit multiple documents
-type KnitMany r = (KR.KnitMany r, P.Member (D.DataCache P.PandocError T.Text BL.ByteString) r)
+type KnitMany r = (KR.KnitMany r, P.Member (D.DataCache PandocError T.Text BL.ByteString) r)
 
 {-                
 cerealStrict :: S.Serialize a => D.Serialize T.Text a BS.ByteString
 cerealStrict = D.Serialize S.encode S.decode
 -}
 
-cerealLazy :: S.Serialize a => D.Serialize T.Text a BL.ByteString
-cerealLazy = D.Serialize S.encodeLazy S.decodeLazy
+cerealLazy :: S.Serialize a => D.Serialize PandocError a BL.ByteString
+cerealLazy = D.Serialize S.encodeLazy (mapLeft PandocSomeError . S.decodeLazy)
 
-knitStore :: P.Members '[DataCache e k b, P.Error e] r
+knitStore :: (KnitEffects r, S.Serialize a) => T.Text -> a -> P.Sem r ()
+knitStore = D.store cerealLazy
+
+knitRetrieve :: (KnitEffects r, S.Serialize a) => T.Text -> P.Sem r a
+knitRetrieve = D.retrieve cerealLazy
+
+knitRetrieveOrMake
+  :: (KnitEffects r, S.Serialize a) => T.Text -> P.Sem r a -> P.Sem r a
+knitRetrieveOrMake k toMake = do
+  ma <- D.retrieveMaybe cerealLazy k
+  case ma of
+    Nothing -> toMake
+    Just a  -> return a
+
+knitClear :: KnitEffects r => T.Text -> P.Sem r ()
+knitClear = D.clear
+
+

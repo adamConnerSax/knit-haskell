@@ -32,6 +32,7 @@ module Knit.Effect.DataCache
   , updateCached
   , store
   , retrieve
+  , retrieveMaybe
   , clear
     -- * Serialization
   , Serialize(..)
@@ -56,6 +57,7 @@ import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Control.Exception             as C
+import           Control.Monad                  ( join )
 import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
 import qualified System.Directory              as S
@@ -79,6 +81,9 @@ eitherThrow x = do
     Left  e -> P.throw e
     Right a -> return a --fmap (either (P.throw @e) id)
 
+hush :: Either e a -> Maybe a
+hush = either (const Nothing) Just
+
 -- | Combinator to combine the action of serializing and caching
 store
   :: P.Members '[DataCache e k b, P.Error e] r
@@ -97,6 +102,16 @@ retrieve
   -> P.Sem r a
 retrieve (Serialize _ decode) k =
   eitherThrow $ fmap decode $ eitherThrow $ retrieveCached k
+
+retrieveMaybe
+  :: forall e1 e2 k a b r
+   . P.Members '[DataCache e1 k b] r
+  => Serialize e2 a b
+  -> k
+  -> P.Sem r (Maybe a)
+retrieveMaybe (Serialize _ decode) k =
+  fmap (join . fmap (hush . decode) . hush) $ retrieveCached @e1 k
+
 
 -- | Combinator for clearing the cache at a given key
 clear :: P.Members '[DataCache e k b, P.Error e] r => k -> P.Sem r ()
