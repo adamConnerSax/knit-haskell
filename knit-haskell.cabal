@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 309814288034044f37b31465e0b938a1e3afc9fc0534527fea1b8ab708bdf7ac
+-- hash: d066f179a6c6128267c730c60f248a0fe260aec37ebd4851f81252ecc7c2ecc8
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -91,7 +91,7 @@ library
     , network >=2.8.0.0 && <3.2.0.0
     , network-uri >=2.6.1.0 && <2.7.0.0
     , pandoc >=2.7.2 && <2.8
-    , polysemy >=1.0.0.0 && <1.3
+    , polysemy >=1.2.2.0 && <1.3
     , polysemy-plugin >=0.2.0.0 && <0.3.0.0
     , polysemy-zoo >=0.6.0 && <0.7
     , prettyprinter >=1.2.1 && <1.4
@@ -104,6 +104,25 @@ library
     , time >=1.8.0 && <2.0.0
   hs-source-dirs:
       src
+  default-language: Haskell2010
+
+test-suite AsyncExample
+  type: exitcode-stdio-1.0
+  main-is: AsyncExample.hs
+  hs-source-dirs:
+      examples
+  ghc-options: -fplugin=Polysemy.Plugin -threaded
+  build-depends:
+      base
+    , blaze-html
+    , containers
+    , here
+    , hvega
+    , knit-haskell
+    , plots
+    , polysemy
+    , polysemy-plugin
+    , text
   default-language: Haskell2010
 
 test-suite ErrorExample

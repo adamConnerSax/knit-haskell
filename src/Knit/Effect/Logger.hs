@@ -88,6 +88,8 @@ import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP
 import           Prelude                 hiding ( log )
 
+import           System.IO (hFlush, stdout)
+
 
 -- TODO: consider a more interesting Handler type.  As in co-log (https://hackage.haskell.org/package/co-log-core)
 -- where you newtype it and then can exploit its profunctoriality.
@@ -230,11 +232,15 @@ filterLog filterF h a = when (filterF a) $ h a
 -- | Simple handler, uses a function from message to Text and then outputs all messages in IO.
 -- Can be used as base for any other handler that gives @Text@.
 logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
-logToIO toText = liftIO . T.putStrLn . toText
+logToIO toText a = liftIO $ do
+  T.putStrLn $ toText a
+  hFlush stdout
+
+data NextOrDone = Next T.Text | Done -- isomorphic to (Maybe T.Text)
 
 -- | log to an STM TChan.  This allows logging from different threads to log each message atomically
-logToTChan :: MonadIO m => C.TChan T.Text -> (a -> T.Text) -> Handler m a
-logToTChan ch toText = liftIO . C.atomically . C.writeTChan ch . toText
+logToTChan :: MonadIO m => C.TChan NextOrDone -> (a -> T.Text) -> Handler m a
+logToTChan ch toText = liftIO . C.atomically . C.writeTChan ch . (Next . toText)
 
 -- | '(a -> Text)' function for prefixedLogEntries
 prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
@@ -249,7 +255,7 @@ prefixedLogEntryToIO = logToIO prefixedLogEntryToText
 
 -- | log prefixed entries to given TChan
 prefixedLogEntryToTChan
-  :: MonadIO m => C.TChan T.Text -> Handler m (WithPrefix LogEntry)
+  :: MonadIO m => C.TChan NextOrDone -> Handler m (WithPrefix LogEntry)
 prefixedLogEntryToTChan ch = logToTChan ch prefixedLogEntryToText
 
 -- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the union.
@@ -258,9 +264,11 @@ filteredLogEntriesToIO
   => (LogSeverity -> Bool)
   -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
   -> P.Sem r x
-filteredLogEntriesToIO lsF = logAndHandlePrefixed
-  (filterLog f $ prefixedLogEntryToIO)
-  where f a = lsF (severity $ discardPrefix a)
+filteredLogEntriesToIO lsF mx = do
+  let f a = lsF (severity $ discardPrefix a)
+  logAndHandlePrefixed
+    (filterLog f $ prefixedLogEntryToIO)
+    mx
 
 filteredAsyncLogEntriesToIO
   :: (MonadIO (P.Sem r), P.Member P.Async r)
@@ -268,13 +276,24 @@ filteredAsyncLogEntriesToIO
   -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
   -> P.Sem r x
 filteredAsyncLogEntriesToIO lsF mx = do
-  let putLogs ch =
-        forever $ (C.atomically $ C.readTChan ch) >>= putStrLn . T.unpack
   ch <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
-  _  <- P.async $ liftIO $ putLogs ch -- launch a thread for printing them
-  logAndHandlePrefixed
-    (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
-    mx
+  loggingThread  <- P.async $ liftIO $ printNextUntilDone ch -- launch a thread for printing them
+  res <- logAndHandlePrefixed
+         (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
+         mx
+  liftIO $ C.atomically $ C.writeTChan ch Done -- tell the printing thread to finish
+  _ <- P.await loggingThread -- wait until it finishes printing any remaining messages
+  return res
+
+-- | Printing loop. Wait for the next message on the channel
+-- If it's a 'Next Text' print the text and loop.
+-- If it's a 'Done' then exit
+printNextUntilDone :: C.TChan NextOrDone -> IO ()
+printNextUntilDone ch = do
+  nOrd <- C.atomically $ C.readTChan ch
+  case nOrd of
+    Next t -> (putStrLn . T.unpack $ t) >> hFlush stdout >> printNextUntilDone ch 
+    Done -> return ()
 
 {-
 withAsyncLogging :: P.Members '[PrefixLog, P.Async] r => P.Sem r a -> P.Sem r a

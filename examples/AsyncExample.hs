@@ -11,14 +11,15 @@ import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
 import qualified Graphics.Vega.VegaLite        as V
-
 import qualified Plots                         as P
+
+import           Control.Concurrent            (threadDelay)
 
 templateVars :: M.Map String String
 templateVars = M.fromList
   [ ("lang"     , "English")
   , ("author"   , "Adam Conner-Sax")
-  , ("pagetitle", "knit-haskell simple example")
+  , ("pagetitle", "knit-haskell async example")
 --  , ("tufte","True")
   ]
 
@@ -28,13 +29,13 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  resE <- K.knitHtml (Just "SimpleExample.Main")
+  resE <- K.knitHtml (Just "AsyncExample.Main")
                      K.logAll
                      pandocWriterConfig
                      makeDoc
   case resE of
     Right htmlAsText ->
-      K.writeAndMakePathLT "examples/html/simple_example.html" htmlAsText
+      K.writeAndMakePathLT "examples/html/async_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text
@@ -53,6 +54,13 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some latex..."
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+  K.logLE K.Info "Launching some concurrent long-running computations..."
+  asyncResultsM <- sequence <$> K.sequenceConcurrently [delay 800 1, delay 1000 2, delay 1200 3]
+  case asyncResultsM of
+    Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
+    Just results -> do
+      K.logLE K.Info "Concurrent calculations succeeded."
+      K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results) 
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -67,6 +75,15 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
     300
     samplePlot
   return ()
+
+-- long running computation
+delay :: K.KnitOne effs => Int -> Int -> K.Sem effs Int
+delay msDelay val = K.wrapPrefix ("delay") $ do
+  K.logLE K.Info $ "delaying " <> (T.pack $ show val) <> " for " <> (T.pack $ show msDelay) <> " ms"
+  K.embed (threadDelay $ 1000 * msDelay)
+  K.logLE K.Info "done"
+  return val
+  
 
 -- example using HVega  
 exampleVis :: V.VegaLite

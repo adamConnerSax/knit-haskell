@@ -62,19 +62,24 @@ module Knit.Report
   , module Knit.Report.Output.Html
 
     -- * Effects
-  , module Polysemy
+  , module Polysemy  
   , module Knit.Effect.Pandoc
   , module Knit.Effect.Docs
   , module Knit.Effect.PandocMonad
   , module Knit.Effect.Logger
   , module Knit.Effect.UnusedId
+  , module Polysemy.Async
   )
 where
 
 import           Polysemy                       ( Member
                                                 , Sem
                                                 , Embed
+                                                , embed
                                                 )
+import           Polysemy.Async                 ( async
+                                                , await
+                                                , sequenceConcurrently)                 
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
                                                 , PandocReadFormat(..)
@@ -256,9 +261,10 @@ consumeKnitEffectStack loggingPrefixM logIf =
   P.runM
     . PI.embedToMonadIO @m -- interpret (Embed IO) using m
     . PE.runError
-    . P.asyncToIO
+    . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
     . KLog.filteredAsyncLogEntriesToIO logIf
     . KPM.interpretInIO -- PA.PandocIO
     . KUI.runUnusedId
     . maybe id KLog.wrapPrefix loggingPrefixM
+
 
