@@ -258,13 +258,16 @@ createDirIfNecessary
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => T.Text
   -> K.Sem r (Either X.IOException ())
-createDirIfNecessary dir = do
+createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
+  K.logLE K.Diagnostic $ "Checking if cache path (\"" <> dir <> "\") exists."
   existsE <-
     P.embed
     $         fmap Right (S.doesDirectoryExist (T.unpack dir))
     `X.catch` (return . Left)
   case existsE of
-    Left  e      -> return $ Left e
+    Left e -> do
+      K.logLE K.Diagnostic $ "\"" <> dir <> "\" exists."
+      return $ Left e
     Right exists -> case exists of
       False -> do
         K.logLE K.Info

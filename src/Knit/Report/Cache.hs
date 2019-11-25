@@ -60,7 +60,9 @@ cerealLazy = C.Serialize S.encodeLazy (mapLeft PandocSomeError . S.decodeLazy)
 
 -- | Store an a (serialized to a strict ByteString) at key k. Throw PandocIOError on IOError.
 knitStore :: (K.KnitEffects r, S.Serialize a) => T.Text -> a -> P.Sem r ()
-knitStore k a = P.mapError ioErrorToPandocError $ C.store cerealStrict k a
+knitStore k a = K.wrapPrefix "knitStore" $ do
+  K.logLE K.Diagnostic $ "Called with k=" <> k
+  P.mapError ioErrorToPandocError $ C.store cerealStrict k a
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError
 knitRetrieve :: (K.KnitEffects r, S.Serialize a) => T.Text -> P.Sem r a
@@ -81,6 +83,7 @@ knitRetrieveOrMake k toMake = do
       K.logLE K.Diagnostic $ k <> " not found in cache. Making..."
       a <- toMake
       knitStore k a
+      K.logLE K.Diagnostic $ "Asset Stored."
       return a
     Just a -> do
       K.logLE K.Diagnostic $ k <> " found in cache."
