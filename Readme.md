@@ -17,10 +17,17 @@ myConfig = defaultKnitConfig { outerLogPrefix = Just "MyReport", cacheDir = "myC
 knit-haskell is an attempt to emulate parts of the RMarkdown/knitR experience in haskell. 
 The idea is to be able to build HTML (or, perhaps, some other things [Pandoc](http://hackage.haskell.org/package/pandoc) can write) 
 inside a haskell executable.  
-This package has some wrapping around Pandoc and the [PandocMonad](http://hackage.haskell.org/package/pandoc-2.7.2/docs/Text-Pandoc-Class.html#t:PandocMonad) 
-as well as logging facilities 
-and some support for inserting [hvega](http://hackage.haskell.org/package/hvega) visualizations.  
-All of that is handled via writer-like effects, so additions to the documents can be interspersed with regular haskell code.
+This package wraps Pandoc and the 
+[PandocMonad](http://hackage.haskell.org/package/pandoc-2.7.2/docs/Text-Pandoc-Class.html#t:PandocMonad), 
+has logging facilities and support for inserting [hvega](http://hackage.haskell.org/package/hvega), 
+[diagrams](https://hackage.haskell.org/package/diagrams), and 
+[plots](https://hackage.haskell.org/package/plots) based 
+visualizations.  
+All of that is handled via writer-like effects, so additions to the documents can be interspersed with regular haskell code. 
+As of version 0.8.0.0, the effect stack includes an "Async" effect for running computations concurrently as well as a
+persistent (using disk) cache for persisting the results of computations between report runs.  Anything which has
+a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
+package can be cached.
 
 ## Supported Inputs
 * [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
@@ -59,8 +66,9 @@ the result from the cache.
 ## Notes
 * You should be able to get everything you need by just importing the 
 [Knit.Report](https://github.com/adamConnerSax/knit-haskell/blob/master/src/Knit/Report.hs) 
-module.  That has the main functions for "knitting" documents from fragments 
-and re-exports all the required functions to input the supported fragment types and create/write Html.
+module.  This re-exports the main functions for "knitting" documents and re-exports 
+all the required functions to input the supported fragment types and create/write Html, as well as various utilties and
+combinators for logging, using the cache facility, or throwing errors.
 * This uses [polysemy](https://github.com/isovector/polysemy#readme) for its effect management rather than mtl.  
 Polysemy's inference and performance are greatly improved if you enable the [polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin),
 which involves:
@@ -76,7 +84,8 @@ or specify others.
 * If you use knit-haskell via an installed executable, it will find the templates that 
 cabal installs.  But if you use from a local build directory and use "cabal new-" or "cabal v2-"
 style commands, you will need to run the executable via some "cabal v2-" command as well, e.g.,
-"cabal v2-run" otherwise the templates--installed in the nix-style-build store--won't be found.
+"cabal v2-run" (but not "cabal v2-exec") otherwise the 
+templates--installed in the nix-style-build store--won't be found.
 * Though you can theoretically output to any format Pandoc can 
 write--and it would be great to add some output formats!--some 
 features only work with some output formats. 
@@ -84,12 +93,17 @@ My goal was the production of Html and that is the only output format that suppo
 since hvega itself is just a wrapper that builds javascript to render in a browser.  
 And so far that is the only supported output format.
 
-* This is very much a WIP. So it's rough around the edges and in the middle.  If you find it useful but have suggestions, please submit issues on github.
+* This is very much a WIP. So it's rough around the edges and in the middle.  
+If you find it useful but have suggestions, please submit issues on github.
+
 * I'm very interested in adding to the "zoo" of input fragments.  Any PRs of that sort would be most welcome!
 * I'm also interested in widening the possible output types--currently only HTML is supported--but 
 that is quite limited now by hvega which only works in html output.  
 But support could be added for other output types if hvega input is not required.
 
+* Travis building is broken right now.  For some reason it is choosing an impossible build 
+plan--choosing a version of log-domain which is higher than the upper bound on that 
+package in "random-fu"--and then the buidl fails.  Hopefully, I'll sort this out.
 
 [travis]:        <https://travis-ci.org/adamConnerSax/knit-haskell>
 [travis-badge]:  <https://travis-ci.org/adamConnerSax/knit-haskell.svg?branch=master>
