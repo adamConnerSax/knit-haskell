@@ -135,9 +135,9 @@ atomicRead readF k = K.wrapPrefix "AtomicCache.atomicRead" $ do
   case tvM of
     Just tv -> do
       K.logLE K.Diagnostic
-        $  "cached asset at key="
+        $ "cached asset at key="
         <> (T.pack $ show k)
-        <> " exists in memory (or is already being loaded on another thread)."
+        <> " exists in memory (or is already being loaded/made on another thread)."
       fmap Right $ P.embed $ C.atomically $ C.readTMVar tv -- it exists so someone has already retrieved it or is in the process.  Wait for it.
     Nothing -> do
       K.logLE K.Diagnostic
@@ -213,6 +213,18 @@ runPersistentAtomicCache p mx = do
   P.runAtomicStateTVar tv $ runPersistentAtomicCacheInAtomicState p mx
 
 -- | Persist functions for disk-based persistence with a strict ByteString interface
+{-
+We should perhaps do the writing, and maybe some version of the reading, on a separate thread.
+We could launch a thread for each write?
+Issues:
+a. If the main thread exits before the write is finished, it will kill the write, I think.
+b. We lose access to the return value.
+
+We can maybe solve both by waiting for that thread to exit and grabbing the return value?  But
+how to thread the Async return through?
+
+We could add a State ([P.Async (Either PandocError ())]) or some such and await on all of them at the end?
+-}
 strictPersistAsByteString
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
@@ -227,7 +239,8 @@ strictPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
     let filePath     = (keyToFilePath k)
         (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
     _ <- createDirIfNecessary dirPath
-    liftIO $ fmap Right (BS.writeFile filePath b) `X.catch` (return . Left)
+    K.logLE K.Diagnostic $ "Writing serialization to disk."
+    liftIO $ fmap Right (BS.writeFile filePath b) `X.catch` (return . Left) -- maybe we should do this in another thread?
   deleteFile k =
     liftIO
       $         fmap Right (S.removeFile (keyToFilePath k))
@@ -235,7 +248,7 @@ strictPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
 
 -- | Persist functions for disk-based persistence with a lazy ByteString interface
 lazyPersistAsByteString
-  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
+  :: (P.Members '[P.Embed IO, P.Async] r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> Persist X.IOException r k BL.ByteString
 lazyPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
@@ -248,7 +261,8 @@ lazyPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
     let filePath     = (keyToFilePath k)
         (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
     _ <- createDirIfNecessary dirPath
-    liftIO $ fmap Right (BL.writeFile filePath b) `X.catch` (return . Left)
+    K.logLE K.Diagnostic $ "Writing serialization to disk."
+    _ <- liftIO $ fmap Right (BL.writeFile filePath b) `X.catch` (return . Left) -- maybe we should do this in another thread?
   deleteFile k =
     liftIO
       $         fmap Right (S.removeFile (keyToFilePath k))

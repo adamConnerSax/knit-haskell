@@ -27,7 +27,8 @@ All of that is handled via writer-like effects, so additions to the documents ca
 As of version 0.8.0.0, the effect stack includes an "Async" effect for running computations concurrently as well as a
 persistent (using disk) cache for persisting the results of computations between report runs.  Anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
-package can be cached.
+package can be cached. If you use the cache, and you are running in a version-controlled directory,
+you probably want to add your cache directory to ".gitignore" or equivalent.
 
 ## Supported Inputs
 * [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
@@ -102,7 +103,7 @@ that is quite limited now by hvega which only works in html output.
 But support could be added for other output types if hvega input is not required.
 
 * Travis building is broken right now.  For some reason it is choosing an impossible build 
-plan--choosing a version of log-domain which is higher than the upper bound on that 
+plan--selecting a version of log-domain which is higher than the upper bound on that 
 package in "random-fu"--and then the buidl fails.  Hopefully, I'll sort this out.
 
 [travis]:        <https://travis-ci.org/adamConnerSax/knit-haskell>

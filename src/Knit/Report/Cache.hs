@@ -76,7 +76,7 @@ knitRetrieveOrMake
   => T.Text
   -> P.Sem r a
   -> P.Sem r a
-knitRetrieveOrMake k toMake = do
+knitRetrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
   ma <- C.retrieveMaybe cerealStrict k
   case ma of
     Nothing -> do
