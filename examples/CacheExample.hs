@@ -61,7 +61,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "Storing some stuff in the cache..."
-  intList :: [Int] <- KC.knitRetrieveOrMake @[Int] "intList" (return [1,2,3])
+  intList <- KC.knitRetrieveOrMake "intList" (return  ([1,2,3]::[Int]))
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -76,6 +76,8 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
     300
     samplePlot
   K.logLE K.Info "Retrieving that stuff from the cache."
+  -- NB: the below only requires type-annotation because it's not used anywhere else (except via "show") so it's
+  -- type can't be inferred.  Normally that wouldn't be the case.
   cachedIntList :: [Int] <- KC.knitRetrieve "intList" 
   K.addMarkDown $ "## Caching: intList=" <> (T.pack $ show intList) <> "; cachedIntList=" <> (T.pack $ show cachedIntList)
   return ()
