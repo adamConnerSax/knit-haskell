@@ -29,10 +29,13 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  resE <- K.knitHtml (Just "AsyncExample.Main")
-                     K.logAll
-                     pandocWriterConfig
-                     makeDoc
+  let knitConfig = K.defaultKnitConfig
+                   { K.outerLogPrefix = Just "AsyncExample.Main"
+                   , K.logIf = K.logAll
+                   , K.pandocWriterConfig = pandocWriterConfig
+                   }
+  resE <- K.knitHtml knitConfig makeDoc
+  
   case resE of
     Right htmlAsText ->
       K.writeAndMakePathLT "examples/html/async_example.html" htmlAsText
@@ -80,7 +83,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
 delay :: K.KnitOne effs => Int -> Int -> K.Sem effs Int
 delay msDelay val = K.wrapPrefix ("delay") $ do
   K.logLE K.Info $ "delaying " <> (T.pack $ show val) <> " for " <> (T.pack $ show msDelay) <> " ms"
-  K.embed (threadDelay $ 1000 * msDelay)
+  K.liftKnit (threadDelay $ 1000 * msDelay)
   K.logLE K.Info "done"
   return val
   

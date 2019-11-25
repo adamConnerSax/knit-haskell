@@ -55,10 +55,15 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
+  let knitConfig = K.defaultKnitConfig
+        { K.outerLogPrefix = Just "RandomExample.Main"
+        , K.logIf = K.logAll
+        , K.pandocWriterConfig = pandocWriterConfig
+        }                                             
   pureMTSource <- newPureMT
   resE         <-
     runExampleApp "This is from the MyApp environment."
-    $ K.knitHtml (Just "RandomExample.Main") K.logAll pandocWriterConfig
+    $ K.knitHtml knitConfig
     $ PR.runRandomIOPureMT pureMTSource
     $ makeDoc
   case resE of

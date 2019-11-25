@@ -26,12 +26,15 @@ main :: IO ()
 main = do
   let template = K.DefaultTemplate --K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
   pandocWriterConfig <- K.mkPandocWriterConfig template
-                                               templateVars
-                                               K.mindocOptionsF
-  resE <- K.knitHtml (Just "SimpleExample.Main")
-                     K.logAll
-                     pandocWriterConfig
-                     makeDoc
+                        templateVars
+                        K.mindocOptionsF
+                   
+  let knitConfig = K.defaultKnitConfig
+        { K.outerLogPrefix = Just "SimpleExample.Main"
+        , K.logIf = K.logAll
+        , K.pandocWriterConfig = pandocWriterConfig
+        }
+  resE <- K.knitHtml knitConfig makeDoc
   case resE of
     Right htmlAsText ->
       K.writeAndMakePathLT "examples/html/simple_example.html" htmlAsText

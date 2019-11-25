@@ -26,11 +26,13 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  resSimpleE <- K.knitHtml (Just "ErrorExample.Main")
-                           K.logAll
-                           pandocWriterConfig
-                           makeDocWithKnitError
-  case resSimpleE of
+  let knitConfig = K.defaultKnitConfig
+                   { K.outerLogPrefix = Just "ErrorExample.Main"
+                   , K.logIf = K.logAll
+                   , K.pandocWriterConfig = pandocWriterConfig
+                   }                                               
+  resE <- K.knitHtml knitConfig makeDocWithKnitError
+  case resE of
     Right htmlAsText ->
       K.writeAndMakePathLT "examples/html/error_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err

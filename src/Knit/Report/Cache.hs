@@ -28,9 +28,10 @@ module Knit.Report.Cache
   )
 where
 
-import qualified Knit.Report                   as K
+import qualified Knit.Report.EffectStack       as K
 
 import qualified Knit.Effect.AtomicCache       as C
+import qualified Knit.Effect.Logger            as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL

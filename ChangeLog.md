@@ -1,9 +1,14 @@
 v0.8.0.0 (unreleased)
-* Added Async into knit-haskell effects
-
+* BREAKING: moved config arguments to ```knit-html``` and ```knit-htmls``` into a data structure ```KnitConfig```.  This breaks
+all existing uses of those functions but is designed to future-proof against additions to the knit configuration.  A breaking
+change was more-or-less necessitated by the addition of a cache directory parameter for the persistent caching effect. See below.
+* New persistent caching effect.  Anything which has an instance of ```Serialize``` (from the cereal package) may be cached,
+in memory and backed by a disk-based cache.  When knit-html(s) is next run, the cached version can be used in 
+place of running an expensive computation.  For an example, see examples/CacheExample.hs.
+* Added Async into knit-haskell effects.  For an example, see examples/AsyncExample.hs.
 * Logging changes:
 
-1. Added a ```Debug Int``` level below diagnostic with an integer argument to allow various and unlimited debug levels
+1. Added a ```Debug Int``` level below ```Diagnostic``` with an integer argument to allow various and unlimited debug levels
 2. Changed the previous ```[LogSeverity]``` argument given to run functions to ```(LogSeverity -> Bool)``` 
 to accomdate the non-Boundedness of the new ```Debug Int``` levels.
 3. Made logging thread-aware by making prefixes thread-local after thread is launched 
@@ -11,7 +16,6 @@ and doing IO output of logs via STM TChan so each message is intact.
 
 * Added error handlers for ```Maybe``` and ```Either Text```.
 * Added ```knitMapError``` to absorb other types of errors.
-
 
 v0.7.0.0
 * Updated vega versions in pandoc templates

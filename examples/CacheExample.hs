@@ -31,11 +31,14 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  resE <- K.knitHtml (Just "AsyncExample.Main")
-                     K.logAll
-                     "testCache"
-                     pandocWriterConfig
-                     makeDoc
+
+  let knitConfig = K.defaultKnitConfig
+        { K.outerLogPrefix = Just "AsyncExample.Main"
+        , K.logIf = K.logAll
+        , K.pandocWriterConfig = pandocWriterConfig
+        }                                               
+  resE <- K.knitHtml knitConfig makeDoc
+
   case resE of
     Right htmlAsText ->
       K.writeAndMakePathLT "examples/html/cache_example.html" htmlAsText

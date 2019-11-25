@@ -30,7 +30,13 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                tvWithCss
                                                K.mindocOptionsF
-  resE <- K.knitHtmls (Just "MTLExample.Main") K.logAll pandocWriterConfig $ do
+  let knitConfig = K.defaultKnitConfig
+        { K.outerLogPrefix = Just "MultiDocExample.Main"
+        , K.logIf = K.logAll
+        , K.pandocWriterConfig = pandocWriterConfig
+        }
+
+  resE <- K.knitHtmls knitConfig $ do
     K.newPandoc (K.PandocInfo "multi_doc1" M.empty) makeDoc1
     K.newPandoc (K.PandocInfo "multi_doc2" M.empty) makeDoc2
   case resE of

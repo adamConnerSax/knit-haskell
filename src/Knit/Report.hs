@@ -19,8 +19,7 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-This module re-exports the basic pieces to build reports using Pandoc
-as well as providing functions to do the "knitting"--produce the documents.
+This module re-exports the basic pieces to build reports using Pandoc.
 That is, it is intended as one-stop-shopping for using this library to produce Html from various fragments which
 Pandoc can read.
 
@@ -35,6 +34,7 @@ so if you want to use a different markdown flavor you may need to hide "addMarkD
 -}
 module Knit.Report
   (
+{-    
     -- * Knit
     knitHtml
   , knitHtmls
@@ -47,6 +47,11 @@ module Knit.Report
   , KnitOne
   , KnitMany
   , KnitBase
+-}
+    -- * Report Building
+    module Knit.Report.EffectStack
+  , module Knit.Report.Error
+  , module Knit.Report.Cache
 
     -- * Inputs
   , module Knit.Report.Input.Table.Colonnade
@@ -73,10 +78,18 @@ module Knit.Report
   )
 where
 
+import           Knit.Report.EffectStack
+import           Knit.Report.Error
+import           Knit.Report.Cache
+import           Knit.Report.Output
+import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
+                                                , mindocOptionsF
+                                                , writeAllPandocResultsWithInfoAsHtml
+                                                , writePandocResultWithInfoAsHtml
+                                                )
+
 import           Polysemy                       ( Member
                                                 , Sem
-                                                , Embed
-                                                , embed
                                                 )
 import           Polysemy.Async                 ( async
                                                 , await
@@ -100,6 +113,7 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , filteredLogEntriesToIO
                                                 , LogWithPrefixesLE
                                                 )
+import           Knit.Effect.UnusedId           ( getNextUnusedId )
 import           Knit.Report.Input.Table.Colonnade
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )
@@ -114,13 +128,7 @@ import           Knit.Report.Input.Visualization.Hvega
 import           Knit.Report.Input.Visualization.Diagrams
 --                                         hiding ( trace ) -- trace conflicts with Pandoc.trace
 
-import           Knit.Report.Output
-import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
-                                                , mindocOptionsF
-                                                , writeAllPandocResultsWithInfoAsHtml
-                                                , writePandocResultWithInfoAsHtml
-                                                )
-
+{-
 import           Text.Pandoc                    ( PandocError(..) )
 
 import           Control.Monad.Except           ( MonadIO )
@@ -144,14 +152,15 @@ import qualified Knit.Effect.Pandoc            as KP
 import qualified Knit.Effect.PandocMonad       as KPM
 import qualified Knit.Effect.Logger            as KLog
 import qualified Knit.Effect.UnusedId          as KUI
-import           Knit.Effect.UnusedId           ( getNextUnusedId )
+
 import qualified Knit.Effect.AtomicCache       as KC
 import           Knit.Effect.AtomicCache        ( store
                                                 , retrieve
                                                 , retrieveMaybe
                                                 , clear
                                                 )
-
+-}
+{-
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify m.
 -- This allows use of any underlying monad to handle the Pandoc effects.
@@ -218,9 +227,6 @@ knitMaybe msg = maybe (knitError msg) return
 knitEither
   :: P.Member (PE.Error PA.PandocError) r => Either T.Text a -> P.Sem r a
 knitEither = either knitError return
-
-
-
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
@@ -290,7 +296,4 @@ consumeKnitEffectStack loggingPrefixM logIf cacheDir =
     . KPM.interpretInIO -- PA.PandocIO
     . KUI.runUnusedId
     . maybe id KLog.wrapPrefix loggingPrefixM
-
-
-ioErrorToPandocError :: IE.IOError -> PA.PandocError
-ioErrorToPandocError e = PA.PandocIOError (show e) e
+-}

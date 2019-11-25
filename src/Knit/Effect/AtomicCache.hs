@@ -48,11 +48,12 @@ where
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Polysemy.AtomicState          as P
+import qualified Knit.Effect.Logger            as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
-
 import qualified Data.Map                      as M
+import qualified Data.Text                     as T
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as X
 import           Control.Monad                  ( join )
@@ -125,50 +126,73 @@ data Persist e r k b where
            -> Persist e r k b
 
 atomicRead
-  :: (Ord k, P.Member (P.Embed IO) r)
+  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
   => (k -> P.Sem r (Either e b))
   -> k
   -> P.Sem (P.AtomicState (M.Map k (C.TMVar b)) ': r) (Either e b)
-atomicRead readF k = do
+atomicRead readF k = K.wrapPrefix "AtomicCache.atomicRead" $ do
   tvM <- P.atomicGets $ M.lookup k
   case tvM of
-    Just tv -> fmap Right $ P.embed $ C.atomically $ C.readTMVar tv -- it exists so someone has already retrieved it or is in the process.  Wait for it.
+    Just tv -> do
+      K.logLE K.Diagnostic
+        $  "cached asset at key="
+        <> (T.pack $ show k)
+        <> " exists in memory (or is already being loaded on another thread)."
+      fmap Right $ P.embed $ C.atomically $ C.readTMVar tv -- it exists so someone has already retrieved it or is in the process.  Wait for it.
     Nothing -> do
+      K.logLE K.Diagnostic
+        $  "cached asset at key="
+        <> (T.pack $ show k)
+        <> " not in memory. Checking persistent store."
       tv <- P.embed $ C.atomically $ C.newEmptyTMVar
       P.atomicModify (M.insert k tv)
       readResult <- P.raise $ readF k
       case readResult of
         Left e -> do
+          K.logLE K.Diagnostic
+            $  "cached asset at key="
+            <> (T.pack $ show k)
+            <> " not in persistent store."
           P.atomicModify (M.delete k)
           return $ Left e
         Right b -> do
+          K.logLE K.Diagnostic
+            $ "cached asset at key="
+            <> (T.pack $ show k)
+            <> " found and loaded from persistent store and added to in-memory cache."
           P.embed $ C.atomically $ C.putTMVar tv b
           return $ Right b
 
 atomicWrite
-  :: (Ord k, P.Member (P.Embed IO) r)
+  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
   => (k -> b -> P.Sem r (Either e ()))
   -> k
   -> b
   -> P.Sem (P.AtomicState (M.Map k (C.TMVar b)) ': r) (Either e ())
-atomicWrite writeF k b = do
+atomicWrite writeF k b = K.wrapPrefix "AtomicCache.atomicWrite" $ do
+  K.logLE K.Diagnostic
+    $  "Writing asset to cache (memory and persistent store) at key="
+    <> (T.pack $ show k)
   tv <- P.embed $ C.atomically $ C.newTMVar b
   P.atomicModify $ M.alter (const $ Just tv) k
   P.raise $ writeF k b
 
 atomicDelete
-  :: (Ord k, P.Member (P.Embed IO) r)
+  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
   => (k -> P.Sem r (Either e ()))
   -> k
   -> P.Sem (P.AtomicState (M.Map k (C.TMVar b)) ': r) (Either e ())
 atomicDelete deleteF k = do
+  K.logLE K.Diagnostic
+    $  "Deleting asset from cache (memory and persistent store) at key="
+    <> (T.pack $ show k)
   P.atomicModify $ M.alter (const Nothing) k
   P.raise $ deleteF k
 
 
 -- | Interpret AtomicDataCache effect via AtomicState and Persist
 runPersistentAtomicCacheInAtomicState
-  :: (Ord k, P.Member (P.Embed IO) r)
+  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
   => Persist e r k b
   -> P.Sem (AtomicCache e k b ': r) a
   -> P.Sem (P.AtomicState (M.Map k (C.TMVar b)) ': r) a
@@ -180,7 +204,7 @@ runPersistentAtomicCacheInAtomicState (Persist readP writeP deleteP) =
       Just b  -> atomicWrite writeP k b
 
 runPersistentAtomicCache
-  :: (Ord k, P.Member (P.Embed IO) r)
+  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
   => Persist e r k b
   -> P.Sem (AtomicCache e k b ': r) a
   -> P.Sem r a
@@ -190,7 +214,7 @@ runPersistentAtomicCache p mx = do
 
 -- | Persist functions for disk-based persistence with a strict ByteString interface
 strictPersistAsByteString
-  :: P.Members '[P.Embed IO] r
+  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> Persist X.IOException r k BS.ByteString
 strictPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
@@ -199,10 +223,11 @@ strictPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
     liftIO
       $         fmap Right (BS.readFile (keyToFilePath k))
       `X.catch` (return . Left)
-  writeBS k b =
-    liftIO
-      $         fmap Right (BS.writeFile (keyToFilePath k) b)
-      `X.catch` (return . Left)
+  writeBS k b = do
+    let filePath     = (keyToFilePath k)
+        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+    _ <- createDirIfNecessary dirPath
+    liftIO $ fmap Right (BS.writeFile filePath b) `X.catch` (return . Left)
   deleteFile k =
     liftIO
       $         fmap Right (S.removeFile (keyToFilePath k))
@@ -210,7 +235,7 @@ strictPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
 
 -- | Persist functions for disk-based persistence with a lazy ByteString interface
 lazyPersistAsByteString
-  :: P.Members '[P.Embed IO, P.Error X.IOException] r
+  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> Persist X.IOException r k BL.ByteString
 lazyPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
@@ -219,12 +244,35 @@ lazyPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
     liftIO
       $         fmap Right (BL.readFile (keyToFilePath k))
       `X.catch` (return . Left)
-  writeBS k b =
-    liftIO
-      $         fmap Right (BL.writeFile (keyToFilePath k) b)
-      `X.catch` (return . Left)
+  writeBS k b = do
+    let filePath     = (keyToFilePath k)
+        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+    _ <- createDirIfNecessary dirPath
+    liftIO $ fmap Right (BL.writeFile filePath b) `X.catch` (return . Left)
   deleteFile k =
     liftIO
       $         fmap Right (S.removeFile (keyToFilePath k))
       `X.catch` (return . Left)
+
+createDirIfNecessary
+  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
+  => T.Text
+  -> K.Sem r (Either X.IOException ())
+createDirIfNecessary dir = do
+  existsE <-
+    P.embed
+    $         fmap Right (S.doesDirectoryExist (T.unpack dir))
+    `X.catch` (return . Left)
+  case existsE of
+    Left  e      -> return $ Left e
+    Right exists -> case exists of
+      False -> do
+        K.logLE K.Info
+          $  "Cache directory (\""
+          <> dir
+          <> "\") not found. Atttempting to create."
+        P.embed
+          $         fmap Right (S.createDirectory (T.unpack dir))
+          `X.catch` (return . Left)
+      True -> return $ Right ()
 

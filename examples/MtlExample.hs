@@ -49,8 +49,14 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVarsWithCss
                                                K.mindocOptionsF
+
+  let knitConfig = K.defaultKnitConfig
+        { K.outerLogPrefix = Just "MtlExample.Main"
+        , K.logIf = K.logAll
+        , K.pandocWriterConfig = pandocWriterConfig
+        }
   resE <- runExampleApp "This is from the MyApp environment."
-    $ K.knitHtml (Just "MtlExample.Main") K.logAll pandocWriterConfig makeDoc
+    $ K.knitHtml knitConfig makeDoc
   case resE of
     Right htmlAsText ->
       K.writeAndMakePathLT "examples/html/mtl_example.html" htmlAsText
