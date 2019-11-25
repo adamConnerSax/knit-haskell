@@ -71,12 +71,9 @@ import qualified Polysemy.Async                as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
-import qualified Control.Concurrent            as C
 import qualified Control.Concurrent.STM        as C
 
-import           Control.Monad                  ( when
-                                                , forever
-                                                )
+import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
 import qualified Control.Monad.Log             as ML
@@ -88,7 +85,9 @@ import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP
 import           Prelude                 hiding ( log )
 
-import           System.IO (hFlush, stdout)
+import           System.IO                      ( hFlush
+                                                , stdout
+                                                )
 
 
 -- TODO: consider a more interesting Handler type.  As in co-log (https://hackage.haskell.org/package/co-log-core)
@@ -240,7 +239,8 @@ data NextOrDone = Next T.Text | Done -- isomorphic to (Maybe T.Text)
 
 -- | log to an STM TChan.  This allows logging from different threads to log each message atomically
 logToTChan :: MonadIO m => C.TChan NextOrDone -> (a -> T.Text) -> Handler m a
-logToTChan ch toText = liftIO . C.atomically . C.writeTChan ch . (Next . toText)
+logToTChan ch toText =
+  liftIO . C.atomically . C.writeTChan ch . (Next . toText)
 
 -- | '(a -> Text)' function for prefixedLogEntries
 prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
@@ -266,9 +266,7 @@ filteredLogEntriesToIO
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do
   let f a = lsF (severity $ discardPrefix a)
-  logAndHandlePrefixed
-    (filterLog f $ prefixedLogEntryToIO)
-    mx
+  logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) mx
 
 filteredAsyncLogEntriesToIO
   :: (MonadIO (P.Sem r), P.Member P.Async r)
@@ -276,11 +274,11 @@ filteredAsyncLogEntriesToIO
   -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
   -> P.Sem r x
 filteredAsyncLogEntriesToIO lsF mx = do
-  ch <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
-  loggingThread  <- P.async $ liftIO $ printNextUntilDone ch -- launch a thread for printing them
-  res <- logAndHandlePrefixed
-         (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
-         mx
+  ch            <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
+  loggingThread <- P.async $ liftIO $ printNextUntilDone ch -- launch a thread for printing them
+  res           <- logAndHandlePrefixed
+    (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
+    mx
   liftIO $ C.atomically $ C.writeTChan ch Done -- tell the printing thread to finish
   _ <- P.await loggingThread -- wait until it finishes printing any remaining messages
   return res
@@ -292,7 +290,8 @@ printNextUntilDone :: C.TChan NextOrDone -> IO ()
 printNextUntilDone ch = do
   nOrd <- C.atomically $ C.readTChan ch
   case nOrd of
-    Next t -> (putStrLn . T.unpack $ t) >> hFlush stdout >> printNextUntilDone ch 
+    Next t ->
+      (putStrLn . T.unpack $ t) >> hFlush stdout >> printNextUntilDone ch
     Done -> return ()
 
 {-

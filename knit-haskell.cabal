@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d066f179a6c6128267c730c60f248a0fe260aec37ebd4851f81252ecc7c2ecc8
+-- hash: dad228f92089517a1cf9f7a4ffce1afaaa4e4c012dd27951b88f1c0d389f19f2
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -49,6 +49,7 @@ library
       Knit.Effect.Pandoc
       Knit.Effect.UnusedId
       Knit.Report
+      Knit.Report.Cache
       Knit.Report.Input.Table.Colonnade
       Knit.Report.Input.Html
       Knit.Report.Input.Html.Lucid
@@ -62,8 +63,7 @@ library
       Knit.Report.Other.Lucid
       Knit.Report.Other.Blaze
   other-modules:
-      Knit.Effect.DataCache
-      Knit.Report.DataCache
+      Knit.Effect.AtomicCache
       Paths_knit_haskell
   build-depends:
       Glob >=0.10.0 && <0.11.0
@@ -109,6 +109,25 @@ library
 test-suite AsyncExample
   type: exitcode-stdio-1.0
   main-is: AsyncExample.hs
+  hs-source-dirs:
+      examples
+  ghc-options: -fplugin=Polysemy.Plugin -threaded
+  build-depends:
+      base
+    , blaze-html
+    , containers
+    , here
+    , hvega
+    , knit-haskell
+    , plots
+    , polysemy
+    , polysemy-plugin
+    , text
+  default-language: Haskell2010
+
+test-suite CacheExample
+  type: exitcode-stdio-1.0
+  main-is: CacheExample.hs
   hs-source-dirs:
       examples
   ghc-options: -fplugin=Polysemy.Plugin -threaded

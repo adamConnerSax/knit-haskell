@@ -47,6 +47,7 @@ library:
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId
   - Knit.Report
+  - Knit.Report.Cache
   - Knit.Report.Input.Table.Colonnade
   - Knit.Report.Input.Html
   - Knit.Report.Input.Html.Lucid
@@ -182,6 +183,22 @@ tests:
     - text
   AsyncExample:
     main: AsyncExample.hs
+    other-modules: []
+    source-dirs: examples
+    ghc-options: -fplugin=Polysemy.Plugin -threaded
+    dependencies:
+    - base
+    - blaze-html
+    - containers
+    - here
+    - hvega
+    - knit-haskell
+    - plots    
+    - polysemy
+    - polysemy-plugin
+    - text
+  CacheExample:
+    main: CacheExample.hs
     other-modules: []
     source-dirs: examples
     ghc-options: -fplugin=Polysemy.Plugin -threaded

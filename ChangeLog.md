@@ -1,12 +1,13 @@
 v0.8.0.0 (unreleased)
-* Added Async effect into stack and added a Polysemy intercept to get logging prefix correct.
+* Added Async into knit-haskell effects
 
 * Logging changes:
 
 1. Added a ```Debug Int``` level below diagnostic with an integer argument to allow various and unlimited debug levels
-2. Changed the previous ```[LogSeverity]``` argument given to run functions to ```(LogSeverity -> Bool)```
+2. Changed the previous ```[LogSeverity]``` argument given to run functions to ```(LogSeverity -> Bool)``` 
+to accomdate the non-Boundedness of the new ```Debug Int``` levels.
 3. Made logging thread-aware by making prefixes thread-local after thread is launched 
-and doing IO output of logs via STM TChan so messages are intact.
+and doing IO output of logs via STM TChan so each message is intact.
 
 * Added error handlers for ```Maybe``` and ```Either Text```.
 * Added ```knitMapError``` to absorb other types of errors.
