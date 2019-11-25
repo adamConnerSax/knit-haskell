@@ -248,7 +248,7 @@ strictPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
 
 -- | Persist functions for disk-based persistence with a lazy ByteString interface
 lazyPersistAsByteString
-  :: (P.Members '[P.Embed IO, P.Async] r, K.LogWithPrefixesLE r)
+  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> Persist X.IOException r k BL.ByteString
 lazyPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
@@ -262,7 +262,7 @@ lazyPersistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
         (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
     _ <- createDirIfNecessary dirPath
     K.logLE K.Diagnostic $ "Writing serialization to disk."
-    _ <- liftIO $ fmap Right (BL.writeFile filePath b) `X.catch` (return . Left) -- maybe we should do this in another thread?
+    liftIO $ fmap Right (BL.writeFile filePath b) `X.catch` (return . Left) -- maybe we should do this in another thread?
   deleteFile k =
     liftIO
       $         fmap Right (S.removeFile (keyToFilePath k))
