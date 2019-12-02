@@ -13,6 +13,7 @@ place of running an expensive computation.  For an example, see examples/CacheEx
 to accomdate the non-Boundedness of the new ```Debug Int``` levels.
 3. Made logging thread-aware by making prefixes thread-local after thread is launched 
 and doing IO output of logs via STM TChan so each message is intact.
+4. Added type synonyms ```PrefixedLogEffects``` and ```PrefixedLogEffectsLE``` for type-level-lists of logging effects 
 
 * Added error handlers for ```Maybe``` and ```Either Text```.
 * Added ```knitMapError``` to absorb other types of errors.

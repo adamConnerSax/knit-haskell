@@ -63,7 +63,8 @@ type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
 
 -- | A holder for a value that might already exist or with (monadic) instructions for making it
 -- NB: Use this machinery with caution!  You will end up tying the environment where you need
--- the @a@ with the environment needed to build it (the @es@).
+-- the @a@ with the environment needed to build it (the @es@). This can be more painful than
+-- it's worth just to avoid de-serialization.
 data CachedAction es a where
   Made :: a -> CachedAction es a
   RetrieveOrMake :: S.Serialize b => T.Text -> (forall r. P.Members es r => P.Sem r b) -> (b -> a) -> CachedAction es a
@@ -75,7 +76,6 @@ mapCachedAction :: (a -> b) -> CachedAction es a -> CachedAction es b
 mapCachedAction f (Made a) = Made $ f a
 mapCachedAction f (RetrieveOrMake k action toA) =
   RetrieveOrMake k action (f . toA)
-
 
 -- | Quantify (?) the @Members es r@ constraint so we can pass CacheHolders to functions without
 -- those functions needing to know what effects the CH was built with as long as they
