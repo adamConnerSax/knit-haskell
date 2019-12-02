@@ -23,14 +23,11 @@ This module adds types, combinators and knit functions for using knit-haskell wi
 -}
 module Knit.Report.Cache
   (
-    -- * Interface Types
-    CacheHolder
     -- * Combinators
-  , cacheAction
-  , useCached
-  , store
+    store
   , retrieve
   , retrieveOrMake
+  , retrieveOrMakeTransformed
   , clear
   )
 where
@@ -55,8 +52,10 @@ import qualified System.IO.Error               as IE
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
+
 type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
 
+{-
 data CacheHolder r a where
   Made :: a -> CacheHolder r a
   RetrieveOrMake :: S.Serialize b => T.Text -> P.Sem r b -> (b -> a) -> CacheHolder r a
@@ -71,6 +70,7 @@ useCached
   -> P.Sem r a
 useCached (Made x                     ) = return x
 useCached (RetrieveOrMake key action f) = f <$> retrieveOrMake key action
+-}
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
@@ -124,6 +124,20 @@ retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
     Just a -> do
       K.logLE K.Diagnostic $ k <> " found in cache."
       return a
+
+retrieveOrMakeTransformed
+  :: forall a b r
+   . ( P.Members '[KnitCache, P.Error PandocError] r
+     , K.LogWithPrefixesLE r
+     , S.Serialize b
+     )
+  => (a -> b)
+  -> (b -> a)
+  -> T.Text
+  -> P.Sem r a
+  -> P.Sem r a
+retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
+  fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
 
 -- | Clear the @b@ stored at key k.
 clear :: K.KnitEffects r => T.Text -> P.Sem r ()
