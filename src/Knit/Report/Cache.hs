@@ -29,6 +29,13 @@ module Knit.Report.Cache
   , retrieveOrMake
   , retrieveOrMakeTransformed
   , clear
+    -- * Experimental
+  , CachedAction
+  , CachedRunnable
+  , makeRunnable
+  , mapCachedAction
+  , cacheAction
+  , useCached
   )
 where
 
@@ -55,22 +62,64 @@ import qualified Polysemy.Error                as P
 
 type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
 
-{-
-data CacheHolder r a where
-  Made :: a -> CacheHolder r a
-  RetrieveOrMake :: S.Serialize b => T.Text -> P.Sem r b -> (b -> a) -> CacheHolder r a
+-- | A holder for a value that might already exist or with (monadic) instructions for making it
+-- NB: Use this machinery with caution!  You will end up tying the environment where you need
+-- the @a@ with the environment needed to build it (the @es@).
+data CachedAction es a where
+  Made :: a -> CachedAction es a
+  RetrieveOrMake :: S.Serialize a => T.Text -> (forall r.P.Members es r => P.Sem r a) -> CachedAction es a
 
+-- | map the return type of a @CachedAction es a@ with a function @a -> b@.
+-- NB: CachedAction isn't a functor (Hask -> Hask) because of the 'S.Serialize'
+-- constraint, but we can map it as long we have the constraint on @b@.
+mapCachedAction
+  :: S.Serialize b => (a -> b) -> CachedAction es a -> CachedAction es b
+mapCachedAction f (Made a                 ) = Made $ f a
+mapCachedAction f (RetrieveOrMake k action) = RetrieveOrMake k (fmap f action)
+
+
+-- | Quantify (?) the @Members es r@ constraint so we can pass CacheHolders to functions without
+-- those functions needing to know what effects the CH was built with as long as they
+-- are memmbers of the stack used to call @'useCached'@
+data CachedRunnable r a where
+  CachedRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
+
+makeRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
+makeRunnable = CachedRunnable
+
+
+-- | map the return type of a @CachedRunnable r a@ with a function @a -> b@.
+-- NB: CachedRunnable isn't be a functor (Hask -> Hask) because of the 'S.Serialize'
+-- constraint, but we can map it as long we have the constraint on @b@.
+mapCachedRunnable
+  :: S.Serialize b => (a -> b) -> CachedRunnable r a -> CachedRunnable r b
+mapCachedRunnable f (CachedRunnable ca) = CachedRunnable (mapCachedAction f ca)
+
+-- | Create a @CachedAction@ for some action returning @a@.
+-- Inference on the action cannot determine the @es@ argument
+-- so you will usually have to specify it.
 cacheAction
-  :: S.Serialize b => T.Text -> P.Sem r b -> (b -> a) -> CacheHolder r a
+  :: S.Serialize a
+  => T.Text
+  -> (forall r . P.Members es r => P.Sem r a)
+  -> CachedAction es a
 cacheAction = RetrieveOrMake
 
+-- | Get an action from a @CachedRunnable@.  This may be:
+-- 1. The stored result of previously running the action
+-- 2. The (deserialized) result of retrieving from the in-memory or on-disk cache
+-- 3. The result of running the action.
+-- In the case of 3, the result will be cached in memory and on-disk.
+-- NB: The @CachedRunnable@ constructor requires @r@ to have the effects required
+-- to run the contained action.
 useCached
   :: (P.Members '[KnitCache, P.Error PandocError] r, K.LogWithPrefixesLE r)
-  => CacheHolder r a
+  => CachedRunnable r a
   -> P.Sem r a
-useCached (Made x                     ) = return x
-useCached (RetrieveOrMake key action f) = f <$> retrieveOrMake key action
--}
+useCached (CachedRunnable ca) = case ca of
+  Made x                    -> return x
+  RetrieveOrMake key action -> retrieveOrMake key action
+
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right

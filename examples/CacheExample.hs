@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -8,6 +9,7 @@
 module Main where
 
 import qualified Knit.Report                   as K
+import qualified Knit.Effect.Logger            as K
 import qualified Knit.Report.Cache             as KC
 
 import qualified Data.Map                      as M
@@ -53,7 +55,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: K.KnitOne effs => K.Sem effs ()
+makeDoc :: K.KnitOne r => K.Sem r ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1
@@ -61,7 +63,8 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "Storing some stuff in the cache..."
-  intList <- KC.retrieveOrMake "cacheExample/intList" (return  ([1,2,3]::[Int]))
+--  intList <- KC.retrieveOrMake "cacheExample/intList" (return  ([1,2,3]::[Int]))
+  let doubleListCH :: KC.CachedAction '[K.Logger K.LogEntry] [Double] = KC.cacheAction "cacheExample/doubleList" (doSomethingEffectful 5 2.2)
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -78,10 +81,21 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "Retrieving that stuff from the cache."
   -- NB: the below only requires type-annotation because it's not used anywhere else (except via "show") so it's
   -- type can't be inferred.  Normally that wouldn't be the case.
-  cachedIntList :: [Int] <- KC.retrieve "cacheExample/intList" 
-  K.addMarkDown $ "## Caching: intList=" <> (T.pack $ show intList) <> "; cachedIntList=" <> (T.pack $ show cachedIntList)
+  makeDoubleListDocPart (KC.makeRunnable doubleListCH)
+  heldDoubleList  <- KC.useCached (KC.makeRunnable doubleListCH)
+  cachedDoubleList :: [Double] <- KC.retrieve "cacheExample/doubleList"
+  K.addMarkDown $ "## Caching: heldDoubleList=" <> (T.pack $ show heldDoubleList) <> "; retrieved=" <> (T.pack $ show cachedDoubleList)
   return ()
-  
+
+doSomethingEffectful :: K.Member (K.Logger K.LogEntry) r => Int -> Double -> K.Sem r [Double]
+doSomethingEffectful n x = do
+  K.logLE K.Info "Doing the effectful thing!"
+  return $ replicate n x
+
+makeDoubleListDocPart :: K.KnitOne r => KC.CachedRunnable r [Double] -> K.Sem r ()
+makeDoubleListDocPart uch = do
+  ds <- KC.useCached uch
+  K.logLE K.Info $ "double list from useCached is" <> (T.pack $ show ds)
 
 -- example using HVega  
 exampleVis :: V.VegaLite
