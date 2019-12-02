@@ -97,6 +97,7 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , logLE
                                                 , wrapPrefix
                                                 , filteredLogEntriesToIO
+                                                , PrefixedLogEffectsLE
                                                 , LogWithPrefixesLE
                                                 )
 import           Knit.Effect.UnusedId           ( getNextUnusedId )

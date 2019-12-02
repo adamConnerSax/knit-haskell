@@ -52,7 +52,9 @@ module Knit.Effect.Logger
   , logDiagnostic
   , nonDiagnostic
 
-  -- * Constraints for convenience 
+  -- * Type Synonyms and Constraints for convenience
+  , PrefixedLogEffects
+  , PrefixedLogEffectsLE
   , LogWithPrefixes
   , LogWithPrefixesLE
 
@@ -303,8 +305,14 @@ withAsyncLogging = P.interceptH $ \case
       >>= (\ti -> wrapPrefix ("(ThreadID=" <> (T.pack $ show ti)) x)
 -}
 
+-- | List of Logger effects for a prefixed log of type @a@
+type PrefixedLogEffects a = [PrefixLog, Logger a]
+
+-- | List of Logger effects for a prefixed log of type @LogEntry@
+type PrefixedLogEffectsLE = PrefixedLogEffects LogEntry
+
 -- | Constraint helper for logging with prefixes
-type LogWithPrefixes a effs = (P.Member PrefixLog effs, P.Member (Logger a) effs)
+type LogWithPrefixes a effs = P.Members (PrefixedLogEffects a) effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
 
 -- | Constraint helper for @LogEntry@ type with prefixes
 type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)

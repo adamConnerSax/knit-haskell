@@ -33,7 +33,6 @@ module Knit.Report.Cache
   , CachedAction
   , CachedRunnable
   , makeRunnable
-  , mapCachedAction
   , cacheAction
   , useCached
   )
@@ -67,15 +66,15 @@ type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
 -- the @a@ with the environment needed to build it (the @es@).
 data CachedAction es a where
   Made :: a -> CachedAction es a
-  RetrieveOrMake :: S.Serialize a => T.Text -> (forall r.P.Members es r => P.Sem r a) -> CachedAction es a
+  RetrieveOrMake :: S.Serialize b => T.Text -> (forall r. P.Members es r => P.Sem r b) -> (b -> a) -> CachedAction es a
 
--- | map the return type of a @CachedAction es a@ with a function @a -> b@.
--- NB: CachedAction isn't a functor (Hask -> Hask) because of the 'S.Serialize'
--- constraint, but we can map it as long we have the constraint on @b@.
-mapCachedAction
-  :: S.Serialize b => (a -> b) -> CachedAction es a -> CachedAction es b
-mapCachedAction f (Made a                 ) = Made $ f a
-mapCachedAction f (RetrieveOrMake k action) = RetrieveOrMake k (fmap f action)
+instance Functor (CachedAction es) where
+  fmap = mapCachedAction
+
+mapCachedAction :: (a -> b) -> CachedAction es a -> CachedAction es b
+mapCachedAction f (Made a) = Made $ f a
+mapCachedAction f (RetrieveOrMake k action toA) =
+  RetrieveOrMake k action (f . toA)
 
 
 -- | Quantify (?) the @Members es r@ constraint so we can pass CacheHolders to functions without
@@ -84,24 +83,24 @@ mapCachedAction f (RetrieveOrMake k action) = RetrieveOrMake k (fmap f action)
 data CachedRunnable r a where
   CachedRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
 
+instance Functor (CachedRunnable r) where
+  fmap = mapCachedRunnable
+
+-- | Wrap a @CachedAction@ in a @CachedRunnable@ which witnesses that @r@ contains @es@.  
 makeRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
 makeRunnable = CachedRunnable
 
-
--- | map the return type of a @CachedRunnable r a@ with a function @a -> b@.
--- NB: CachedRunnable isn't be a functor (Hask -> Hask) because of the 'S.Serialize'
--- constraint, but we can map it as long we have the constraint on @b@.
-mapCachedRunnable
-  :: S.Serialize b => (a -> b) -> CachedRunnable r a -> CachedRunnable r b
+mapCachedRunnable :: (a -> b) -> CachedRunnable r a -> CachedRunnable r b
 mapCachedRunnable f (CachedRunnable ca) = CachedRunnable (mapCachedAction f ca)
 
 -- | Create a @CachedAction@ for some action returning @a@.
 -- Inference on the action cannot determine the @es@ argument
 -- so you will usually have to specify it.
 cacheAction
-  :: S.Serialize a
+  :: S.Serialize b
   => T.Text
-  -> (forall r . P.Members es r => P.Sem r a)
+  -> (forall r . P.Members es r => P.Sem r b)
+  -> (b -> a)
   -> CachedAction es a
 cacheAction = RetrieveOrMake
 
@@ -117,8 +116,8 @@ useCached
   => CachedRunnable r a
   -> P.Sem r a
 useCached (CachedRunnable ca) = case ca of
-  Made x                    -> return x
-  RetrieveOrMake key action -> retrieveOrMake key action
+  Made x                      -> return x
+  RetrieveOrMake key action f -> f <$> retrieveOrMake key action
 
 
 mapLeft :: (a -> b) -> Either a c -> Either b c

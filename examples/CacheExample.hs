@@ -64,7 +64,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "Storing some stuff in the cache..."
 --  intList <- KC.retrieveOrMake "cacheExample/intList" (return  ([1,2,3]::[Int]))
-  let doubleListCH :: KC.CachedAction '[K.Logger K.LogEntry] [Double] = KC.cacheAction "cacheExample/doubleList" (doSomethingEffectful 5 2.2)
+  let doubleListCH :: KC.CachedAction '[K.Logger K.LogEntry] [Double] = KC.cacheAction "cacheExample/doubleList" (doSomethingEffectful 5 2.2) id
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
