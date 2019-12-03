@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-|
 Module      : Knit.Report.Cache
@@ -31,9 +32,10 @@ module Knit.Report.Cache
   , clear
     -- * Experimental
   , CachedAction
+  , cacheAction
+  , useCachedAction
   , CachedRunnable
   , makeRunnable
-  , cacheAction
   , useCached
   )
 where
@@ -77,6 +79,29 @@ mapCachedAction f (Made a) = Made $ f a
 mapCachedAction f (RetrieveOrMake k action toA) =
   RetrieveOrMake k action (f . toA)
 
+
+-- | Create a @CachedAction@ for some action returning @a@.
+-- Inference on the action cannot determine the @es@ argument
+-- so you will usually have to specify it.
+cacheAction
+  :: S.Serialize b
+  => T.Text
+  -> (forall r . P.Members es r => P.Sem r b)
+  -> (b -> a)
+  -> CachedAction es a
+cacheAction = RetrieveOrMake
+
+useCachedAction
+  :: ( P.Members '[KnitCache, P.Error PandocError] r
+     , P.Members K.PrefixedLogEffectsLE r
+     , P.Members es r
+     )
+  => CachedAction es a
+  -> P.Sem r a
+useCachedAction (Made a                     ) = return a
+useCachedAction (RetrieveOrMake key action f) = f <$> retrieveOrMake key action
+
+
 -- | Quantify (?) the @Members es r@ constraint so we can pass CacheHolders to functions without
 -- those functions needing to know what effects the CH was built with as long as they
 -- are memmbers of the stack used to call @'useCached'@
@@ -92,17 +117,6 @@ makeRunnable = CachedRunnable
 
 mapCachedRunnable :: (a -> b) -> CachedRunnable r a -> CachedRunnable r b
 mapCachedRunnable f (CachedRunnable ca) = CachedRunnable (mapCachedAction f ca)
-
--- | Create a @CachedAction@ for some action returning @a@.
--- Inference on the action cannot determine the @es@ argument
--- so you will usually have to specify it.
-cacheAction
-  :: S.Serialize b
-  => T.Text
-  -> (forall r . P.Members es r => P.Sem r b)
-  -> (b -> a)
-  -> CachedAction es a
-cacheAction = RetrieveOrMake
 
 -- | Get an action from a @CachedRunnable@.  This may be:
 -- 1. The stored result of previously running the action

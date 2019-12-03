@@ -64,7 +64,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "Storing some stuff in the cache..."
 --  intList <- KC.retrieveOrMake "cacheExample/intList" (return  ([1,2,3]::[Int]))
-  let doubleListCH :: KC.CachedAction '[K.Logger K.LogEntry] [Double] = KC.cacheAction "cacheExample/doubleList" (doSomethingEffectful 5 2.2) id
+  let doubleListCA :: KC.CachedAction '[K.Logger K.LogEntry] [Double] = KC.cacheAction "cacheExample/doubleList" (doSomethingEffectful 5 2.2) id
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -81,8 +81,8 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "Retrieving that stuff from the cache."
   -- NB: the below only requires type-annotation because it's not used anywhere else (except via "show") so it's
   -- type can't be inferred.  Normally that wouldn't be the case.
-  makeDoubleListDocPart (KC.makeRunnable doubleListCH)
-  heldDoubleList  <- KC.useCached (KC.makeRunnable doubleListCH)
+  makeDoubleListDocPart doubleListCA
+  heldDoubleList  <- KC.useCachedAction doubleListCA
   cachedDoubleList :: [Double] <- KC.retrieve "cacheExample/doubleList"
   K.addMarkDown $ "## Caching: heldDoubleList=" <> (T.pack $ show heldDoubleList) <> "; retrieved=" <> (T.pack $ show cachedDoubleList)
   return ()
@@ -92,9 +92,9 @@ doSomethingEffectful n x = do
   K.logLE K.Info "Doing the effectful thing!"
   return $ replicate n x
 
-makeDoubleListDocPart :: K.KnitOne r => KC.CachedRunnable r [Double] -> K.Sem r ()
-makeDoubleListDocPart uch = do
-  ds <- KC.useCached uch
+makeDoubleListDocPart :: (K.KnitOne r, K.Members es r) => KC.CachedAction es [Double] -> K.Sem r ()
+makeDoubleListDocPart ca = do
+  ds <- KC.useCachedAction ca
   K.logLE K.Info $ "double list from useCached is" <> (T.pack $ show ds)
 
 -- example using HVega  

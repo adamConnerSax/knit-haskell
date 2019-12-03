@@ -102,10 +102,6 @@ If you find it useful but have suggestions, please submit issues on github.
 that is quite limited now by hvega which only works in html output.  
 But support could be added for other output types if hvega input is not required.
 
-* Travis building is broken right now.  For some reason it is choosing an impossible build 
-plan--selecting a version of log-domain which is higher than the upper bound on that 
-package in "random-fu"--and then the buidl fails.  Hopefully, I'll sort this out.
-
 [travis]:        <https://travis-ci.org/adamConnerSax/knit-haskell>
 [travis-badge]:  <https://travis-ci.org/adamConnerSax/knit-haskell.svg?branch=master>
 [hackage]:       <https://hackage.haskell.org/package/knit-haskell>

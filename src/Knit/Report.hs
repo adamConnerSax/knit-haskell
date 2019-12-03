@@ -75,6 +75,7 @@ import           Knit.Report.Output.Html        ( pandocWriterToBlazeDocument
                                                 )
 
 import           Polysemy                       ( Member
+                                                , Members
                                                 , Sem
                                                 )
 import           Polysemy.Async                 ( async
