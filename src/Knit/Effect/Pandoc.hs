@@ -1,13 +1,14 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE TypeOperators       #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
 Module      : Knit.Effect.Pandoc
@@ -60,7 +61,6 @@ module Knit.Effect.Pandoc
 
     -- * Re-exports
   , DocWithInfo(..)
-
   )
 where
 
@@ -214,10 +214,11 @@ fromPandoc pwf pwo (PandocWithRequirements pdoc rs) = case handlesAll pwf rs of
   False ->
     throwError
       $  PA.PandocSomeError
+      $  PM.textToPandocText
       $  "One of "
-      ++ (show $ S.toList rs)
-      ++ " cannot be output to "
-      ++ show pwf
+      <> (T.pack $ show $ S.toList rs)
+      <> " cannot be output to "
+      <> (T.pack $ show pwf)
   True -> write pwo pdoc
    where
     write = case pwf of
@@ -290,8 +291,7 @@ pandocsToDocs
   -> P.Sem (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
   -> P.Sem effs [DocWithInfo PandocInfo a] -- ^ documents in requested format, within the effects monad
 pandocsToDocs pwf pwo =
-  (traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) =<<)
-    . toDocList
+  (traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) =<<) . toDocList
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE

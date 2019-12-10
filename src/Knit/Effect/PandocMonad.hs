@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
@@ -36,7 +37,7 @@ module Knit.Effect.PandocMonad
   , PandocEffects
   , PandocEffectsIO
 
-  -- * Actions
+    -- * Actions
   , lookupEnv
   , getCurrentTime
   , getCurrentTimeZone
@@ -56,21 +57,26 @@ module Knit.Effect.PandocMonad
   , logOutput
   , trace
 
-  -- * Interpreters
+    -- * Pandoc <2.8 compatibility
+  , textToPandocText
+  , pandocTextToText
+  
+    -- * Interpreters
   , interpretInPandocMonad
   , interpretInIO
 
-  -- * Runners
+    -- * Runners
   , runIO
 
-  -- * Interop
+    -- * Interop
   , absorbPandocMonad
 
-  -- * Re-Exports
+    -- * Re-Exports
   , PA.PandocError
   )
 where
 
+import Prelude hiding (takeWhile, dropWhile,drop)
 import qualified Knit.Effect.Logger            as Log
 import qualified Paths_knit_haskell            as Paths
 
@@ -85,7 +91,7 @@ import qualified Text.Pandoc.MIME              as PA
 import qualified Text.Pandoc.UTF8              as UTF8
 
 import qualified Data.ByteString               as BS
-import           Data.ByteString.Lazy          as LBS
+import qualified Data.ByteString.Lazy          as LBS
 import           Data.ByteString.Base64         ( decodeLenient )
 import qualified Data.CaseInsensitive          as CI
 import qualified Data.List                     as L
@@ -133,30 +139,91 @@ import qualified System.Directory              as Directory
 import qualified Debug.Trace
 import qualified Control.Exception             as E
 
+#if MIN_VERSION_pandoc(2,8,0)
+type PandocText = T.Text
+
+pandocTextToText :: PandocText -> T.Text
+pandocTextToText = id
+
+textToPandocText :: T.Text -> PandocText
+textToPandocText = id
+
+pandocTextToString :: PandocText -> String
+pandocTextToString = T.unpack
+
+stringToPandocText :: String -> PandocText
+stringToPandocText = T.pack
+
+pandocTextToBS :: PandocText -> BS.ByteString
+pandocTextToBS = UTF8.fromText
+
+stripPrefix :: String -> T.Text -> Maybe T.Text 
+stripPrefix = T.stripPrefix
+
+takeWhile :: (Char -> Bool) -> T.Text -> T.Text
+takeWhile = T.takeWhile
+
+drop :: Int -> T.Text -> T.Text
+drop = T.drop
+
+dropWhile :: (Char -> Bool) -> T.Text -> T.Text
+dropWhile = T.dropWhile
+
+#else
+type PandocText = String
+
+pandocTextToText :: PandocText -> T.Text
+pandocTextToText = T.pack
+
+textToPandocText :: T.Text -> PandocText
+textToPandocText = T.unpack
+
+pandocTextToString :: PandocText -> String
+pandocTextToString = id
+
+stringToPandocText :: String -> PandocText
+stringToPandocText = id
+
+pandocTextToBS :: PandocText -> BS.ByteString
+pandocTextToBS = UTF8.fromString
+
+stripPrefix :: String -> String -> Maybe String 
+stripPrefix = L.stripPrefix
+
+takeWhile :: (Char -> Bool) -> String -> String
+takeWhile = L.takeWhile
+
+drop :: Int -> String -> String
+drop = L.drop
+
+dropWhile :: (Char -> Bool) -> String -> String
+dropWhile = L.dropWhile
+
+#endif
+
 -- | Pandoc Effect
 data Pandoc m r where
-  LookupEnv ::String -> Pandoc m (Maybe String)
-  GetCurrentTime ::Pandoc m UTCTime
-  GetCurrentTimeZone ::Pandoc m TimeZone
-  NewStdGen ::Pandoc m StdGen
-  NewUniqueHash ::Pandoc m Int
-  OpenURL ::String -> Pandoc m (BS.ByteString, Maybe PA.MimeType)
-  ReadFileLazy ::FilePath -> Pandoc m LBS.ByteString
+  LookupEnv :: PandocText -> Pandoc m (Maybe PandocText)
+  GetCurrentTime :: Pandoc m UTCTime
+  GetCurrentTimeZone :: Pandoc m TimeZone
+  NewStdGen :: Pandoc m StdGen
+  NewUniqueHash :: Pandoc m Int
+  OpenURL :: PandocText -> Pandoc m (BS.ByteString, Maybe PA.MimeType)
+  ReadFileLazy :: FilePath -> Pandoc m LBS.ByteString
   ReadFileStrict ::FilePath -> Pandoc m BS.ByteString
   Glob ::String -> Pandoc m [FilePath]
-  FileExists ::FilePath -> Pandoc m Bool
-  GetDataFileName ::FilePath -> Pandoc m FilePath
-  GetModificationTime ::FilePath -> Pandoc m UTCTime
-  GetCommonState ::Pandoc m PA.CommonState
-  PutCommonState ::PA.CommonState -> Pandoc m ()
+  FileExists :: FilePath -> Pandoc m Bool
+  GetDataFileName :: FilePath -> Pandoc m FilePath
+  GetModificationTime :: FilePath -> Pandoc m UTCTime
+  GetCommonState :: Pandoc m PA.CommonState
+  PutCommonState :: PA.CommonState -> Pandoc m ()
   GetsCommonState ::(PA.CommonState -> a) -> Pandoc m a
   ModifyCommonState ::(PA.CommonState -> PA.CommonState) -> Pandoc m  ()
   LogOutput ::PA.LogMessage -> Pandoc m ()
-  Trace ::String -> Pandoc m ()
+  Trace :: PandocText -> Pandoc m ()
 
 P.makeSem ''Pandoc
-
-
+  
 -- we handle logging within the existing effect system
 -- | Map pandoc severities to our logging system.
 pandocSeverity :: PA.LogMessage -> Log.LogSeverity
@@ -170,7 +237,7 @@ logPandocMessage
   :: P.Member (Log.Logger Log.LogEntry) effs => PA.LogMessage -> P.Sem effs ()
 logPandocMessage lm = send $ Log.Log $ Log.LogEntry
   (pandocSeverity lm)
-  (T.pack . PA.showLogMessage $ lm)
+  (pandocTextToText . PA.showLogMessage $ lm)
 
 -- | Constraint helper for using this set of effects in IO.
 type PandocEffects effs
@@ -222,12 +289,12 @@ newtype Action m s' a = Action
 -- which we need because of the MonadError superclass.
 data PandocDict m = PandocDict
   {
-    lookupEnv_ :: String -> m (Maybe String)
+    lookupEnv_ :: PandocText -> m (Maybe PandocText)
   , getCurrentTime_ :: m UTCTime
   , getCurrentTimeZone_ :: m TimeZone
   , newStdGen_ ::m StdGen
   , newUniqueHash_ :: m Int
-  , openURL_ :: String ->  m (BS.ByteString, Maybe PA.MimeType)
+  , openURL_ :: PandocText ->  m (BS.ByteString, Maybe PA.MimeType)
   , readFileLazy_ :: FilePath ->  m LBS.ByteString
   , readFileStrict_ :: FilePath ->  m BS.ByteString
   , glob_ :: String ->  m [FilePath]
@@ -239,7 +306,7 @@ data PandocDict m = PandocDict
   , getsCommonState_ :: forall a. (PA.CommonState -> a) ->  m a
   , modifyCommonState_ :: (PA.CommonState -> PA.CommonState) ->  m  ()
   , logOutput_ :: PA.LogMessage ->  m ()
-  , trace_ :: String ->  m ()
+  , trace_ :: PandocText ->  m ()
   , throwError_ :: forall a. PA.PandocError -> m a
   , catchError_ :: forall a. m a -> (PA.PandocError -> m a) -> m a
   }
@@ -290,7 +357,7 @@ interpretInIO = fmap snd . stateful f PA.def
   liftPair :: forall f x y . Functor f => (x, f y) -> f (x, y)
   liftPair (x, fy) = fmap (x, ) fy
   f :: Pandoc m x -> PA.CommonState -> P.Sem effs (PA.CommonState, x)
-  f (LookupEnv s)         cs = liftPair (cs, liftIO $ IO.lookupEnv s)
+  f (LookupEnv s)         cs = liftPair (cs, liftIO $ fmap (fmap stringToPandocText) $ IO.lookupEnv (pandocTextToString s))
   f GetCurrentTime        cs = liftPair (cs, liftIO $ IO.getCurrentTime)
   f GetCurrentTimeZone    cs = liftPair (cs, liftIO IO.getCurrentTimeZone)
   f NewStdGen             cs = liftPair (cs, liftIO IO.newStdGen)
@@ -310,7 +377,7 @@ interpretInIO = fmap snd . stateful f PA.def
   f (LogOutput         msg) cs = liftPair (cs, logPandocMessage msg)
   f (Trace             msg) cs = liftPair
     ( cs
-    , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ msg) (return ())
+    , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ (pandocTextToString msg)) (return ())
     )
 
 -- | Interpret the Pandoc effect in another monad (which must satisy the PandocMonad constraint) and @Knit.Effect.Logger@
@@ -365,17 +432,17 @@ openURLWithState
      , P.Member (P.Error PA.PandocError) effs
      )
   => PA.CommonState
-  -> String
+  -> PandocText
   -> P.Sem effs (PA.CommonState, (BS.ByteString, Maybe PA.MimeType))
 openURLWithState cs u
-  | Just u'' <- L.stripPrefix "data:" u = do
-    let mime = L.takeWhile (/= ',') u''
-    let contents = UTF8.fromString $ NU.unEscapeString $ L.drop 1 $ L.dropWhile
+  | Just u'' <- stripPrefix "data:" u = do
+    let mime = takeWhile (/= ',') u''
+    let contents = UTF8.fromString $ (NU.unEscapeString . pandocTextToString) $ drop 1 $ dropWhile
           (/= ',')
           u''
     return (cs, (decodeLenient contents, Just mime))
   | otherwise = do
-    let toReqHeader (n, v) = (CI.mk (UTF8.fromString n), UTF8.fromString v)
+    let toReqHeader (n, v) = (CI.mk (pandocTextToBS n), pandocTextToBS v)
         customHeaders = fmap toReqHeader $ PA.stRequestHeaders cs
     cs' <- report cs $ PA.Fetching u
     res <- liftIO $ E.try $ withSocketsDo $ do
@@ -385,7 +452,7 @@ openURLWithState cs u
             Left  _  -> return x
             Right pr -> parseReq pr
               >>= \r -> return (NHC.addProxy (NHC.host r) (NHC.port r) x)
-      req <- parseReq u >>= addProxy'
+      req <- parseReq (pandocTextToString u) >>= addProxy'
       let req' = req
             { NHC.requestHeaders = customHeaders ++ NHC.requestHeaders req
             }
@@ -395,7 +462,7 @@ openURLWithState cs u
         , UTF8.toString `fmap` lookup NH.hContentType (NHC.responseHeaders resp)
         )
     case res of
-      Right r -> return (cs', r)
+      Right r -> return (cs', (\(x,y) -> (x, stringToPandocText <$> y))  r)
       Left  e -> P.throw $ PA.PandocHttpError u e
 
 -- | Stateful version of the Pandoc @report@ function, outputting relevant log messages
@@ -422,7 +489,7 @@ liftIOError
 liftIOError f u = do
   res <- liftIO $ IO.tryIOError $ f u
   case res of
-    Left  e -> P.throw $ PA.PandocIOError u e
+    Left  e -> P.throw $ PA.PandocIOError (stringToPandocText u) e
     Right r -> return r
 
 -- | adjust the directory the PandocMonad sees so that it will get

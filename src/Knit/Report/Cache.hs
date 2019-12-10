@@ -33,7 +33,6 @@ module Knit.Report.Cache
     -- * Experimental
   , CachedAction
   , cacheAction
-  , useCachedAction
   , CachedRunnable
   , makeRunnable
   , useCached
@@ -91,6 +90,9 @@ cacheAction
   -> CachedAction es a
 cacheAction = RetrieveOrMake
 
+-- | Use a CachedAction directly.  This creates inference issues.
+-- Hence the CachedRunnable which is slightly easier to work with.
+-- Not exported for now.
 useCachedAction
   :: ( P.Members '[KnitCache, P.Error PandocError] r
      , P.Members K.PrefixedLogEffectsLE r
@@ -105,6 +107,9 @@ useCachedAction (RetrieveOrMake key action f) = f <$> retrieveOrMake key action
 -- | Quantify (?) the @Members es r@ constraint so we can pass CacheHolders to functions without
 -- those functions needing to know what effects the CH was built with as long as they
 -- are memmbers of the stack used to call @'useCached'@
+-- In other words, this checks the constraint at the moment the runnable is made
+-- but then requires that the stack in which this is run be exactly the one
+-- chosen/inferred when 'makeRunnable' is called.
 data CachedRunnable r a where
   CachedRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
 
@@ -123,8 +128,11 @@ mapCachedRunnable f (CachedRunnable ca) = CachedRunnable (mapCachedAction f ca)
 -- 2. The (deserialized) result of retrieving from the in-memory or on-disk cache
 -- 3. The result of running the action.
 -- In the case of 3, the result will be cached in memory and on-disk.
--- NB: The @CachedRunnable@ constructor requires @r@ to have the effects required
--- to run the contained action.
+-- NB: The (unexported) 'CachedRunnable' constructor,
+-- accessed via the (exported) 'makeRunnable' function,
+-- requires @r@ to have the effects required
+-- to run the contained action. 'useCached` then must
+-- run in the *same* stack. This is very WIP.
 useCached
   :: (P.Members '[KnitCache, P.Error PandocError] r, K.LogWithPrefixesLE r)
   => CachedRunnable r a

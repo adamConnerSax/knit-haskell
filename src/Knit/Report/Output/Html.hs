@@ -1,10 +1,12 @@
+{-# LANGUAGE CPP                  #-}
+{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE GADTs                #-}
+
 {-|
 Module      : Knit.Report.Output.Html
 Description : Output Pandoc as Html
@@ -44,6 +46,7 @@ import qualified Data.Map                      as M
 import qualified Text.Blaze.Html               as BH
 import qualified Text.Pandoc                   as PA
 
+
 import qualified Polysemy                      as P
 import qualified Knit.Effect.Pandoc            as PE
 import qualified Knit.Effect.PandocMonad       as PM
@@ -51,6 +54,11 @@ import qualified Knit.Effect.PandocMonad       as PM
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( markDownReaderOptions )
 import           Knit.Report.Output            as KO
+
+#if MIN_VERSION_pandoc (2,8,0)
+import qualified Text.Pandoc.Templates         as PA
+#else
+#endif
 
 -- | Base Html writer options, with support for MathJax
 htmlWriterOptions :: PA.WriterOptions
@@ -72,8 +80,12 @@ htmlFullDocWriterOptions pathM tVars = do
       exists <- PA.fileExists fp
       if exists
         then fmap BS.unpack (PA.readFileStrict fp)
-        else PA.logOutput (PA.IgnoredIOError ("Couldn't find " ++ show fp))
-          >> PA.getDefaultTemplate "Html5"
+        else
+          PA.logOutput
+              (PA.IgnoredIOError
+                (PM.textToPandocText $ "Couldn't find " <> (T.pack $ show fp))
+              )
+            >> PA.getDefaultTemplate "Html5"
   return $ htmlWriterOptions { PA.writerTemplate      = Just template
                              , PA.writerVariables     = M.toList tVars
                              , PA.writerSetextHeaders = True
