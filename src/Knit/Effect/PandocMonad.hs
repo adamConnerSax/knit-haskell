@@ -60,6 +60,11 @@ module Knit.Effect.PandocMonad
     -- * Pandoc <2.8 compatibility
   , textToPandocText
   , pandocTextToText
+#if   MIN_VERSION_pandoc(2,8,0) 
+  , absorbTemplateMonad
+  , Template
+  , interpretTemplateIO
+#endif  
   
     -- * Interpreters
   , interpretInPandocMonad
@@ -90,11 +95,12 @@ import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
 import qualified Text.Pandoc.UTF8              as UTF8
 
+
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.ByteString.Base64         ( decodeLenient )
 import qualified Data.CaseInsensitive          as CI
-import qualified Data.List                     as L
+import           Data.Functor.Identity          (runIdentity)
 import qualified Data.Text                     as T
 import           Control.Monad                  ( when )
 import           Control.Monad.Except           ( MonadError(..)
@@ -140,6 +146,12 @@ import qualified Debug.Trace
 import qualified Control.Exception             as E
 
 #if MIN_VERSION_pandoc(2,8,0)
+import qualified Text.DocTemplates             as DT
+#else
+import qualified Data.List as L
+#endif
+
+#if MIN_VERSION_pandoc(2,8,0)
 type PandocText = T.Text
 
 pandocTextToText :: PandocText -> T.Text
@@ -157,7 +169,7 @@ stringToPandocText = T.pack
 pandocTextToBS :: PandocText -> BS.ByteString
 pandocTextToBS = UTF8.fromText
 
-stripPrefix :: String -> T.Text -> Maybe T.Text 
+stripPrefix :: T.Text -> T.Text -> Maybe T.Text 
 stripPrefix = T.stripPrefix
 
 takeWhile :: (Char -> Bool) -> T.Text -> T.Text
@@ -223,6 +235,44 @@ data Pandoc m r where
   Trace :: PandocText -> Pandoc m ()
 
 P.makeSem ''Pandoc
+
+#if MIN_VERSION_pandoc(2,8,0)
+data Template m a where
+  GetPartial :: FilePath -> Template m T.Text
+
+P.makeSem ''Template
+
+-- | Interpret a Template effect in any stack with IO (via the IO instance in DocTemplates)
+interpretTemplateIO
+  :: forall effs a
+  . P.Member (P.Embed IO) effs
+  => P.Sem (Template ': effs) a
+  -> P.Sem effs a
+interpretTemplateIO =  P.interpret $ \case
+  GetPartial x -> P.embed $ DT.getPartial x
+
+-- NB: This one ignores whatever getPartial is supposed to do but that's the only non-IO intepretation, I think?
+-- | Interpret a Template effect in any stack (via the identity instance in DocTemplates)
+interpretTemplatePure
+  :: P.Sem (Template ': effs) a -> P.Sem effs a
+interpretTemplatePure = P.interpret $ \case
+  GetPartial x -> return . runIdentity $ DT.getPartial x
+
+-- | use a Polysemy stack containing the 'Template` effect to run an TemplateMonad m action.
+absorbTemplateMonad
+  :: P.Member Template r => (DT.TemplateMonad (P.Sem r) => P.Sem r a) -> P.Sem r a
+absorbTemplateMonad = P.absorbWithSem @DT.TemplateMonad @TemplateAction (TemplateDict getPartial) (P.Sub P.Dict)
+
+-- | absorption gear for Template
+newtype TemplateAction m s' a =
+  TemplateAction { templateAction :: m a} deriving (Functor, Applicative, Monad)
+
+data TemplateDict m = TemplateDict { getPartial_ :: FilePath -> m T.Text }
+
+instance (Monad m, P.Reifies s' (TemplateDict m)) => DT.TemplateMonad (TemplateAction m s') where
+  getPartial = TemplateAction . getPartial_ (P.reflect $ P.Proxy @s')
+
+#endif
   
 -- we handle logging within the existing effect system
 -- | Map pandoc severities to our logging system.
@@ -240,13 +290,22 @@ logPandocMessage lm = send $ Log.Log $ Log.LogEntry
   (pandocTextToText . PA.showLogMessage $ lm)
 
 -- | Constraint helper for using this set of effects in IO.
+#if MIN_VERSION_pandoc(2,8,0)
 type PandocEffects effs
   = ( P.Member Pandoc effs
-  , P.Member (P.Error PA.PandocError) effs
-  , P.Member Log.PrefixLog effs
-  , P.Member (Log.Logger Log.LogEntry) effs
-  )
-
+    , P.Member Template effs
+    , P.Member (P.Error PA.PandocError) effs
+    , P.Member Log.PrefixLog effs
+    , P.Member (Log.Logger Log.LogEntry) effs
+    )
+#else
+type PandocEffects effs
+  = ( P.Member Pandoc effs
+    , P.Member (P.Error PA.PandocError) effs
+    , P.Member Log.PrefixLog effs
+    , P.Member (Log.Logger Log.LogEntry) effs
+    )
+#endif    
 -- absorption gear
 -- | absorb a @PandocMonad@ constraint into
 --  @Members [Pandoc, Error PandocError] r => Sem r@
@@ -380,6 +439,7 @@ interpretInIO = fmap snd . stateful f PA.def
     , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ (pandocTextToString msg)) (return ())
     )
 
+
 -- | Interpret the Pandoc effect in another monad (which must satisy the PandocMonad constraint) and @Knit.Effect.Logger@
 interpretInPandocMonad
   :: forall m effs a
@@ -414,15 +474,34 @@ interpretInPandocMonad = P.interpret
 -- | Run the Pandoc effects,
 -- and log messages with the given severity, over IO.
 -- If there is a Pandoc error, you will get a Left in the resulting Either.
+#if MIN_VERSION_pandoc(2,8,0)
 runIO
   :: (Log.LogSeverity -> Bool)
   -> P.Sem
-       '[Pandoc, Log.Logger Log.LogEntry, Log.PrefixLog, P.Error
-         PA.PandocError, P.Embed IO]
-       a
+     '[Template
+      , Pandoc
+      , Log.Logger Log.LogEntry
+      , Log.PrefixLog
+      , P.Error PA.PandocError
+      , P.Embed IO]
+     a
+  -> IO (Either PA.PandocError a)
+runIO logIf =
+  P.runM . P.runError . Log.filteredLogEntriesToIO logIf . interpretInIO . interpretTemplateIO
+#else
+runIO
+  :: (Log.LogSeverity -> Bool)
+  -> P.Sem
+     '[Pandoc
+      , Log.Logger Log.LogEntry
+      , Log.PrefixLog
+      , P.Error PA.PandocError
+      , P.Embed IO]
+     a
   -> IO (Either PA.PandocError a)
 runIO logIf =
   P.runM . P.runError . Log.filteredLogEntriesToIO logIf . interpretInIO
+#endif
 
 -- copied from Pandoc code and modified as needed for Polysemy and my implementation of interpretInIO (PandocIO)
 openURLWithState

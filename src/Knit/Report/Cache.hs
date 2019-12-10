@@ -43,6 +43,8 @@ import qualified Knit.Report.EffectStack       as K
 
 import qualified Knit.Effect.AtomicCache       as C
 import qualified Knit.Effect.Logger            as K
+import qualified Knit.Effect.PandocMonad       as K
+                                                ( textToPandocText )
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
@@ -146,10 +148,14 @@ mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 
 cerealStrict :: S.Serialize a => C.Serialize PandocError a BS.ByteString
-cerealStrict = C.Serialize S.encode (mapLeft PandocSomeError . S.decode)
+cerealStrict = C.Serialize
+  S.encode
+  (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
 
 cerealLazy :: S.Serialize a => C.Serialize PandocError a BL.ByteString
-cerealLazy = C.Serialize S.encodeLazy (mapLeft PandocSomeError . S.decodeLazy)
+cerealLazy = C.Serialize
+  S.encodeLazy
+  (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
 store
@@ -215,4 +221,4 @@ clear k = P.mapError ioErrorToPandocError $ C.clear k
 
 
 ioErrorToPandocError :: IE.IOError -> PandocError
-ioErrorToPandocError e = PandocIOError (show e) e
+ioErrorToPandocError e = PandocIOError (K.textToPandocText $ T.pack $ show e) e

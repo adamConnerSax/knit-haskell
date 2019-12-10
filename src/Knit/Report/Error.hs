@@ -36,6 +36,7 @@ where
 
 import qualified Knit.Report.EffectStack       as K
 import qualified Text.Pandoc.Error             as PA
+import           Knit.Effect.PandocMonad        ( textToPandocText )
 
 import qualified Data.Text                     as T
 
@@ -49,7 +50,7 @@ import qualified Polysemy.Error                as PE
 -- NB: The Member constraint is satisfied by KnitEffectStack m.
 knitError :: P.Member (PE.Error PA.PandocError) r => T.Text -> P.Sem r a
 knitError msg =
-  PE.throw (PA.PandocSomeError $ "Knit User Error: " ++ T.unpack msg)
+  PE.throw (PA.PandocSomeError $ textToPandocText $ "Knit User Error: " <> msg)
 
 -- | Throw on 'Nothing' with given message.  This will emerge as a 'PandocSomeError' in order
 -- to avoid complicating the error type.
@@ -70,4 +71,4 @@ knitMapError
   => (e -> T.Text)
   -> P.Sem (PE.Error e ': r) a
   -> P.Sem r a
-knitMapError f = PE.mapError $ PA.PandocSomeError . T.unpack . f
+knitMapError f = PE.mapError $ PA.PandocSomeError . textToPandocText . f

@@ -19,8 +19,7 @@ and doing IO output of logs via STM TChan so each message is intact.
 * Added error handlers for ```Maybe``` and ```Either Text```.
 * Added ```knitMapError``` to absorb other types of errors.
 * Updated some dependency bounds (NB: tests now depend on random-fu >= 2.7.3 since previous versions had bad log-domain bounds)
-* Some work on Pandoc >= 2.8: using Text instead of string and adding compatibility functions.  
-* Pandoc >= 2.8 template system has changed and that's not as simple. So Pandoc < 2.8 is still a bound.
+* Updated for Pandoc >= 2.8.  String to Text and template handling changes.  All conditional (via CPP) so should work with < 2.8 as well.
 
 v0.7.0.0
 * Updated vega versions in pandoc templates

@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts     #-}
@@ -144,6 +145,19 @@ type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
+#if MIN_VERSION_pandoc(2,8,0)
+type KnitEffectStack m
+  = '[ KUI.UnusedId
+     , KPM.Template
+     , KPM.Pandoc
+     , KC.AtomicCache IE.IOError T.Text BS.ByteString
+     , KLog.Logger KLog.LogEntry
+     , KLog.PrefixLog
+     , P.Async
+     , PE.Error PA.PandocError
+     , P.Embed IO
+     , P.Embed m]
+#else
 type KnitEffectStack m
   = '[ KUI.UnusedId
      , KPM.Pandoc
@@ -154,6 +168,9 @@ type KnitEffectStack m
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m]
+#endif
+
+    
 -- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 
@@ -161,7 +178,10 @@ type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 type KnitEffectDocStack m = (KP.ToPandoc ': KnitEffectStack m)
 
 
+
+
 -- | run all knit-effects in @KnitEffectStack m@
+#if MIN_VERSION_pandoc(2,8,0)
 consumeKnitEffectStack
   :: forall m a
    . MonadIO m
@@ -179,5 +199,27 @@ consumeKnitEffectStack config =
           (\t -> T.unpack (cacheDir config <> "/" <> t))
         )
     . KPM.interpretInIO -- PA.PandocIO
+    . KPM.interpretTemplateIO    
     . KUI.runUnusedId
     . maybe id KLog.wrapPrefix (outerLogPrefix config)
+#else
+consumeKnitEffectStack
+  :: forall m a
+   . MonadIO m
+  => KnitConfig
+  -> P.Sem (KnitEffectStack m) a
+  -> m (Either PA.PandocError a)
+consumeKnitEffectStack config =
+  P.runM
+    . PI.embedToMonadIO @m -- interpret (Embed IO) using m
+    . PE.runError
+    . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+    . KLog.filteredAsyncLogEntriesToIO (logIf config)
+    . KC.runPersistentAtomicCache
+        (KC.strictPersistAsByteString
+          (\t -> T.unpack (cacheDir config <> "/" <> t))
+        )
+    . KPM.interpretInIO -- PA.PandocIO        
+    . KUI.runUnusedId
+    . maybe id KLog.wrapPrefix (outerLogPrefix config)
+#endif    
