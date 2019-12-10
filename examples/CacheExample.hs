@@ -82,7 +82,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   -- NB: the below only requires type-annotation because it's not used anywhere else (except via "show") so it's
   -- type can't be inferred.  Normally that wouldn't be the case.
   makeDoubleListDocPart doubleListCA
-  heldDoubleList  <- KC.useCachedAction doubleListCA
+  heldDoubleList  <- KC.useCached (KC.makeRunnable doubleListCA)
   cachedDoubleList :: [Double] <- KC.retrieve "cacheExample/doubleList"
   K.addMarkDown $ "## Caching: heldDoubleList=" <> (T.pack $ show heldDoubleList) <> "; retrieved=" <> (T.pack $ show cachedDoubleList)
   return ()
@@ -94,7 +94,7 @@ doSomethingEffectful n x = do
 
 makeDoubleListDocPart :: (K.KnitOne r, K.Members es r) => KC.CachedAction es [Double] -> K.Sem r ()
 makeDoubleListDocPart ca = do
-  ds <- KC.useCachedAction ca
+  ds <- KC.useCached (KC.makeRunnable ca)
   K.logLE K.Info $ "double list from useCached is" <> (T.pack $ show ds)
 
 -- example using HVega  
