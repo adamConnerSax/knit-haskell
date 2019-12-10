@@ -62,7 +62,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some latex..."
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
-  K.logLE K.Info "Storing some stuff in the cache..."
+  K.logLE K.Info "Creating cached action..."
   let doubleListCA :: KC.CachedAction '[K.Logger K.LogEntry] [Double] = KC.cacheAction "cacheExample/doubleList" (doSomethingEffectful 5 2.2) id
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
@@ -77,7 +77,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
     300
     300
     samplePlot
-  K.logLE K.Info "Retrieving that stuff from the cache."
+  K.logLE K.Info "Retrieving that stuff from the cache or running if required."
   makeDoubleListDocPart doubleListCA
   heldDoubleList  <- KC.useCached (KC.makeRunnable doubleListCA)
   -- NB: the below only requires type-annotation because it's not used anywhere else (except via "show") so it's
