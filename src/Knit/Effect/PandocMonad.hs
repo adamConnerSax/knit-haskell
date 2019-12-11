@@ -100,7 +100,7 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.ByteString.Base64         ( decodeLenient )
 import qualified Data.CaseInsensitive          as CI
-import           Data.Functor.Identity          (runIdentity)
+
 import qualified Data.Text                     as T
 import           Control.Monad                  ( when )
 import           Control.Monad.Except           ( MonadError(..)
@@ -147,6 +147,7 @@ import qualified Control.Exception             as E
 
 #if MIN_VERSION_pandoc(2,8,0)
 import qualified Text.DocTemplates             as DT
+import           Data.Functor.Identity          (runIdentity)
 #else
 import qualified Data.List as L
 #endif

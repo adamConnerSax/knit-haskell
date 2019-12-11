@@ -38,7 +38,7 @@ module Knit.Report.Output.Html
   )
 where
 
-import qualified Control.Monad.Except           as X
+
 import qualified Data.ByteString.Char8         as BS
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
@@ -57,6 +57,7 @@ import           Knit.Report.Output            as KO
 
 #if MIN_VERSION_pandoc (2,8,0)
 import qualified Text.DocTemplates             as DT
+import qualified Control.Monad.Except           as X
 #endif
 
 -- | Base Html writer options, with support for MathJax
