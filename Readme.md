@@ -31,21 +31,29 @@ visualizations.
 All of that is handled via writer-like effects, so additions to the documents can be interspersed with regular haskell code. 
 
 As of version 0.8.0.0, the effect stack includes:
-* An "Async" effect (just Polysemy.Async) for running computations concurrently.
+* An "Async" effect ([Polysemy.Async](https://hackage.haskell.org/package/polysemy-1.2.3.0/docs/Polysemy-Async.html)) 
+for running computations concurrently. Combinators for launching a concurrent action (```async```), 
+awaiting (```await```) it's result and running some traversable structure of concurrent actions
+(```sequenceConcurrently```) are re-exported via ```Knit.Report```.  NB: Polysemy returns a ```Maybe a``` where
+the traditional interface returns an ```a```. 
+From the docs "The Maybe returned by async is due to the fact that we can't be sure an Error effect didn't fail locally."
 * A persistent (using disk) cache for "shelving" the results of computations between report runs.  Anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
 package can be cached. If you use the cache, and you are running in a version-controlled directory,
 you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
-There are two ways to interact with the cache.
+There are two ways to interact with the cache:
     - A direct interface, where data can be put into the cache via ```store```, retrieved via ```retrieve``` and 
 retrieved or created via ```retrieveOrMake``` which will attempt to retrieve the data and run a given action 
-to produce the data if the retrieval fails.  This is often how you might introduce cached data into the report,
+to produce the data if the retrieval fails.  This is often how you might introduce cached data into the report:
 it will get made the first time, and any time after that if the cache is deleted, but from then on will be 
 loaded from disk. Entries can be cleared from the cache via ```clear```.
     - A "lazy" interface which wraps those operations in a GADT, ```Cached es a```,
 which can be passed around instead of the ```a``` itself.  All cache retrieval or running of computations
 is deferred until ```useCached``` is called on a ```Cached a```.  This means that a cached computation
-which is never used will never be run or retrieved.  The disadvantage is the ```es``` parameter of 
+which is never used will never be run or retrieved.  This is useful, e.g., if you cache some parsed data
+which is passed to a long-running computation whose results are cached and used for analysis.  If you
+only want to work on the results of the analysis you can load them from cache and never reload the data.
+The disadvantage is the ```es``` parameter of 
 ```Cached es a```, which is a list of polysemy effects required to run the action.  That will need 
 to be specified when the action is built--it can't be inferred from the action itself--and can cause some 
 confusing inference issues when used.  
