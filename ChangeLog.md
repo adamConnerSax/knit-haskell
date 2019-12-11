@@ -5,7 +5,7 @@ change was more-or-less necessitated by the addition of a cache directory parame
 * New persistent caching effect.  Anything which has an instance of ```Serialize``` (from the cereal package) may be cached,
 in memory and backed by a disk-based cache.  When knit-html(s) is next run, the cached version can be used in 
 place of running an expensive computation.  For an example, see examples/CacheExample.hs.
-* Experimental support for creating monadic actions which will be cached if run but may not be run.
+* "Lazy" interface to cache, allowing creation/retrieval only if things are used. See readme for more.
 * Added Async into knit-haskell effects.  For an example, see examples/AsyncExample.hs.
 * Logging changes:
 
@@ -16,7 +16,7 @@ to accomdate the non-Boundedness of the new ```Debug Int``` levels.
 and doing IO output of logs via STM TChan so each message is intact.
 4. Added type synonyms ```PrefixedLogEffects``` and ```PrefixedLogEffectsLE``` for type-level-lists of logging effects 
 
-* Added error handlers for ```Maybe``` and ```Either Text```.
+* Added functions to handle the failure branch of ```Maybe``` and ```Either Text``` as errors.
 * Added ```knitMapError``` to absorb other types of errors.
 * Updated some dependency bounds (NB: tests now depend on random-fu >= 2.7.3 since previous versions had bad log-domain bounds)
 * Updated for Pandoc >= 2.8.  String to Text and template handling changes.  All conditional (via CPP) so should work with < 2.8 as well.

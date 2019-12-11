@@ -24,18 +24,25 @@ This module adds types, combinators and knit functions for using knit-haskell wi
 -}
 module Knit.Report.Cache
   (
-    -- * Combinators
+    -- * Direct Combinators
     store
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
   , clear
-    -- * Experimental
-  , CachedAction
+
+    -- * "Lazy" interface.  Only compute/retrieve what is needed.
+  , Cached
+  , cacheValue
+  , cacheRetrieval
   , cacheAction
+  , cacheTransformedAction
+  , useCached
+{-
   , CachedRunnable
   , makeRunnable
   , useCached
+-}
   )
 where
 
@@ -64,85 +71,83 @@ import qualified Polysemy.Error                as P
 
 type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
 
--- | A holder for a value that might already exist or with (monadic) instructions for making it
+-- | A holder for a value that might already exist or with a key to retrieve it
+-- or with (monadic) instructions for making it.  This allows cached things to
+-- be passed "lazily", that is, not retrieved or computed unless needed.
 -- NB: Use this machinery with caution!  You will end up tying the environment where you need
 -- the @a@ with the environment needed to build it (the @es@). This can be more painful than
 -- it's worth just to avoid de-serialization.
-data CachedAction es a where
-  Made :: a -> CachedAction es a
-  RetrieveOrMake :: S.Serialize b => T.Text -> (forall r. P.Members es r => P.Sem r b) -> (b -> a) -> CachedAction es a
+data Cached es a where
+  Unwrap :: a -> Cached '[] a -- ^ We already have a here. Using is just unwrapping.
+  Retrieve :: S.Serialize b => (b -> a) -> T.Text -> Cached '[] a -- ^ We need to retrieve and convert.  Failure to find is an error.
+  RetrieveOrMake :: S.Serialize b -- ^ We may be able to retrieve. If not we can make by running the given action.
+                 => (b -> a)
+                 -> T.Text
+                 -> (forall r. P.Members es r => P.Sem r b)
+                 -> Cached es a
 
-instance Functor (CachedAction es) where
-  fmap = mapCachedAction
+instance Functor (Cached es) where
+  fmap = mapCached
 
-mapCachedAction :: (a -> b) -> CachedAction es a -> CachedAction es b
-mapCachedAction f (Made a) = Made $ f a
-mapCachedAction f (RetrieveOrMake k action toA) =
-  RetrieveOrMake k action (f . toA)
+mapCached :: (a -> b) -> Cached es a -> Cached es b
+mapCached f (Unwrap a                   ) = Unwrap $ f a
+mapCached f (Retrieve toA k             ) = Retrieve (f . toA) k
+mapCached f (RetrieveOrMake toA k action) = RetrieveOrMake (f . toA) k action
 
-
--- | Create a @CachedAction@ for some action returning @a@.
+-- | Create a @Cached a@ for some action returning @b@
+-- and given a function @b -> a@.
 -- Inference on the action cannot determine the @es@ argument
 -- so you will usually have to specify it.
 cacheAction
   :: S.Serialize b
-  => T.Text
+  => (b -> a)
+  -> T.Text
   -> (forall r . P.Members es r => P.Sem r b)
-  -> (b -> a)
-  -> CachedAction es a
+  -> Cached es a
 cacheAction = RetrieveOrMake
+
+-- | Create a @Cached@
+cacheTransformedAction
+  :: S.Serialize b
+  => (a -> b)
+  -> (b -> a)
+  -> T.Text
+  -> (forall r . P.Members es r => P.Sem r a)
+  -> Cached es a
+cacheTransformedAction toB toA k action = cacheAction toA k (toB <$> action)
+
+-- | Cache an already computed value.
+-- Stores serialized data (and returns the value as a "Cached"
+-- for passing to functions which expect one)
+cacheValue
+  :: ( S.Serialize b
+     , P.Members '[KnitCache, P.Error PandocError] r
+     , P.Members K.PrefixedLogEffectsLE r
+     )
+  => (a -> b)
+  -> T.Text
+  -> a
+  -> P.Sem r (Cached '[] a)
+cacheValue toB k a = store k (toB a) >> return (Unwrap a)
+
+-- | Wrap a retrieval as a Cached for passingto functions which expect one.
+cacheRetrieval :: S.Serialize b => (b -> a) -> T.Text -> Cached '[] a
+cacheRetrieval = Retrieve
+
 
 -- | Use a CachedAction directly.  This creates inference issues.
 -- Hence the CachedRunnable which is slightly easier to work with.
 -- Not exported for now.
-useCachedAction
+useCached
   :: ( P.Members '[KnitCache, P.Error PandocError] r
      , P.Members K.PrefixedLogEffectsLE r
      , P.Members es r
      )
-  => CachedAction es a
+  => Cached es a
   -> P.Sem r a
-useCachedAction (Made a                     ) = return a
-useCachedAction (RetrieveOrMake key action f) = f <$> retrieveOrMake key action
-
-
--- | Quantify (?) the @Members es r@ constraint so we can pass CacheHolders to functions without
--- those functions needing to know what effects the CH was built with as long as they
--- are memmbers of the stack used to call @'useCached'@
--- In other words, this checks the constraint at the moment the runnable is made
--- but then requires that the stack in which this is run be exactly the one
--- chosen/inferred when 'makeRunnable' is called.
-data CachedRunnable r a where
-  CachedRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
-
-instance Functor (CachedRunnable r) where
-  fmap = mapCachedRunnable
-
--- | Wrap a @CachedAction@ in a @CachedRunnable@ which witnesses that @r@ contains @es@.  
-makeRunnable :: P.Members es r => CachedAction es a -> CachedRunnable r a
-makeRunnable = CachedRunnable
-
-mapCachedRunnable :: (a -> b) -> CachedRunnable r a -> CachedRunnable r b
-mapCachedRunnable f (CachedRunnable ca) = CachedRunnable (mapCachedAction f ca)
-
--- | Get an action from a @CachedRunnable@.  This may be:
--- 1. The stored result of previously running the action
--- 2. The (deserialized) result of retrieving from the in-memory or on-disk cache
--- 3. The result of running the action.
--- In the case of 3, the result will be cached in memory and on-disk.
--- NB: The (unexported) 'CachedRunnable' constructor,
--- accessed via the (exported) 'makeRunnable' function,
--- requires @r@ to have the effects required
--- to run the contained action. 'useCached` then must
--- run in the *same* stack. This is very WIP.
-useCached
-  :: (P.Members '[KnitCache, P.Error PandocError] r, K.LogWithPrefixesLE r)
-  => CachedRunnable r a
-  -> P.Sem r a
-useCached (CachedRunnable ca) = case ca of
-  Made x                      -> return x
-  RetrieveOrMake key action f -> f <$> retrieveOrMake key action
-
+useCached (Unwrap a                   ) = return a
+useCached (Retrieve toA k             ) = toA <$> retrieve k
+useCached (RetrieveOrMake toA k action) = toA <$> retrieveOrMake k action
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right

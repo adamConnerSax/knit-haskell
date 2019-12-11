@@ -13,6 +13,11 @@ myConfig :: KnitConfig
 myConfig = defaultKnitConfig { outerLogPrefix = Just "MyReport", cacheDir = "myCache" }
 ```
 
+Also note that a new major version of Pandoc has been released (2.8.x).  knit-haskell can be compiled against this as
+well as the older versions but there are some major changes which may affect you if you use any of the pandoc 
+functions directly.  In particular, Pandoc has now switched to using ```Text``` instead of ```String``` for
+most things.
+
 ## Introduction
 knit-haskell is an attempt to emulate parts of the RMarkdown/knitR experience in haskell. 
 The idea is to be able to build HTML (or, perhaps, some other things [Pandoc](http://hackage.haskell.org/package/pandoc) can write) 
@@ -25,20 +30,26 @@ has logging facilities and support for inserting [hvega](http://hackage.haskell.
 visualizations.  
 All of that is handled via writer-like effects, so additions to the documents can be interspersed with regular haskell code. 
 
-As of version 0.8.0.0, the effect stack includes an "Async" effect for running computations concurrently as well as a
-persistent (using disk) cache for persisting the results of computations between report runs.  Anything which has
+As of version 0.8.0.0, the effect stack includes:
+* An "Async" effect (just Polysemy.Async) for running computations concurrently.
+* A persistent (using disk) cache for "shelving" the results of computations between report runs.  Anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
 package can be cached. If you use the cache, and you are running in a version-controlled directory,
-you probably want to add your cache directory to ".gitignore" or equivalent.
-
-The Cache interface has a ```retrieveOrMake``` combinator which attempts to retrieve a value from the cache
-and, if that fails, runs a given action to generate the value and then caches that for future runs. You can
-also wrap a key and action in a ```CachedAction``` which combines the ```retrieveOrMake``` idea with laziness
-so it neither retrieves nor makes until you ask for the value.  This allows cached actions used in other
-cached actions to not be loaded/run unless needed.  The types get a little tricky here since a ```CachedAcion``` 
-needs to know what effects will be required to run the action and the stack where it is used needs to have all
-those effects.  This could have unexpected consequences if the action relies on or changes anything state-like
-in the effect stack. See [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs).
+you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
+There are two ways to interact with the cache.
+    - A direct interface, where data can be put into the cache via ```store```, retrieved via ```retrieve``` and 
+retrieved or created via ```retrieveOrMake``` which will attempt to retrieve the data and run a given action 
+to produce the data if the retrieval fails.  This is often how you might introduce cached data into the report,
+it will get made the first time, and any time after that if the cache is deleted, but from then on will be 
+loaded from disk. Entries can be cleared from the cache via ```clear```.
+    - A "lazy" interface which wraps those operations in a GADT, ```Cached es a```,
+which can be passed around instead of the ```a``` itself.  All cache retrieval or running of computations
+is deferred until ```useCached``` is called on a ```Cached a```.  This means that a cached computation
+which is never used will never be run or retrieved.  The disadvantage is the ```es``` parameter of 
+```Cached es a```, which is a list of polysemy effects required to run the action.  That will need 
+to be specified when the action is built--it can't be inferred from the action itself--and can cause some 
+confusing inference issues when used.  
+    - Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for more.
 
 ## Supported Inputs
 * [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
