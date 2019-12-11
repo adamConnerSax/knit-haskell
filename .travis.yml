@@ -23,7 +23,7 @@ install:
 
 script:
  - cabal v2-update
- - cabal v2-build
+ - travis wait 30 cabal v2-build
  - cabal v2-test --enable-test
  - cabal new-haddock
  - cabal check
