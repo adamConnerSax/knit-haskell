@@ -18,7 +18,7 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-This module adds types, combinators and knit functions for using knit-haskell with the DataCache effect. 
+This module adds types, combinators and knit functions for using knit-haskell with the AtomicCache effect. 
 
 <https://github.com/adamConnerSax/knit-haskell/tree/master/examples Examples> are available, and might be useful for seeing how all this works.
 -}
@@ -31,18 +31,14 @@ module Knit.Report.Cache
   , retrieveOrMakeTransformed
   , clear
 
-    -- * "Lazy" interface.  Only compute/retrieve what is needed.
+    -- * "Lazy" interface
   , Cached
   , cacheValue
   , cacheRetrieval
   , cacheAction
   , cacheTransformedAction
   , useCached
-{-
-  , CachedRunnable
-  , makeRunnable
-  , useCached
--}
+  , forceCached
   )
 where
 
@@ -130,14 +126,14 @@ cacheValue
   -> P.Sem r (Cached '[] a)
 cacheValue toB k a = store k (toB a) >> return (Unwrap a)
 
--- | Wrap a retrieval as a Cached for passingto functions which expect one.
+-- | Wrap a retrieval as a Cached for passing to functions which expect one.
+-- Retrieving doesn't happen until @useAction@ is called.
 cacheRetrieval :: S.Serialize b => (b -> a) -> T.Text -> Cached '[] a
 cacheRetrieval = Retrieve
 
 
--- | Use a CachedAction directly.  This creates inference issues.
--- Hence the CachedRunnable which is slightly easier to work with.
--- Not exported for now.
+-- | Use a Cached.  Will trigger retrieval and/or running the action
+-- if required.
 useCached
   :: ( P.Members '[KnitCache, P.Error PandocError] r
      , P.Members K.PrefixedLogEffectsLE r
@@ -148,6 +144,17 @@ useCached
 useCached (Unwrap a                   ) = return a
 useCached (Retrieve toA k             ) = toA <$> retrieve k
 useCached (RetrieveOrMake toA k action) = toA <$> retrieveOrMake k action
+
+-- | force the value to be made or retrieved,
+-- returning a new @Cached@ which reflects that state.
+forceCached
+  :: ( P.Members '[KnitCache, P.Error PandocError] r
+     , P.Members K.PrefixedLogEffectsLE r
+     , P.Members es r
+     )
+  => Cached es a
+  -> P.Sem r (Cached '[] a)
+forceCached x = Unwrap <$> useCached x
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
