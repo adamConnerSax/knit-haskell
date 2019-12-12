@@ -1,16 +1,17 @@
+sudo: true
 language: haskell
 dist: trusty
+
+cabal: "2.4"
 
 cache:
   directories:
     - "$HOME/.cabal/store"
 
-cabal: "2.4"
-
 matrix:
   include:
     # - ghc: "8.8.1"
-    - ghc: "8.6.5"
+    - ghc: 8.6.5
     # - ghc: "8.4.4"
     # - ghc: "8.2.2"
     # - ghc: "8.0.2"
@@ -18,15 +19,17 @@ matrix:
     # - ghc: "7.8.4"
     # - ghc: "7.6.3"
 
+before_install:
+ - pip install travis-wait-improved
+
 install:
- - cabal --version
  - ghc --version
+ - cabal --version
+ - cabal new-update
+ - travis-wait-improved --timeout 30m cabal new-build --enable-tests --enable benchmarks
 
 script:
- - pip install travis-wait-improved
- - cabal v2-update
- - travis-wait-improved --timeout 30m cabal v2-build
- - cabal v2-test --enable-test
+ - cabal new-test --enable-tests
  - cabal new-haddock
  - cabal check
  - cabal v2-sdist   # tests that a source-distribution can be generated
