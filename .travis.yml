@@ -9,6 +9,7 @@ cabal: "2.4"
 
 matrix:
   include:
+    # - ghc: "8.8.1"
     - ghc: "8.6.5"
     # - ghc: "8.4.4"
     # - ghc: "8.2.2"
@@ -22,8 +23,9 @@ install:
  - ghc --version
 
 script:
+ - pip install travis-wait-improved
  - cabal v2-update
- - cabal v2-build --verbose=2
+ - travis-wait-improved --timeout 30m cabal v2-build
  - cabal v2-test --enable-test
  - cabal new-haddock
  - cabal check
