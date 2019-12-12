@@ -1,6 +1,5 @@
-sudo: true
 language: haskell
-dist: trusty
+dist: xenial
 
 cabal: "2.4"
 
