@@ -26,7 +26,7 @@ install:
  - ghc --version
  - cabal --version
  - cabal new-update
- - travis-wait-enhanced --interval=1m --timeout=30m -- cabal new-build --enable-tests --enable benchmarks
+ - travis-wait-enhanced --interval=1m --timeout=30m -- cabal new-build --enable-tests --enable-benchmarks
 
 script:
  - cabal new-test --enable-tests
