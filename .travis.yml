@@ -1,4 +1,3 @@
-sudo: true
 language: haskell
 dist: xenial
 
@@ -20,13 +19,14 @@ matrix:
     # - ghc: "7.6.3"
 
 before_install:
- - pip install --user travis-wait-improved
-
+ - wget -qO- "https://github.com/crazy-max/travis-wait-enhanced/releases/download/v1.1.0/travis-wait-enhanced_1.1.0_linux_x86_64.tar.gz" | tar -zxvf - travis-wait-enhanced
+ - mv travis-wait-enhanced /home/travis/bin/
+ - travis-wait-enhanced --version
 install:
  - ghc --version
  - cabal --version
  - cabal new-update
- - travis-wait-improved --timeout 30m cabal new-build --enable-tests --enable benchmarks
+ - travis-wait-enhanced --interval=1m --timeout=30m -- cabal new-build --enable-tests --enable benchmarks
 
 script:
  - cabal new-test --enable-tests
