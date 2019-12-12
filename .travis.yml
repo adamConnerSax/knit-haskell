@@ -20,7 +20,7 @@ matrix:
     # - ghc: "7.6.3"
 
 before_install:
- - pip install travis-wait-improved
+ - pip install --user travis-wait-improved
 
 install:
  - ghc --version
