@@ -29,11 +29,12 @@ install:
  - cabal new-update
 
 script:
- - travis-wait-enhanced --interval=1m --timeout=40m -- cabal new-build --enable-tests --enable-benchmarks
- - cabal new-test --enable-tests
- - cabal new-haddock
- - cabal check
- - cabal v2-sdist   # tests that a source-distribution can be generated
+ - ./travis-script.sh
+# - travis-wait-enhanced --interval=1m --timeout=40m -- cabal new-build --enable-tests --enable-benchmarks
+# - cabal new-test --enable-tests
+# - cabal new-haddock
+# - cabal check
+# - cabal v2-sdist   # tests that a source-distribution can be generated
 
 # Check that the resulting source distribution can be built & installed.
 # If there are no other `.tar.gz` files in `dist`, this can be even simpler:
