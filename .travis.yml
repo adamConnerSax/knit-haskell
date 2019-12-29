@@ -23,6 +23,7 @@ before_install:
  - wget -qO- "https://github.com/crazy-max/travis-wait-enhanced/releases/download/v1.1.0/travis-wait-enhanced_1.1.0_linux_x86_64.tar.gz" | tar -zxvf - travis-wait-enhanced
  - mv travis-wait-enhanced /home/travis/bin/
  - travis-wait-enhanced --version
+ - chmod +x travis-script.sh
 install:
  - ghc --version
  - cabal --version
