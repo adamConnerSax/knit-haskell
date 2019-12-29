@@ -4,6 +4,7 @@ dist: xenial
 cabal: "2.4"
 
 cache:
+  timeout: 600
   directories:
     - "$HOME/.cabal/store"
 
@@ -28,7 +29,7 @@ install:
  - cabal new-update
 
 script:
- - travis-wait-enhanced --interval=1m --timeout=120m -- cabal new-build --enable-tests --enable-benchmarks
+ - travis-wait-enhanced --interval=1m --timeout=40m -- cabal new-build --enable-tests --enable-benchmarks
  - cabal new-test --enable-tests
  - cabal new-haddock
  - cabal check
