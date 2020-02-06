@@ -30,6 +30,7 @@ module Knit.Report.Cache
   , retrieveOrMake
   , retrieveOrMakeTransformed
   , clear
+  , asCached
 
     -- * "Lazy" interface
   , Cached
@@ -125,6 +126,11 @@ cacheValue
   -> a
   -> P.Sem r (Cached '[] a)
 cacheValue toB k a = store k (toB a) >> return (Unwrap a)
+
+-- | Wrap an existing value in Cached.  Sometimes useful when
+-- a function requires a Cached and you just have the value.
+asCached :: a -> Cached '[] a
+asCached = Unwrap
 
 -- | Wrap a retrieval as a Cached for passing to functions which expect one.
 -- Retrieving doesn't happen until @useAction@ is called.

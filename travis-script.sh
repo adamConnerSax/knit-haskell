@@ -23,6 +23,6 @@ esac
 # Build your project
 cabal new-build --enable-tests --enable-benchmarks
 cabal new-test --enable-tests
-cabal new-haddock
+#cabal new-haddock
 cabal check
 cabal v2-sdist   # tests that a source-distribution can be generated
