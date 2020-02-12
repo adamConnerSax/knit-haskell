@@ -65,7 +65,6 @@ import qualified System.IO.Error               as IE
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
-
 type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
 
 -- | A holder for a value that might already exist or with a key to retrieve it

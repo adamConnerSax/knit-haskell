@@ -74,7 +74,7 @@ import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
 import qualified Control.Concurrent.STM        as C
-
+import qualified Control.Exception             as X
 import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
@@ -90,6 +90,9 @@ import           Prelude                 hiding ( log )
 import           System.IO                      ( hFlush
                                                 , stdout
                                                 )
+
+import qualified Say                           as S
+
 
 
 -- TODO: consider a more interesting Handler type.  As in co-log (https://hackage.haskell.org/package/co-log-core)
@@ -234,7 +237,7 @@ filterLog filterF h a = when (filterF a) $ h a
 -- Can be used as base for any other handler that gives @Text@.
 logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
 logToIO toText a = liftIO $ do
-  T.putStrLn $ toText a
+  S.say $ toText a
   hFlush stdout
 
 data NextOrDone = Next T.Text | Done -- isomorphic to (Maybe T.Text)
@@ -292,9 +295,8 @@ printNextUntilDone :: C.TChan NextOrDone -> IO ()
 printNextUntilDone ch = do
   nOrd <- C.atomically $ C.readTChan ch
   case nOrd of
-    Next t ->
-      (putStrLn . T.unpack $ t) >> hFlush stdout >> printNextUntilDone ch
-    Done -> return ()
+    Next t -> S.say t >> hFlush stdout >> printNextUntilDone ch
+    Done   -> return ()
 
 {-
 withAsyncLogging :: P.Members '[PrefixLog, P.Async] r => P.Sem r a -> P.Sem r a

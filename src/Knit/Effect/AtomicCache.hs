@@ -61,6 +61,8 @@ import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
 import qualified System.Directory              as S
 
+import qualified Say                           as Say
+
 -- | data type to store encode/decode functins for users serializer of choice
 data Serialize e a b where
   Serialize :: (a -> b) -> (b -> Either e a) -> Serialize e a b
@@ -131,7 +133,9 @@ atomicRead
   -> k
   -> P.Sem (P.AtomicState (M.Map k (C.TMVar b)) ': r) (Either e b)
 atomicRead readF k = K.wrapPrefix "AtomicCache.atomicRead" $ do
+--  K.logLE K.Diagnostic $ "here. " -- k=" <> (T.pack $ show k)
   tvM <- P.atomicGets $ M.lookup k
+--  K.logLE K.Diagnostic "here"
   case tvM of
     Just tv -> do
       K.logLE K.Diagnostic

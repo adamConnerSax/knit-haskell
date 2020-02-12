@@ -13,7 +13,7 @@ myConfig :: KnitConfig
 myConfig = defaultKnitConfig { outerLogPrefix = Just "MyReport", cacheDir = "myCache" }
 ```
 
-Also note that a new major version of Pandoc has been released (2.8.x).  knit-haskell can be compiled against this as
+Also note that a new major version of Pandoc has been released (2.9.x).  knit-haskell can be compiled against this as
 well as the older versions but there are some major changes which may affect you if you use any of the pandoc 
 functions directly.  In particular, Pandoc has now switched to using ```Text``` instead of ```String``` for
 most things.
