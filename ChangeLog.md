@@ -4,7 +4,8 @@ all existing uses of those functions but is designed to future-proof against add
 change was more-or-less necessitated by the addition of a cache directory parameter for the persistent caching effect. See below.
 * New persistent caching effect.  Anything which has an instance of ```Serialize``` (from the cereal package) may be cached,
 in memory and backed by a disk-based cache.  When knit-html(s) is next run, the cached version can be used in 
-place of running an expensive computation.  For an example, see examples/CacheExample.hs.
+place of running an expensive computation.  For an example, see examples/CacheExample.hs. Use of cache will create 
+directories as required.
 * "Lazy" interface to cache, allowing creation/retrieval only if things are used. See readme for more.
 * Added Async into knit-haskell effects.  For an example, see examples/AsyncExample.hs.
 * Logging changes:
