@@ -293,7 +293,7 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
           <> dir
           <> "\") not found. Atttempting to create."
         P.embed
-          $         fmap Right (S.createDirectory (T.unpack dir))
+          $         fmap Right (S.createDirectoryIfMissing True (T.unpack dir))
           `X.catch` (return . Left)
       True -> return $ Right ()
 
