@@ -74,14 +74,12 @@ import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
 import qualified Control.Concurrent.STM        as C
-import qualified Control.Exception             as X
 import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
 import qualified Control.Monad.Log             as ML
 import qualified Data.List                     as List
 import qualified Data.Text                     as T
-import qualified Data.Text.IO                  as T
 import qualified Data.Text.Prettyprint.Doc     as PP
 import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP

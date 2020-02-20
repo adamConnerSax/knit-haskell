@@ -27,7 +27,6 @@ where
 
 import qualified Data.Aeson.Encode.Pretty      as A
 import qualified Data.ByteString.Lazy.Char8    as BS
-import           Data.Monoid                    ( (<>) )
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
 import qualified Graphics.Vega.VegaLite        as GV

@@ -48,9 +48,7 @@ import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.Writer               as P
 
-import           Control.Monad                  ( sequence
-                                                , join
-                                                )
+import           Control.Monad                  ( join )
 
 -- | GADT to represent storing a document and some info for processing it.
 data Docs i a m r where
