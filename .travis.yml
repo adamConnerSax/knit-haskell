@@ -1,7 +1,7 @@
 language: haskell
 dist: xenial
 
-cabal: "2.4"
+cabal: "3.0"
 
 cache:
   timeout: 600
@@ -10,7 +10,7 @@ cache:
 
 matrix:
   include:
-    # - ghc: "8.8.1"
+    - ghc: 8.8.2
     - ghc: 8.6.5
     # - ghc: "8.4.4"
     # - ghc: "8.2.2"
