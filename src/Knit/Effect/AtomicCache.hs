@@ -61,8 +61,6 @@ import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
 import qualified System.Directory              as S
 
-import qualified Say                           as Say
-
 -- | data type to store encode/decode functins for users serializer of choice
 data Serialize e a b where
   Serialize :: (a -> b) -> (b -> Either e a) -> Serialize e a b
