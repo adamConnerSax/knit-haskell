@@ -24,22 +24,12 @@ This module adds types, combinators and knit functions for using knit-haskell wi
 -}
 module Knit.Report.Cache
   (
-    -- * Direct Combinators
+    -- * Cache Combinators
     store
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
   , clear
-  , asCached
-
-    -- * "Lazy" interface
-  , Cached
-  , cacheValue
-  , cacheRetrieval
-  , cacheAction
-  , cacheTransformedAction
-  , useCached
-  , forceCached
   )
 where
 
@@ -66,100 +56,6 @@ import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
 type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
-
--- | A holder for a value that might already exist or with a key to retrieve it
--- or with (monadic) instructions for making it.  This allows cached things to
--- be passed "lazily", that is, not retrieved or computed unless needed.
--- NB: Use this machinery with caution!  You will end up tying the environment where you need
--- the @a@ with the environment needed to build it (the @es@). This can be more painful than
--- it's worth just to avoid de-serialization.
-data Cached es a where
-  Unwrap :: a -> Cached '[] a -- ^ We already have a here. Using is just unwrapping.
-  Retrieve :: S.Serialize b => (b -> a) -> T.Text -> Cached '[] a -- ^ We need to retrieve and convert.  Failure to find is an error.
-  RetrieveOrMake :: S.Serialize b -- ^ We may be able to retrieve. If not we can make by running the given action.
-                 => (b -> a)
-                 -> T.Text
-                 -> (forall r. P.Members es r => P.Sem r b)
-                 -> Cached es a
-
-instance Functor (Cached es) where
-  fmap = mapCached
-
-mapCached :: (a -> b) -> Cached es a -> Cached es b
-mapCached f (Unwrap a                   ) = Unwrap $ f a
-mapCached f (Retrieve toA k             ) = Retrieve (f . toA) k
-mapCached f (RetrieveOrMake toA k action) = RetrieveOrMake (f . toA) k action
-
--- | Create a @Cached a@ for some action returning @b@
--- and given a function @b -> a@.
--- Inference on the action cannot determine the @es@ argument
--- so you will usually have to specify it.
-cacheAction
-  :: S.Serialize b
-  => (b -> a)
-  -> T.Text
-  -> (forall r . P.Members es r => P.Sem r b)
-  -> Cached es a
-cacheAction = RetrieveOrMake
-
--- | Create a @Cached@
-cacheTransformedAction
-  :: S.Serialize b
-  => (a -> b)
-  -> (b -> a)
-  -> T.Text
-  -> (forall r . P.Members es r => P.Sem r a)
-  -> Cached es a
-cacheTransformedAction toB toA k action = cacheAction toA k (toB <$> action)
-
--- | Cache an already computed value.
--- Stores serialized data (and returns the value as a "Cached"
--- for passing to functions which expect one)
-cacheValue
-  :: ( S.Serialize b
-     , P.Members '[KnitCache, P.Error PandocError] r
-     , P.Members K.PrefixedLogEffectsLE r
-     )
-  => (a -> b)
-  -> T.Text
-  -> a
-  -> P.Sem r (Cached '[] a)
-cacheValue toB k a = store k (toB a) >> return (Unwrap a)
-
--- | Wrap an existing value in Cached.  Sometimes useful when
--- a function requires a Cached and you just have the value.
-asCached :: a -> Cached '[] a
-asCached = Unwrap
-
--- | Wrap a retrieval as a Cached for passing to functions which expect one.
--- Retrieving doesn't happen until @useAction@ is called.
-cacheRetrieval :: S.Serialize b => (b -> a) -> T.Text -> Cached '[] a
-cacheRetrieval = Retrieve
-
-
--- | Use a Cached.  Will trigger retrieval and/or running the action
--- if required.
-useCached
-  :: ( P.Members '[KnitCache, P.Error PandocError] r
-     , P.Members K.PrefixedLogEffectsLE r
-     , P.Members es r
-     )
-  => Cached es a
-  -> P.Sem r a
-useCached (Unwrap a                   ) = return a
-useCached (Retrieve toA k             ) = toA <$> retrieve k
-useCached (RetrieveOrMake toA k action) = toA <$> retrieveOrMake k action
-
--- | force the value to be made or retrieved,
--- returning a new @Cached@ which reflects that state.
-forceCached
-  :: ( P.Members '[KnitCache, P.Error PandocError] r
-     , P.Members K.PrefixedLogEffectsLE r
-     , P.Members es r
-     )
-  => Cached es a
-  -> P.Sem r (Cached '[] a)
-forceCached x = Unwrap <$> useCached x
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right

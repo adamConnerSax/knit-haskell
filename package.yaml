@@ -91,7 +91,7 @@ library:
   - mtl >=2.2.2 && <2.3
   - pandoc >=2.7.2 && <3.0
   - polysemy >= 1.2.2.0 && < 1.4
-  - polysemy-plugin >= 0.2.0.0 && <0.3.0.0
+  - polysemy-plugin >= 0.2.0.0 && < 0.3.0.0
   - polysemy-zoo >= 0.6.0 && < 0.8
   - prettyprinter >=1.2.1 && <1.6
   - say >= 0.1.0 && < 0.2

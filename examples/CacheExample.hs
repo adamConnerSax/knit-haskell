@@ -63,7 +63,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "Creating cached action..."
-  let doubleListCA :: KC.Cached '[K.Logger K.LogEntry] [Double] = KC.cacheAction id "cacheExample/doubleList" (doSomethingEffectful 5 2.2)
+  let cachingDoubleList = K.retrieveOrMake "cacheExample/doubleList" $ doSomethingEffectful 5 2.2
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -78,12 +78,9 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
     300
     samplePlot
   K.logLE K.Info "Retrieving that stuff from the cache or running if required."
-  makeDoubleListDocPart doubleListCA
-  heldDoubleList  <- KC.useCached doubleListCA
-  -- NB: the below only requires type-annotation because it's not used anywhere else (except via "show") so it's
-  -- type can't be inferred.  Normally that wouldn't be the case.
-  cachedDoubleList :: [Double] <- KC.useCached $ KC.cacheRetrieval id "cacheExample/doubleList" 
-  K.addMarkDown $ "## Caching: heldDoubleList=" <> (T.pack $ show heldDoubleList) <> "; retrieved=" <> (T.pack $ show cachedDoubleList)
+  makeDoubleListDocPart cachingDoubleList
+  cachedDoubleList <- cachingDoubleList
+  K.addMarkDown $ "## Caching: DoubleList=" <> (T.pack $ show cachedDoubleList)
   return ()
 
 doSomethingEffectful :: K.Member (K.Logger K.LogEntry) r => Int -> Double -> K.Sem r [Double]
@@ -91,10 +88,10 @@ doSomethingEffectful n x = do
   K.logLE K.Info "Doing the effectful thing!"
   return $ replicate n x
 
-makeDoubleListDocPart :: (K.KnitOne r, K.Members es r) => KC.Cached es [Double] -> K.Sem r ()
+makeDoubleListDocPart :: K.KnitOne r => K.Sem r [Double] -> K.Sem r ()
 makeDoubleListDocPart ca = do
-  ds <- KC.useCached ca
-  K.logLE K.Info $ "double list from useCached is" <> (T.pack $ show ds)
+  ds <- ca
+  K.logLE K.Info $ "double list is" <> (T.pack $ show ds)
 
 -- example using HVega  
 exampleVis :: V.VegaLite
