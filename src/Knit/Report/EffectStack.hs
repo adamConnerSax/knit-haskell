@@ -156,7 +156,8 @@ type KnitEffectStack m
      , P.Async
      , PE.Error PA.PandocError
      , P.Embed IO
-     , P.Embed m]
+     , P.Embed m
+     , P.Final m]
 #else
 type KnitEffectStack m
   = '[ KUI.UnusedId
@@ -167,18 +168,15 @@ type KnitEffectStack m
      , P.Async
      , PE.Error PA.PandocError
      , P.Embed IO
-     , P.Embed m]
+     , P.Embed m
+     , P.Final m]
 #endif
 
-    
 -- | Add a Multi-doc writer to the front of the effect list
 type KnitEffectDocsStack m = (KP.Pandocs ': KnitEffectStack m)
 
 -- | Add a single-doc writer to the front of the effect list
 type KnitEffectDocStack m = (KP.ToPandoc ': KnitEffectStack m)
-
-
-
 
 -- | run all knit-effects in @KnitEffectStack m@
 #if MIN_VERSION_pandoc(2,8,0)
@@ -189,19 +187,20 @@ consumeKnitEffectStack
   -> P.Sem (KnitEffectStack m) a
   -> m (Either PA.PandocError a)
 consumeKnitEffectStack config =
-  P.runM
-    . PI.embedToMonadIO @m -- interpret (Embed IO) using m
-    . PE.runError
-    . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
-    . KLog.filteredAsyncLogEntriesToIO (logIf config)
-    . KC.runPersistentAtomicCache
-        (KC.strictPersistAsByteString
-          (\t -> T.unpack (cacheDir config <> "/" <> t))
-        )
-    . KPM.interpretInIO -- PA.PandocIO
-    . KPM.interpretTemplateIO    
-    . KUI.runUnusedId
-    . maybe id KLog.wrapPrefix (outerLogPrefix config)
+  P.runFinal
+  . P.embedToFinal
+  . PI.embedToMonadIO @m -- interpret (Embed IO) using m
+  . PE.runError
+  . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+  . KLog.filteredAsyncLogEntriesToIO (logIf config)
+  . KC.runPersistentAtomicCache
+  (KC.strictPersistAsByteString
+    (\t -> T.unpack (cacheDir config <> "/" <> t))
+  )
+  . KPM.interpretInIO -- PA.PandocIO
+  . KPM.interpretTemplateIO    
+  . KUI.runUnusedId
+  . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
 consumeKnitEffectStack
   :: forall m a
@@ -210,16 +209,17 @@ consumeKnitEffectStack
   -> P.Sem (KnitEffectStack m) a
   -> m (Either PA.PandocError a)
 consumeKnitEffectStack config =
-  P.runM
-    . PI.embedToMonadIO @m -- interpret (Embed IO) using m
-    . PE.runError
-    . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
-    . KLog.filteredAsyncLogEntriesToIO (logIf config)
-    . KC.runPersistentAtomicCache
-        (KC.strictPersistAsByteString
-          (\t -> T.unpack (cacheDir config <> "/" <> t))
-        )
-    . KPM.interpretInIO -- PA.PandocIO        
-    . KUI.runUnusedId
-    . maybe id KLog.wrapPrefix (outerLogPrefix config)
+  P.runFinal
+  . P.embedToFinal
+  . PI.embedToMonadIO @m -- interpret (Embed IO) using m
+  . PE.runError
+  . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+  . KLog.filteredAsyncLogEntriesToIO (logIf config)
+  . KC.runPersistentAtomicCache
+  (KC.strictPersistAsByteString
+    (\t -> T.unpack (cacheDir config <> "/" <> t))
+  )
+  . KPM.interpretInIO -- PA.PandocIO        
+  . KUI.runUnusedId
+  . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #endif    
