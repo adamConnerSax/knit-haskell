@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3efd5f6f45e8b434065f9ff2eeea2baa09e90c7b9c760524faf5f35de3cb1837
+-- hash: cddc15f95d44fd0e75d40f13afaee292389ace25b4392158df9f06a1c1fe68a7
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -66,6 +66,7 @@ library
       Knit.Report.Other.Blaze
   other-modules:
       Knit.Effect.AtomicCache
+      Knit.Kernmantle.Report
       Knit.Report.Error
       Paths_knit_haskell
   build-depends:

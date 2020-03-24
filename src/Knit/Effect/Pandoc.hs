@@ -56,6 +56,7 @@ module Knit.Effect.Pandoc
 
     -- * Docs Effect Interpreters 
   , newPandoc
+  , newPandocPure
   , pandocsToDocs
   , fromPandocE
 

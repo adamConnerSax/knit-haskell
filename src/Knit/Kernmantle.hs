@@ -1,3 +1,4 @@
+{-# LANGUAGE Arrows #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -11,7 +12,11 @@ module Knit.Kernmantle
   (
     KnitKleisli
   , LogEff(..)
+  , DocEff(..)
+  , DocsEff(..)
   , KnitPipeline
+  , DocPipeline
+  , DocsPipeline
   , arrKnitCore
   , runInKnitCore
   , runDocPipeline
@@ -49,7 +54,8 @@ type KnitCore knitEffs = KnitKleisli knitEffs
 -- run
 -- To use proc notation on a pipeline of this type, we need to know that the core is an instance of Arrow.  So
 -- we add that here.
-type KnitPipeline knitEffs a b = Rope.AnyRopeWith '[ '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
+type KnitPipeline knitEffs a b
+  = Rope.AnyRopeWith [ '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
 
 arrKnitCore :: (a -> KnitMonad knitEffs b) -> KnitPipeline knitEffs a b
 arrKnitCore = Rope.strand #knitCore . A.Kleisli  
@@ -65,25 +71,97 @@ runKnitPipeline' pipeline input = pipeline
                                  & Rope.untwine -- now the mantle is empty so get the core
                                  & (flip A.runKleisli input) -- run it with the input                                
 
-runDocPipeline :: MonadIO m => K.KnitConfig -> KnitPipeline (K.KnitEffectDocStack m) a () -> a -> m (Either PA.PandocError TL.Text)
-runDocPipeline config pipeline input = K.knitHtml config $ runKnitPipeline' pipeline input
+
+type DocPipeline knitEffs a b
+  = Rope.AnyRopeWith [ '("doc", DocEff), '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
+
+runDocPipeline'
+  :: (K.KnitEffects knitEffs, P.Member KP.ToPandoc knitEffs)
+  => DocPipeline knitEffs a b
+  -> a
+  -> KnitMonad knitEffs b
+runDocPipeline' pipeline input = pipeline
+                                 & Rope.loosen -- so we can interpret them (?)
+                                 & Rope.weaveK #doc runDocEffInKnitMonad
+                                 & Rope.weaveK #log runLogEffInKnitMonad -- weaveK since this is interpreted in the core
+                                 & Rope.weave' #knitCore id -- handle these directly in the core
+                                 & Rope.untwine -- now the mantle is empty so get the core
+                                 & (flip A.runKleisli input) -- run it with the input    
+
+
+type DocsPipeline knitEffs a b
+  = Rope.AnyRopeWith [ '("docs", DocsEff), '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
+
+
+runDocsPipeline'
+  :: (K.KnitEffects knitEffs, P.Member KP.Pandocs knitEffs)
+  => DocsPipeline knitEffs a b
+  -> a
+  -> KnitMonad knitEffs b
+runDocsPipeline' pipeline input = pipeline
+                                 & Rope.loosen -- so we can interpret them (?)
+                                 & Rope.weaveK #docs runDocsEffInKnitMonad
+                                 & Rope.weaveK #log runLogEffInKnitMonad -- weaveK since this is interpreted in the core
+                                 & Rope.weave' #knitCore id -- handle these directly in the core
+                                 & Rope.untwine -- now the mantle is empty so get the core
+                                 & (flip A.runKleisli input) -- run it with the input    
+
+
+{-
+runKnitPipeline :: (K.KnitEffects knitEffs, MonadIO m)
+                => (K.KnitConfig -> KnitMonad knitEffs b -> m c)
+                -> K.KnitConfig
+                -> KnitPipeline knitEffs a b
+                -> a
+                -> m c
+runKnitPipeline runKnitMonad config pipeline input = runKnitMonad config $ runKnitPipeline' pipeline input                
+-}
+
+runDocPipeline :: MonadIO m
+               => K.KnitConfig
+               -> KnitPipeline (K.KnitEffectDocStack m) a ()
+               -> a
+               -> m (Either PA.PandocError TL.Text)
+runDocPipeline config pipeline input = K.knitHtml config $ runDocPipeline' pipeline input
 
 runDocsPipeline :: MonadIO m
                 => K.KnitConfig
                 -> KnitPipeline (K.KnitEffectDocsStack m) a ()
                 -> a
                 -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
-runDocsPipeline config pipeline input = K.knitHtmls config $ runKnitPipeline' pipeline input
+runDocsPipeline config pipeline input = K.knitHtmls config $ runDocsPipeline' pipeline input
 
 -- The Logging Effect
 data LogEff a b where
   LogText :: LogEff (K.LogSeverity, T.Text) ()
 
+
 runLogEffInKnitMonad :: P.Members K.PrefixedLogEffectsLE knitEffs => a `LogEff` b -> a -> KnitMonad knitEffs b
 runLogEffInKnitMonad LogText = K.wrapPrefix "Pipeline" . uncurry K.logLE 
 
+-- We add effects to write docs but then remove them when we run the pipeline
 
+-- The Doc Writer Effect (add fragments to a pandoc)
+data DocEff a b where
+  AddFrom :: DocEff (KP.PandocReadFormat a, PA.ReaderOptions, a) ()
+  Require :: DocEff KP.Requirement ()
 
+runDocEffInKnitMonad :: P.Member KP.ToPandoc knitEffs => a `DocEff` b -> a -> KnitMonad knitEffs b
+runDocEffInKnitMonad AddFrom = \(rf, ro, a) -> KP.addFrom rf ro a
+runDocEffInKnitMonad Require = KP.require
+
+-- The Docs Writer Effect (add entire document to a collection of pandocs)
+data DocsEff a b where
+  NewPandoc :: DocsEff (KP.PandocInfo, KP.PandocWithRequirements) ()
+
+{-
+newPandoc :: KP.PandocInfo -> KnitPipeline knitEffs KP.PandocWithRequirements ()
+newPandoc info = proc pwr -> do
+  Rope.strand #doc NewPandoc -< (info, pwr)
+-}
+
+runDocsEffInKnitMonad :: P.Member KP.Pandocs knitEffs => a `DocsEff` b -> a -> KnitMonad knitEffs b
+runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
 --interpLogEff :: a `LogEff` b -> Rope.AnyRopeWith '[ '("knitCore", KnitCore m)] '[] a b 
 --interpLogEff  = Rope.strand #knitCore . A.Kleisli . runLogEffInKnitMonad
