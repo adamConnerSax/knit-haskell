@@ -36,6 +36,8 @@ module Knit.Report.EffectStack
   -- * Constraints for knit-haskell actions (see examples)
   , KnitEffects
   , KnitEffectStack
+  , KnitEffectDocStack
+  , KnitEffectDocsStack
   , KnitOne
   , KnitMany
   , KnitBase

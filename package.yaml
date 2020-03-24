@@ -46,6 +46,7 @@ library:
   - Knit.Effect.PandocMonad
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId
+  - Knit.Kernmantle
   - Knit.Report
   - Knit.Report.Cache
   - Knit.Report.EffectStack
@@ -79,7 +80,8 @@ library:
   - Glob >=0.10.0 && <0.11.0
   - http-client >=0.6.4 && <0.7.0
   - http-client-tls >=0.3.5.3 && <0.4.0.0
-  - http-types >=0.12.3 && <0.13.0  
+  - http-types >=0.12.3 && <0.13.0
+  - kernmantle >= 0.1.0 && < 0.2		
   - lucid >=2.9.11 && <2.10
   - network >=2.8.0.0 && <3.2.0.0
   - network-uri >=2.6.1.0 && <2.7.0.0

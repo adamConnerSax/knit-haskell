@@ -52,7 +52,7 @@ import           Control.Monad                  ( join )
 
 -- | GADT to represent storing a document and some info for processing it.
 data Docs i a m r where
-  NewDoc ::i -> a -> Docs i a m ()
+  NewDoc :: i -> a -> Docs i a m ()
 
 -- | Action of the 'Docs' Effect.  Store a document.
 newDoc :: P.Member (Docs i a) effs => i -> a -> P.Sem effs ()

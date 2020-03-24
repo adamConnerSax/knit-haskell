@@ -1,7 +1,7 @@
-packages: ./ 
+packages: ./ ../kernmantle/kernmantle ../kernmantle/caching
 
 -- ghc-8.8 forks for testing
-allow-newer: hashable
+allow-newer: hashable, base, time, profunctors
    
 source-repository-package
   type: git

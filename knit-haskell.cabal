@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b4dd9fbb4453c280f7a887a2d8fe2026341e3f5ea4ffe285551891b1e09f1d29
+-- hash: 3efd5f6f45e8b434065f9ff2eeea2baa09e90c7b9c760524faf5f35de3cb1837
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -48,6 +48,7 @@ library
       Knit.Effect.PandocMonad
       Knit.Effect.Pandoc
       Knit.Effect.UnusedId
+      Knit.Kernmantle
       Knit.Report
       Knit.Report.Cache
       Knit.Report.EffectStack
@@ -88,6 +89,7 @@ library
     , http-client-tls >=0.3.5.3 && <0.4.0.0
     , http-types >=0.12.3 && <0.13.0
     , hvega >=0.2.0 && <0.6
+    , kernmantle >=0.1.0 && <0.2
     , logging-effect >=1.3.3 && <1.4
     , lucid >=2.9.11 && <2.10
     , mtl >=2.2.2 && <2.3
