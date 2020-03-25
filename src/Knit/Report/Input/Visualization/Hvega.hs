@@ -19,6 +19,8 @@ module Knit.Report.Input.Visualization.Hvega
   (
     -- * Add hvega Inputs
     addHvega
+    -- * VegaLite to Html
+  , placeVisualization
   )
 where
 
