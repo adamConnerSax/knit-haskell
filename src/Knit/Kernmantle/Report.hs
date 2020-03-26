@@ -76,7 +76,7 @@ addHvega' :: P.Member KUI.UnusedId r
          => Maybe T.Text
          -> Maybe T.Text
          -> GV.VegaLite
-         -> DocPipeline r a T.Text
+         -> DocPipeline r () T.Text
 addHvega' idTextM captionTextM vl = addHvega idTextM captionTextM (const vl)
 
   

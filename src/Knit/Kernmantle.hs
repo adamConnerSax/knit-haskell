@@ -106,17 +106,6 @@ runDocsPipeline' pipeline input = pipeline
                                  & Rope.untwine -- now the mantle is empty so get the core
                                  & (flip A.runKleisli input) -- run it with the input    
 
-
-{-
-runKnitPipeline :: (K.KnitEffects knitEffs, MonadIO m)
-                => (K.KnitConfig -> KnitMonad knitEffs b -> m c)
-                -> K.KnitConfig
-                -> KnitPipeline knitEffs a b
-                -> a
-                -> m c
-runKnitPipeline runKnitMonad config pipeline input = runKnitMonad config $ runKnitPipeline' pipeline input                
--}
-
 runDocPipeline :: MonadIO m
                => K.KnitConfig
                -> KnitPipeline (K.KnitEffectDocStack m) a ()
@@ -154,15 +143,18 @@ runDocEffInKnitMonad Require = KP.require
 data DocsEff a b where
   NewPandoc :: DocsEff (KP.PandocInfo, KP.PandocWithRequirements) ()
 
-{-
-newPandoc :: KP.PandocInfo -> KnitPipeline knitEffs KP.PandocWithRequirements ()
-newPandoc info = proc pwr -> do
-  Rope.strand #doc NewPandoc -< (info, pwr)
--}
-
 runDocsEffInKnitMonad :: P.Member KP.Pandocs knitEffs => a `DocsEff` b -> a -> KnitMonad knitEffs b
 runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
---interpLogEff :: a `LogEff` b -> Rope.AnyRopeWith '[ '("knitCore", KnitCore m)] '[] a b 
---interpLogEff  = Rope.strand #knitCore . A.Kleisli . runLogEffInKnitMonad
+newPandoc
+  :: forall r a b. K.KnitMany r => KP.PandocInfo -> DocPipeline r a b -> DocsPipeline r a b
+newPandoc info docPipeline =
+  let interpret :: a `DocEff` b -> a -> KnitMonad r ()
+      interpret docEff a = KP.newPandoc info $ fmap (const ()) $ runDocEffInKnitMonad docEff a
+  in docPipeline
+     & Rope.loosen
+     & Rope.weaveK #doc interpret
+     & Rope.tighten
+
+
 
