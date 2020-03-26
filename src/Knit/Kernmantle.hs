@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE Arrows #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -34,6 +35,9 @@ import           Control.Monad.Except           ( MonadIO )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy                as TL
 import qualified Text.Pandoc                   as PA
+import qualified Data.Vinyl as V
+import qualified Data.Vinyl.TypeLevel as V
+import qualified Data.Vinyl.ARec as V
 
 -- Wrap the knit-haskell stack as a Kleisli arrow
 -- and then we can dispatch effects to it.
@@ -76,7 +80,7 @@ type DocPipeline knitEffs a b
   = Rope.AnyRopeWith [ '("doc", DocEff), '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
 
 runDocPipeline'
-  :: (K.KnitEffects knitEffs, P.Member KP.ToPandoc knitEffs)
+  :: K.KnitOne knitEffs
   => DocPipeline knitEffs a b
   -> a
   -> KnitMonad knitEffs b
@@ -94,7 +98,7 @@ type DocsPipeline knitEffs a b
 
 
 runDocsPipeline'
-  :: (K.KnitEffects knitEffs, P.Member KP.Pandocs knitEffs)
+  :: K.KnitMany knitEffs
   => DocsPipeline knitEffs a b
   -> a
   -> KnitMonad knitEffs b
@@ -147,10 +151,18 @@ runDocsEffInKnitMonad :: P.Member KP.Pandocs knitEffs => a `DocsEff` b -> a -> K
 runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
 newPandoc
-  :: forall r a b. K.KnitMany r => KP.PandocInfo -> DocPipeline r a b -> DocsPipeline r a b
+  :: forall mantle r a b.
+     (K.KnitMany r
+     , V.NatToInt (V.RLength mantle)
+     , V.RecApplicative mantle
+     , V.RPureConstrained (V.IndexableField mantle) mantle
+     )
+  => KP.PandocInfo
+  -> Rope.TightRope ('("doc", DocEff) ': mantle) (KnitCore r) a b
+  -> Rope.TightRope mantle (KnitCore r) a b
 newPandoc info docPipeline =
-  let interpret :: a `DocEff` b -> a -> KnitMonad r ()
-      interpret docEff a = KP.newPandoc info $ fmap (const ()) $ runDocEffInKnitMonad docEff a
+  let interpret :: c `DocEff` d -> c -> KnitMonad r d
+      interpret docEff a = KP.newPandoc info $ runDocEffInKnitMonad docEff a
   in docPipeline
      & Rope.loosen
      & Rope.weaveK #doc interpret

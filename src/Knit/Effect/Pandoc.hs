@@ -268,9 +268,12 @@ newPandocPure = newDoc
 newPandoc
   :: (PM.PandocEffects effs, P.Member Pandocs effs)
   => PandocInfo  -- ^ name and template variables for document
-  -> P.Sem (ToPandoc ': effs) ()
-  -> P.Sem effs ()
-newPandoc n l = fmap fst (P.runWriter $ toWriter l) >>= newPandocPure n
+  -> P.Sem (ToPandoc ': effs) a
+  -> P.Sem effs a
+newPandoc n l = do
+  (pdwr, a) <- P.runWriter $ toWriter l
+  newPandocPure n pdwr
+  return a
 
 -- | Given a write format and options, convert the NamedDoc to the requested format
 pandocFrom

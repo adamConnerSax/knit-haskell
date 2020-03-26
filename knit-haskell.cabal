@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cddc15f95d44fd0e75d40f13afaee292389ace25b4392158df9f06a1c1fe68a7
+-- hash: ed96c9639ffd54f43f8cd883743d80c7547015841d1cbac6ea98ce02c3e7f001
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -107,6 +107,7 @@ library
     , svg-builder >=0.1.1 && <0.2
     , text >=1.2.3 && <1.3
     , time >=1.8.0 && <2.0.0
+    , vinyl >=0.12.0 && <0.13
   hs-source-dirs:
       src
   default-language: Haskell2010
