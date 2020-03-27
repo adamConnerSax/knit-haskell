@@ -58,8 +58,10 @@ type KnitCore knitEffs = KnitKleisli knitEffs
 -- run
 -- To use proc notation on a pipeline of this type, we need to know that the core is an instance of Arrow.  So
 -- we add that here.
-type KnitPipeline knitEffs a b
-  = Rope.AnyRopeWith [ '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
+type KnitCoreMantle r = [ '("log", LogEff), '("knitCore", KnitCore r)]
+
+type KnitPipeline r a b
+  = Rope.AnyRopeWith (KnitCoreMantle r) '[A.Arrow] a b
 
 arrKnitCore :: (a -> KnitMonad knitEffs b) -> KnitPipeline knitEffs a b
 arrKnitCore = Rope.strand #knitCore . A.Kleisli  
@@ -76,14 +78,14 @@ runKnitPipeline' pipeline input = pipeline
                                  & (flip A.runKleisli input) -- run it with the input                                
 
 
-type DocPipeline knitEffs a b
-  = Rope.AnyRopeWith [ '("doc", DocEff), '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
+type DocPipeline r a b
+  = Rope.AnyRopeWith  ('("doc", DocEff) ': KnitCoreMantle r) '[A.Arrow] a b
 
 runDocPipeline'
-  :: K.KnitOne knitEffs
-  => DocPipeline knitEffs a b
+  :: K.KnitOne r
+  => DocPipeline r a b
   -> a
-  -> KnitMonad knitEffs b
+  -> KnitMonad r b
 runDocPipeline' pipeline input = pipeline
                                  & Rope.loosen -- so we can interpret them (?)
                                  & Rope.weaveK #doc runDocEffInKnitMonad
@@ -93,15 +95,15 @@ runDocPipeline' pipeline input = pipeline
                                  & (flip A.runKleisli input) -- run it with the input    
 
 
-type DocsPipeline knitEffs a b
-  = Rope.AnyRopeWith [ '("docs", DocsEff), '("log", LogEff), '("knitCore", KnitCore knitEffs)] '[A.Arrow] a b
+type DocsPipeline r a b
+  = Rope.AnyRopeWith ('("docs", DocsEff) ': KnitCoreMantle r) '[A.Arrow] a b
 
 
 runDocsPipeline'
-  :: K.KnitMany knitEffs
-  => DocsPipeline knitEffs a b
+  :: K.KnitMany r
+  => DocsPipeline r a b
   -> a
-  -> KnitMonad knitEffs b
+  -> KnitMonad r b
 runDocsPipeline' pipeline input = pipeline
                                  & Rope.loosen -- so we can interpret them (?)
                                  & Rope.weaveK #docs runDocsEffInKnitMonad
@@ -129,7 +131,7 @@ data LogEff a b where
   LogText :: LogEff (K.LogSeverity, T.Text) ()
 
 
-runLogEffInKnitMonad :: P.Members K.PrefixedLogEffectsLE knitEffs => a `LogEff` b -> a -> KnitMonad knitEffs b
+runLogEffInKnitMonad :: P.Members K.PrefixedLogEffectsLE r => a `LogEff` b -> a -> KnitMonad r b
 runLogEffInKnitMonad LogText = K.wrapPrefix "Pipeline" . uncurry K.logLE 
 
 -- We add effects to write docs but then remove them when we run the pipeline
@@ -139,7 +141,7 @@ data DocEff a b where
   AddFrom :: DocEff (KP.PandocReadFormat a, PA.ReaderOptions, a) ()
   Require :: DocEff KP.Requirement ()
 
-runDocEffInKnitMonad :: P.Member KP.ToPandoc knitEffs => a `DocEff` b -> a -> KnitMonad knitEffs b
+runDocEffInKnitMonad :: P.Member KP.ToPandoc r => a `DocEff` b -> a -> KnitMonad r b
 runDocEffInKnitMonad AddFrom = \(rf, ro, a) -> KP.addFrom rf ro a
 runDocEffInKnitMonad Require = KP.require
 
@@ -147,7 +149,7 @@ runDocEffInKnitMonad Require = KP.require
 data DocsEff a b where
   NewPandoc :: DocsEff (KP.PandocInfo, KP.PandocWithRequirements) ()
 
-runDocsEffInKnitMonad :: P.Member KP.Pandocs knitEffs => a `DocsEff` b -> a -> KnitMonad knitEffs b
+runDocsEffInKnitMonad :: P.Member KP.Pandocs r => a `DocsEff` b -> a -> KnitMonad r b
 runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
 newPandoc

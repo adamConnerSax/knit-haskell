@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ed96c9639ffd54f43f8cd883743d80c7547015841d1cbac6ea98ce02c3e7f001
+-- hash: 45d12f895c3228c536cc4bccc3e9751d92932ab1bb4154856baee067b11cda04
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -48,7 +48,6 @@ library
       Knit.Effect.PandocMonad
       Knit.Effect.Pandoc
       Knit.Effect.UnusedId
-      Knit.Kernmantle
       Knit.Report
       Knit.Report.Cache
       Knit.Report.EffectStack
@@ -64,9 +63,10 @@ library
       Knit.Report.Output.Html
       Knit.Report.Other.Lucid
       Knit.Report.Other.Blaze
+      Knit.Kernmantle
+      Knit.Kernmantle.Report
   other-modules:
       Knit.Effect.AtomicCache
-      Knit.Kernmantle.Report
       Knit.Report.Error
       Paths_knit_haskell
   build-depends:
@@ -110,6 +110,25 @@ library
     , vinyl >=0.12.0 && <0.13
   hs-source-dirs:
       src
+  default-language: Haskell2010
+
+test-suite ArrowExample
+  type: exitcode-stdio-1.0
+  main-is: ArrowExample.hs
+  hs-source-dirs:
+      examples/Arrows
+  ghc-options: -fplugin=Polysemy.Plugin
+  build-depends:
+      base
+    , blaze-html
+    , containers
+    , here
+    , hvega
+    , knit-haskell
+    , plots
+    , polysemy
+    , polysemy-plugin
+    , text
   default-language: Haskell2010
 
 test-suite AsyncExample

@@ -46,7 +46,6 @@ library:
   - Knit.Effect.PandocMonad
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId
-  - Knit.Kernmantle
   - Knit.Report
   - Knit.Report.Cache
   - Knit.Report.EffectStack
@@ -62,6 +61,8 @@ library:
   - Knit.Report.Output.Html
   - Knit.Report.Other.Lucid
   - Knit.Report.Other.Blaze
+  - Knit.Kernmantle	
+  - Knit.Kernmantle.Report
   dependencies:
   - aeson-pretty >=0.8.7 && <0.9
   - base >=4.12.0 && < 4.14
@@ -217,6 +218,22 @@ tests:
     - polysemy
     - polysemy-plugin
     - text
+  ArrowExample:
+    main: ArrowExample.hs
+    other-modules: []
+    source-dirs: examples/Arrows
+    ghc-options: -fplugin=Polysemy.Plugin
+    dependencies:
+    - base
+    - blaze-html
+    - containers
+    - here
+    - hvega
+    - knit-haskell
+    - plots    
+    - polysemy
+    - polysemy-plugin
+    - text    
 data-dir: data
 data-files:
 - knit-haskell-templates/*.html

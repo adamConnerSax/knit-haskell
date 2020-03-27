@@ -11,11 +11,15 @@
 module Knit.Kernmantle.Report
   (
     module Knit.Kernmantle
+  , module Knit.Report
   , module Knit.Kernmantle.Report
+  , module Polysemy
   ) where
 
 import Knit.Kernmantle
+import Polysemy hiding (rewrite, transform) -- also something in Diagrams
 import qualified Knit.Report as K
+import Knit.Report
 
 import qualified Knit.Effect.Pandoc       as PE
 import qualified Knit.Effect.UnusedId                      as KUI
@@ -42,50 +46,50 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 
 -- logging
-logLE :: K.LogSeverity -> T.Text -> KnitPipeline r () ()
-logLE ls lt = proc _ -> do
+logLEA :: K.LogSeverity -> T.Text -> KnitPipeline r () ()
+logLEA ls lt = proc _ -> do
   Rope.strand #log LogText -< (ls, lt)
 
 -- add to document
-addBlaze :: DocPipeline r BH.Html ()
-addBlaze = proc html -> do
+addBlazeA :: DocPipeline r BH.Html ()
+addBlazeA = proc html -> do
   Rope.strand #doc AddFrom -< (PE.ReadHtml, KH.htmlReaderOptions, LT.toStrict $ BH.renderHtml html)
 
-addLucid :: DocPipeline r (LH.Html ()) ()
-addLucid = proc html -> do
+addLucidA :: DocPipeline r (LH.Html ()) ()
+addLucidA = proc html -> do
   Rope.strand #doc AddFrom -< (PE.ReadHtml, KH.htmlReaderOptions, LT.toStrict $ LH.renderText html)
 
-addMarkDown :: DocPipeline r T.Text ()
-addMarkDown = proc mdText -> do
+addMarkDownA :: DocPipeline r T.Text ()
+addMarkDownA = proc mdText -> do
   Rope.strand #doc AddFrom -< (PE.ReadMarkDown, KM.markDownReaderOptions, mdText)
 
-addHvega :: P.Member KUI.UnusedId r
+addHvegaA :: P.Member KUI.UnusedId r
          => Maybe T.Text
          -> Maybe T.Text
          -> (a -> GV.VegaLite)
          -> DocPipeline r a T.Text
-addHvega idTextM captionTextM makeVL =
+addHvegaA idTextM captionTextM makeVL =
   let getId = maybe (KUI.getNextUnusedId "figure") return
   in proc a -> do
     Rope.strand #doc Require -< K.VegaSupport
     idText <- (Rope.strand #knitCore $ A.Kleisli getId) -< idTextM
-    addBlaze -< KV.placeVisualization idText captionTextM (makeVL a)
+    addBlazeA -< KV.placeVisualization idText captionTextM (makeVL a)
     A.returnA -< idText
 
-addHvega' :: P.Member KUI.UnusedId r
+addHvegaA' :: P.Member KUI.UnusedId r
          => Maybe T.Text
          -> Maybe T.Text
          -> GV.VegaLite
          -> DocPipeline r () T.Text
-addHvega' idTextM captionTextM vl = addHvega idTextM captionTextM (const vl)
+addHvegaA' idTextM captionTextM vl = addHvegaA idTextM captionTextM (const vl)
 
   
-addDiagramAsSVGWithOptions :: P.Member KUI.UnusedId r
-                           => Maybe T.Text -- ^ id attribute for figure.  Will use next unused "figure" id if Nothing
-                           -> Maybe T.Text -- ^ caption for figure
-                           -> DSVG.Options DSVG.SVG D.V2 Double
-                           -> DocPipeline r (D.QDiagram DSVG.SVG D.V2 Double D.Any) T.Text
-addDiagramAsSVGWithOptions idTextM captionTextM svgOptions =
+addDiagramAsSVGWithOptionsA :: P.Member KUI.UnusedId r
+                            => Maybe T.Text -- ^ id attribute for figure.  Will use next unused "figure" id if Nothing
+                            -> Maybe T.Text -- ^ caption for figure
+                            -> DSVG.Options DSVG.SVG D.V2 Double
+                            -> DocPipeline r (D.QDiagram DSVG.SVG D.V2 Double D.Any) T.Text
+addDiagramAsSVGWithOptionsA idTextM captionTextM svgOptions =
   let getId = maybe (KUI.getNextUnusedId "figure") return
   in proc diagram -> do
     idText <- (Rope.strand #knitCore $ A.Kleisli getId) -< idTextM
@@ -95,17 +99,17 @@ addDiagramAsSVGWithOptions idTextM captionTextM svgOptions =
                                                                      $ D.renderDia DSVG.SVG svgOptions diagram
                                                                    maybe (return ()) (BH.figcaption . BH.toHtml) captionTextM
                                                                
-    addBlaze -< blazeHtml
+    addBlazeA -< blazeHtml
     A.returnA -< idText
 
 
-addDiagramAsSVG  :: P.Member KUI.UnusedId r
-                 => Maybe T.Text -- ^ id attribute for figure.  Will use next unused "figure" id if Nothing
-                 -> Maybe T.Text -- ^ caption for figure
-                 -> Double -- ^ width in pixels (?)
-                 -> Double -- ^ height in pixels (?)                 -> Double
-                 -> DocPipeline r (D.QDiagram DSVG.SVG D.V2 Double D.Any) T.Text
-addDiagramAsSVG idTextM captionTextM wPixels hPixels =
+addDiagramAsSVGA  :: P.Member KUI.UnusedId r
+                  => Maybe T.Text -- ^ id attribute for figure.  Will use next unused "figure" id if Nothing
+                  -> Maybe T.Text -- ^ caption for figure
+                  -> Double -- ^ width in pixels (?)
+  -> Double -- ^ height in pixels (?)                 -> Double
+                  -> DocPipeline r (D.QDiagram DSVG.SVG D.V2 Double D.Any) T.Text
+addDiagramAsSVGA idTextM captionTextM wPixels hPixels =
   let getId = maybe (KUI.getNextUnusedId "figure") return
   in proc diagram -> do
      idText <- (Rope.strand #knitCore $ A.Kleisli getId) -< idTextM
@@ -117,5 +121,5 @@ addDiagramAsSVG idTextM captionTextM wPixels hPixels =
                                                                      $ D.renderDia DSVG.SVG svgOptions diagram
                                                                    maybe (return ()) (BH.figcaption . BH.toHtml) captionTextM
      
-     addBlaze -< blazeHtml
+     addBlazeA -< blazeHtml
      A.returnA -< idText
