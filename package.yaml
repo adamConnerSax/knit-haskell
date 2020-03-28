@@ -218,8 +218,8 @@ tests:
     - polysemy
     - polysemy-plugin
     - text
-  ArrowExample:
-    main: ArrowExample.hs
+  ArrowSimple:
+    main: ArrowSimple.hs
     other-modules: []
     source-dirs: examples/Arrows
     ghc-options: -fplugin=Polysemy.Plugin
@@ -233,7 +233,23 @@ tests:
     - plots    
     - polysemy
     - polysemy-plugin
-    - text    
+    - text
+  ArrowMulti:
+    main: ArrowMulti.hs
+    other-modules: []
+    source-dirs: examples/Arrows
+    ghc-options: -fplugin=Polysemy.Plugin
+    dependencies:
+    - base
+    - blaze-html
+    - containers
+    - here
+    - hvega
+    - knit-haskell
+    - plots    
+    - polysemy
+    - polysemy-plugin
+    - text        
 data-dir: data
 data-files:
 - knit-haskell-templates/*.html

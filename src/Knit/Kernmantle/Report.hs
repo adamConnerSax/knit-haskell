@@ -14,12 +14,15 @@ module Knit.Kernmantle.Report
   , module Knit.Report
   , module Knit.Kernmantle.Report
   , module Polysemy
+  , module Control.Arrow
   ) where
 
+-- for re-export
 import Knit.Kernmantle
 import Polysemy hiding (rewrite, transform) -- also something in Diagrams
 import qualified Knit.Report as K
 import Knit.Report
+import Control.Arrow (returnA, (***), (&&&), (>>>), (<<<), (^>>), (>>^), first, second)
 
 import qualified Knit.Effect.Pandoc       as PE
 import qualified Knit.Effect.UnusedId                      as KUI
@@ -28,6 +31,7 @@ import qualified Knit.Report.Input.MarkDown.PandocMarkDown as KM
 import qualified Knit.Report.Input.Html                    as KH
 
 import qualified Graphics.Vega.VegaLite        as GV
+import qualified Text.Pandoc                   as PA
 import qualified Lucid                         as LH
 import qualified Text.Blaze.Html               as BH
 import qualified Text.Blaze.Html5               as BH
@@ -46,11 +50,25 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 
 -- logging
-logLEA :: K.LogSeverity -> T.Text -> KnitPipeline r () ()
-logLEA ls lt = proc _ -> do
+logLEA :: K.LogSeverity -> KnitPipeline r T.Text ()
+logLEA ls = proc lt -> do
   Rope.strand #log LogText -< (ls, lt)
 
+-- This needs to be mantle polymorphic so we need to do it this way, with explicit type variables @r@, @m@, and @c.
+-- Is there something simpler? 
+wrapPrefixA :: (A.Arrow c, Rope.InRope "log" LogEff (Rope.Rope r m c))
+            => T.Text
+            -> Rope.Rope r m c a b
+            -> Rope.Rope r m c a b
+wrapPrefixA prefix pipeline = proc a -> do
+  Rope.strand #log AddPrefix -< prefix
+  b <- pipeline -< a
+  Rope.strand #log RemovePrefix -< ()
+  A.returnA -< b
+
 -- add to document
+
+-- HTML
 addBlazeA :: DocPipeline r BH.Html ()
 addBlazeA = proc html -> do
   Rope.strand #doc AddFrom -< (PE.ReadHtml, KH.htmlReaderOptions, LT.toStrict $ BH.renderHtml html)
@@ -59,10 +77,18 @@ addLucidA :: DocPipeline r (LH.Html ()) ()
 addLucidA = proc html -> do
   Rope.strand #doc AddFrom -< (PE.ReadHtml, KH.htmlReaderOptions, LT.toStrict $ LH.renderText html)
 
+-- Markdown
 addMarkDownA :: DocPipeline r T.Text ()
 addMarkDownA = proc mdText -> do
   Rope.strand #doc AddFrom -< (PE.ReadMarkDown, KM.markDownReaderOptions, mdText)
 
+-- LaTeX
+addLatexA :: DocPipeline r T.Text ()
+addLatexA = proc t -> do
+  Rope.strand #doc Require -< K.LatexSupport
+  Rope.strand #doc AddFrom -< (K.ReadLaTeX, PA.def, t)
+
+-- Vega-Lite (hvega)
 addHvegaA :: P.Member KUI.UnusedId r
          => Maybe T.Text
          -> Maybe T.Text
@@ -83,7 +109,8 @@ addHvegaA' :: P.Member KUI.UnusedId r
          -> DocPipeline r () T.Text
 addHvegaA' idTextM captionTextM vl = addHvegaA idTextM captionTextM (const vl)
 
-  
+
+-- Diagrams  
 addDiagramAsSVGWithOptionsA :: P.Member KUI.UnusedId r
                             => Maybe T.Text -- ^ id attribute for figure.  Will use next unused "figure" id if Nothing
                             -> Maybe T.Text -- ^ caption for figure

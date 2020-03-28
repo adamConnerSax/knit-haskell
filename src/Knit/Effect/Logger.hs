@@ -41,6 +41,8 @@ module Knit.Effect.Logger
   , log
   , logLE
   , wrapPrefix
+  , addPrefix
+  , removePrefix
 
   -- * Interpreters
   , filteredLogEntriesToIO

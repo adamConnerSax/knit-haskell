@@ -1,3 +1,4 @@
+{-# LANGUAGE Arrows            #-}                                  
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -5,8 +6,7 @@
 {-# LANGUAGE GADTs             #-}
 module Main where
 
-import qualified Knit.Kernmantle.Report                   as K
---import qualified Knit.Report                              as KC
+import qualified Knit.Kernmantle.Report        as K
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
@@ -34,7 +34,7 @@ main = do
         , K.logIf = K.logAll
         , K.pandocWriterConfig = pandocWriterConfig
         }
-  resE <- K.runDocPipeline knitConfig (K.runInKnitCore makeDoc) ()
+  resE <- K.runDocPipeline knitConfig docPipeline ()
   case resE of
     Right htmlAsText ->
       K.writeAndMakePathLT "examples/html/arrow_example.html" htmlAsText
@@ -50,27 +50,26 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: K.KnitOne effs => K.Sem effs ()
-makeDoc = K.wrapPrefix "makeDoc" $ do
-  K.logLE K.Info "adding some markdown..."
-  K.addMarkDown md1
-  K.logLE K.Info "adding some latex..."
-  K.addMarkDown "## Some example latex"
-  K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
-  K.logLE K.Info "adding a visualization..."
-  K.addMarkDown "## An example hvega visualization"
-  _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
-  K.addMarkDown
+docPipeline :: K.DocPipeline r () ()
+docPipeline = K.wrapPrefixA "docPipeline" $ proc _ -> do
+  K.logLEA K.Info -< "adding some markdown..."
+  K.addMarkDownA -< md1
+  K.logLEA K.Info -< "adding some latex..."
+  K.addMarkDownA -< "## Some example latex"
+  K.addLatexA -< "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+  K.logLEA K.Info -< "adding a visualization..."
+  K.addMarkDownA -< "## An example hvega visualization"
+  _ <- K.addHvegaA Nothing (Just "From the cars data-set") id -< exampleVis
+  K.addMarkDownA -<
     "## Example Diagrams visualizations, the second using the plots library."
-  K.logLE K.Info "adding a Diagrams example and plots example..."
-  _ <- K.addDiagramAsSVG Nothing (Just "Example diagram") 300 300 exampleDiagram
-  _ <- K.addDiagramAsSVG
+  K.logLEA K.Info -< "adding a Diagrams example and plots example..."
+  _ <- K.addDiagramAsSVGA Nothing (Just "Example diagram") 300 300 -< exampleDiagram
+  _ <- (K.addDiagramAsSVGA
     Nothing
     (Just "Example diagrams visualization using the Plots library")
     300
-    300
-    samplePlot
-  return ()
+    300) -< samplePlot
+  K.returnA -< ()  
 
 -- example using HVega  
 exampleVis :: V.VegaLite

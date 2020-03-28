@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 45d12f895c3228c536cc4bccc3e9751d92932ab1bb4154856baee067b11cda04
+-- hash: 3bb2d02f656e9a59cae67a6d1af10d7731037a1e72091f2d98fb3ef89821fdae
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -112,9 +112,28 @@ library
       src
   default-language: Haskell2010
 
-test-suite ArrowExample
+test-suite ArrowMulti
   type: exitcode-stdio-1.0
-  main-is: ArrowExample.hs
+  main-is: ArrowMulti.hs
+  hs-source-dirs:
+      examples/Arrows
+  ghc-options: -fplugin=Polysemy.Plugin
+  build-depends:
+      base
+    , blaze-html
+    , containers
+    , here
+    , hvega
+    , knit-haskell
+    , plots
+    , polysemy
+    , polysemy-plugin
+    , text
+  default-language: Haskell2010
+
+test-suite ArrowSimple
+  type: exitcode-stdio-1.0
+  main-is: ArrowSimple.hs
   hs-source-dirs:
       examples/Arrows
   ghc-options: -fplugin=Polysemy.Plugin

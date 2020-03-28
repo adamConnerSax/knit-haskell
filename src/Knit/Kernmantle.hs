@@ -12,6 +12,7 @@
 module Knit.Kernmantle
   (
     KnitKleisli
+  , KnitCore
   , LogEff(..)
   , DocEff(..)
   , DocsEff(..)
@@ -21,6 +22,8 @@ module Knit.Kernmantle
   , arrKnitCore
   , runInKnitCore
   , runDocPipeline
+  , runDocsPipeline
+  , newPandocA
   ) where
 
 import qualified Control.Kernmantle.Rope as Rope
@@ -78,8 +81,11 @@ runKnitPipeline' pipeline input = pipeline
                                  & (flip A.runKleisli input) -- run it with the input                                
 
 
+--type DocPipeline r a b
+--  = Rope.AnyRopeWith  ('("doc", DocEff) ': KnitCoreMantle r) '[A.Arrow] a b
+
 type DocPipeline r a b
-  = Rope.AnyRopeWith  ('("doc", DocEff) ': KnitCoreMantle r) '[A.Arrow] a b
+  = Rope.TightRope  ('("doc", DocEff) ': KnitCoreMantle r) (KnitCore r) a b
 
 runDocPipeline'
   :: K.KnitOne r
@@ -95,8 +101,11 @@ runDocPipeline' pipeline input = pipeline
                                  & (flip A.runKleisli input) -- run it with the input    
 
 
+--type DocsPipeline r a b
+--  = Rope.AnyRopeWith ('("docs", DocsEff) ': KnitCoreMantle r) '[A.Arrow] a b
+
 type DocsPipeline r a b
-  = Rope.AnyRopeWith ('("docs", DocsEff) ': KnitCoreMantle r) '[A.Arrow] a b
+  = Rope.TightRope (KnitCoreMantle r) (KnitCore r) a b
 
 
 runDocsPipeline'
@@ -106,7 +115,7 @@ runDocsPipeline'
   -> KnitMonad r b
 runDocsPipeline' pipeline input = pipeline
                                  & Rope.loosen -- so we can interpret them (?)
-                                 & Rope.weaveK #docs runDocsEffInKnitMonad
+--                                 & Rope.weaveK #docs runDocsEffInKnitMonad
                                  & Rope.weaveK #log runLogEffInKnitMonad -- weaveK since this is interpreted in the core
                                  & Rope.weave' #knitCore id -- handle these directly in the core
                                  & Rope.untwine -- now the mantle is empty so get the core
@@ -114,14 +123,14 @@ runDocsPipeline' pipeline input = pipeline
 
 runDocPipeline :: MonadIO m
                => K.KnitConfig
-               -> KnitPipeline (K.KnitEffectDocStack m) a ()
+               -> DocPipeline (K.KnitEffectDocStack m) a ()
                -> a
                -> m (Either PA.PandocError TL.Text)
 runDocPipeline config pipeline input = K.knitHtml config $ runDocPipeline' pipeline input
 
 runDocsPipeline :: MonadIO m
                 => K.KnitConfig
-                -> KnitPipeline (K.KnitEffectDocsStack m) a ()
+                -> DocsPipeline (K.KnitEffectDocsStack m) a ()
                 -> a
                 -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
 runDocsPipeline config pipeline input = K.knitHtmls config $ runDocsPipeline' pipeline input
@@ -129,10 +138,13 @@ runDocsPipeline config pipeline input = K.knitHtmls config $ runDocsPipeline' pi
 -- The Logging Effect
 data LogEff a b where
   LogText :: LogEff (K.LogSeverity, T.Text) ()
-
+  AddPrefix :: LogEff T.Text ()
+  RemovePrefix :: LogEff () ()
 
 runLogEffInKnitMonad :: P.Members K.PrefixedLogEffectsLE r => a `LogEff` b -> a -> KnitMonad r b
 runLogEffInKnitMonad LogText = K.wrapPrefix "Pipeline" . uncurry K.logLE 
+runLogEffInKnitMonad AddPrefix = K.addPrefix
+runLogEffInKnitMonad RemovePrefix = const K.removePrefix
 
 -- We add effects to write docs but then remove them when we run the pipeline
 
@@ -152,7 +164,8 @@ data DocsEff a b where
 runDocsEffInKnitMonad :: P.Member KP.Pandocs r => a `DocsEff` b -> a -> KnitMonad r b
 runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
-newPandoc
+{-
+newPandocA
   :: forall mantle r a b.
      (K.KnitMany r
      , V.NatToInt (V.RLength mantle)
@@ -162,13 +175,26 @@ newPandoc
   => KP.PandocInfo
   -> Rope.TightRope ('("doc", DocEff) ': mantle) (KnitCore r) a b
   -> Rope.TightRope mantle (KnitCore r) a b
-newPandoc info docPipeline =
+newPandocA info docPipeline =
   let interpret :: c `DocEff` d -> c -> KnitMonad r d
       interpret docEff a = KP.newPandoc info $ runDocEffInKnitMonad docEff a
   in docPipeline
      & Rope.loosen
      & Rope.weaveK #doc interpret
      & Rope.tighten
+-}
+
+newPandocA
+  :: Monad m
+  => KP.PandocInfo
+  -> DocPipeline (K.KnitEffectDocStack m) a b
+  -> DocsPipeline (K.KnitEffectDocsStack m) a b
+newPandocA info docPipeline =
+  let interpret :: c `DocEff` d -> c -> KnitMonad (K.KnitEffectDocsStack m) d
+      interpret docEff a = KP.newPandoc info $ runDocEffInKnitMonad docEff a
+      
+  in Rope.tighten . Rope.mkRope . _ . Rope.runRope . Rope.loosen $ docPipeline
+
 
 
 
