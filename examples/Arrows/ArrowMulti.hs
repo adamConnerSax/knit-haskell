@@ -53,12 +53,12 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-docsPipeline :: forall r. (K.KnitMany r, K.KnitOne r) => K.DocsPipeline r () ()
+docsPipeline :: forall r. K.KnitMany r => K.DocsPipeline r () ()
 docsPipeline = proc _ -> do
-  K.newPandocA (K.PandocInfo "arrowM ulti_doc1" M.empty) docPipeline1 -< () 
+  K.newPandocA (K.PandocInfo "arrowMulti_doc1" M.empty) docPipeline1 -< () 
   K.newPandocA (K.PandocInfo "arrowMulti_doc2" M.empty) docPipeline2 -< ()
   
-docPipeline1 :: K.KnitOne r => K.DocPipeline r () ()
+docPipeline1 :: K.KnitMany r => K.DocPipeline r () ()
 docPipeline1 = K.wrapPrefixA "makeDoc1" $ proc _  -> do
   K.logLEA K.Info -< "adding some markdown."
   K.addMarkDownA -< md1
@@ -79,7 +79,7 @@ md2 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-docPipeline2 :: K.KnitOne r => K.DocPipeline r () ()
+docPipeline2 :: K.KnitMany r => K.DocPipeline r () ()
 docPipeline2 = K.wrapPrefixA "makeDoc2" $ proc _ -> do
   K.logLEA K.Info -< "adding some markdown."
   K.addMarkDownA -< md2

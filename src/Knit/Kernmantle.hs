@@ -27,6 +27,7 @@ module Knit.Kernmantle
   ) where
 
 import qualified Control.Kernmantle.Rope as Rope
+import qualified Control.Kernmantle.Rope.Internal as RI
 import           Control.Kernmantle.Rope ((&))
 import qualified Polysemy as P
 import qualified Knit.Report.EffectStack as K
@@ -164,37 +165,10 @@ data DocsEff a b where
 runDocsEffInKnitMonad :: P.Member KP.Pandocs r => a `DocsEff` b -> a -> KnitMonad r b
 runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
-{-
+-- for now, run it in the core
 newPandocA
-  :: forall mantle r a b.
-     (K.KnitMany r
-     , V.NatToInt (V.RLength mantle)
-     , V.RecApplicative mantle
-     , V.RPureConstrained (V.IndexableField mantle) mantle
-     )
+  :: forall r a b.K.KnitMany r
   => KP.PandocInfo
-  -> Rope.TightRope ('("doc", DocEff) ': mantle) (KnitCore r) a b
-  -> Rope.TightRope mantle (KnitCore r) a b
-newPandocA info docPipeline =
-  let interpret :: c `DocEff` d -> c -> KnitMonad r d
-      interpret docEff a = KP.newPandoc info $ runDocEffInKnitMonad docEff a
-  in docPipeline
-     & Rope.loosen
-     & Rope.weaveK #doc interpret
-     & Rope.tighten
--}
-
-newPandocA
-  :: Monad m
-  => KP.PandocInfo
-  -> DocPipeline (K.KnitEffectDocStack m) a b
-  -> DocsPipeline (K.KnitEffectDocsStack m) a b
-newPandocA info docPipeline =
-  let interpret :: c `DocEff` d -> c -> KnitMonad (K.KnitEffectDocsStack m) d
-      interpret docEff a = KP.newPandoc info $ runDocEffInKnitMonad docEff a
-      
-  in Rope.tighten . Rope.mkRope . _ . Rope.runRope . Rope.loosen $ docPipeline
-
-
-
-
+  -> DocPipeline (KP.ToPandoc ': r) a b
+  -> DocsPipeline r a b
+newPandocA info docPipeline = Rope.strand #knitCore . A.Kleisli $ \a -> KP.newPandoc info $ runDocPipeline' docPipeline a
