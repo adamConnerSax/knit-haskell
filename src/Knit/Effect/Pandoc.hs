@@ -245,9 +245,9 @@ toWriter = P.reinterpret $ \case
 -- | Run ToPandoc by interpreting in Writer and then running that Writer.
 runPandocWriter
   :: PM.PandocEffects effs
-  => P.Sem (ToPandoc ': effs) ()
-  -> P.Sem effs PandocWithRequirements
-runPandocWriter = fmap fst . P.runWriter . toWriter
+  => P.Sem (ToPandoc ': effs) a
+  -> P.Sem effs (PandocWithRequirements, a)
+runPandocWriter = P.runWriter . toWriter
 
 -- | Type to hold info about each document that will be required for rendering and output
 data PandocInfo = PandocInfo { pdiName :: T.Text, pdiTemplateVars :: M.Map String String }

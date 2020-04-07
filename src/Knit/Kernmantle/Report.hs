@@ -49,6 +49,14 @@ import qualified Control.Arrow as A
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 
+-- put the Doc from a DocPipeline into the Docs collection of a DocsPipeline
+newPandocA
+  :: forall r a b.K.KnitMany r
+  => PE.PandocInfo
+  -> DocPipeline (PE.ToPandoc ': r) a b
+  -> DocsPipeline r a b
+newPandocA info docPipeline = Rope.strand #knitCore . A.Kleisli $ \a -> PE.newPandoc info $ runDocPipeline' docPipeline a
+
 -- logging
 logLEA :: K.LogSeverity -> KnitPipeline r T.Text ()
 logLEA ls = proc lt -> do

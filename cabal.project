@@ -2,23 +2,23 @@ packages: ./ ../kernmantle/kernmantle ../kernmantle/caching
 
 -- ghc-8.8 forks for testing
 allow-newer: hashable, base, time, profunctors
-   
-source-repository-package
-  type: git
-  location: https://github.com/adamConnerSax/random-fu
-  tag: 81e67b5596c173720032f7fa83610c4e4138b839
-  subdir: random-fu
 
-source-repository-package
-  type: git
-  location: https://github.com/adamConnerSax/random-fu
-  tag: 81e67b5596c173720032f7fa83610c4e4138b839
-  subdir: random-source
+--source-repository-package
+--  type: git
+--  location: https://github.com/adamConnerSax/random-fu
+--  tag: 81e67b5596c173720032f7fa83610c4e4138b839
+--  subdir: random-fu
 
-source-repository-package
-  type: git
-  location: https://github.com/adamConnerSax/random-fu
-  tag: 81e67b5596c173720032f7fa83610c4e4138b839
-  subdir: rvar
+--source-repository-package
+--  type: git
+--  location: https://github.com/adamConnerSax/random-fu
+--  tag: 81e67b5596c173720032f7fa83610c4e4138b839
+--  subdir: random-source
+
+--source-repository-package
+--  type: git
+--  location: https://github.com/adamConnerSax/random-fu
+--  tag: 81e67b5596c173720032f7fa83610c4e4138b839
+--  subdir: rvar
 
 -- end ghc-8.8 forks               

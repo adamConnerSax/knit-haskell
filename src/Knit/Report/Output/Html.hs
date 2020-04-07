@@ -170,7 +170,7 @@ pandocWriterToBlazeDocument
   -> P.Sem (PE.ToPandoc ': effs) () -- ^ Effects stack to run to get Pandoc
   -> P.Sem effs BH.Html -- ^ Blaze Html (in remaining effects)
 pandocWriterToBlazeDocument writeConfig pw =
-  PE.runPandocWriter pw >>= toBlazeDocument writeConfig
+  (fst <$> PE.runPandocWriter pw) >>= toBlazeDocument writeConfig
 
 -- | options for the mindoc template
 mindocOptionsF :: PA.WriterOptions -> PA.WriterOptions

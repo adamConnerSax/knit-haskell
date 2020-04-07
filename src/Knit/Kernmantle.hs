@@ -22,12 +22,12 @@ module Knit.Kernmantle
   , arrKnitCore
   , runInKnitCore
   , runDocPipeline
+  , runDocPipeline'
   , runDocsPipeline
-  , newPandocA
+--  , newPandocA
   ) where
 
 import qualified Control.Kernmantle.Rope as Rope
-import qualified Control.Kernmantle.Rope.Internal as RI
 import           Control.Kernmantle.Rope ((&))
 import qualified Polysemy as P
 import qualified Knit.Report.EffectStack as K
@@ -39,9 +39,6 @@ import           Control.Monad.Except           ( MonadIO )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy                as TL
 import qualified Text.Pandoc                   as PA
-import qualified Data.Vinyl as V
-import qualified Data.Vinyl.TypeLevel as V
-import qualified Data.Vinyl.ARec as V
 
 -- Wrap the knit-haskell stack as a Kleisli arrow
 -- and then we can dispatch effects to it.
@@ -106,7 +103,7 @@ runDocPipeline' pipeline input = pipeline
 --  = Rope.AnyRopeWith ('("docs", DocsEff) ': KnitCoreMantle r) '[A.Arrow] a b
 
 type DocsPipeline r a b
-  = Rope.TightRope (KnitCoreMantle r) (KnitCore r) a b
+  = Rope.TightRope ('("docs",DocsEff) ': KnitCoreMantle r) (KnitCore r) a b
 
 
 runDocsPipeline'
@@ -116,7 +113,7 @@ runDocsPipeline'
   -> KnitMonad r b
 runDocsPipeline' pipeline input = pipeline
                                  & Rope.loosen -- so we can interpret them (?)
---                                 & Rope.weaveK #docs runDocsEffInKnitMonad
+                                 & Rope.weaveK #docs runDocsEffInKnitMonad
                                  & Rope.weaveK #log runLogEffInKnitMonad -- weaveK since this is interpreted in the core
                                  & Rope.weave' #knitCore id -- handle these directly in the core
                                  & Rope.untwine -- now the mantle is empty so get the core
@@ -165,10 +162,13 @@ data DocsEff a b where
 runDocsEffInKnitMonad :: P.Member KP.Pandocs r => a `DocsEff` b -> a -> KnitMonad r b
 runDocsEffInKnitMonad NewPandoc = uncurry KP.newPandocPure
 
--- for now, run it in the core
-newPandocA
+{-
+newPandocA'
   :: forall r a b.K.KnitMany r
-  => KP.PandocInfo
-  -> DocPipeline (KP.ToPandoc ': r) a b
+  => PE.PandocInfo
+  -> DocPipeline (PE.ToPandoc ': r) a b
   -> DocsPipeline r a b
-newPandocA info docPipeline = Rope.strand #knitCore . A.Kleisli $ \a -> KP.newPandoc info $ runDocPipeline' docPipeline a
+newPandocA' info docPipeline = proc a -> do
+  
+  Rope.strand #docs NewPandoc -< $ PE.runPandocWriter $ runDocPipeline' docPipeline a
+-}
