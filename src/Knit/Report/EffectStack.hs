@@ -44,6 +44,7 @@ where
 
 import           Control.Monad.Except           ( MonadIO )
 import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
@@ -123,6 +124,8 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 
+type KnitCache =  KC.AtomicCache IE.IOError T.Text BL.ByteString BS.ByteString
+
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
 -- Anything inside a call to Knit can use any of these effects.
@@ -132,7 +135,7 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
                                  , P.Async
-                                 , KC.AtomicCache IE.IOError T.Text BS.ByteString
+                                 , KnitCache
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
@@ -151,7 +154,7 @@ type KnitEffectStack m
   = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
-     , KC.AtomicCache IE.IOError T.Text BS.ByteString
+     , KnitCache --KC.AtomicCache IE.IOError T.Text BL.ByteString
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -163,7 +166,7 @@ type KnitEffectStack m
 type KnitEffectStack m
   = '[ KUI.UnusedId
      , KPM.Pandoc
-     , KC.AtomicCache IE.IOError T.Text BS.ByteString
+     , KnitCache
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -195,7 +198,7 @@ consumeKnitEffectStack config =
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistentAtomicCache
-  (KC.strictPersistAsByteString
+  (KC.persistAsByteString
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
   . KPM.interpretInIO -- PA.PandocIO
@@ -217,7 +220,7 @@ consumeKnitEffectStack config =
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistentAtomicCache
-  (KC.strictPersistAsByteString
+  (KC.persistAsByteString
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
   . KPM.interpretInIO -- PA.PandocIO        

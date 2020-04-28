@@ -24,8 +24,10 @@ This module adds types, combinators and knit functions for using knit-haskell wi
 -}
 module Knit.Report.Cache
   (
+    -- * Types
+    KnitCache
     -- * Cache Combinators
-    store
+  , store
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
@@ -55,20 +57,22 @@ import qualified System.IO.Error               as IE
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
-type KnitCache = C.AtomicCache IE.IOError T.Text BS.ByteString
+type KnitCache = C.AtomicCache IE.IOError T.Text BL.ByteString BS.ByteString
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 
-cerealStrict :: S.Serialize a => C.Serialize PandocError a BS.ByteString
+cerealStrict :: S.Serialize a => C.Serialize PandocError a BS.ByteString BS.ByteString
 cerealStrict = C.Serialize
   S.encode
   (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
 
-cerealLazy :: S.Serialize a => C.Serialize PandocError a BL.ByteString
-cerealLazy = C.Serialize
+cereal :: S.Serialize a => C.Serialize PandocError a BL.ByteString BS.ByteString
+cereal = C.Serialize
   S.encodeLazy
-  (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
+  (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
+
+
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
 store
@@ -81,14 +85,14 @@ store
   -> P.Sem r ()
 store k a = K.wrapPrefix "knitStore" $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
-  P.mapError ioErrorToPandocError $ C.store cerealStrict k a
+  P.mapError ioErrorToPandocError $ C.store cereal k a
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError
 retrieve
   :: (P.Members '[KnitCache, P.Error PandocError] r, S.Serialize a)
   => T.Text
   -> P.Sem r a
-retrieve k = P.mapError ioErrorToPandocError $ C.retrieve cerealStrict k
+retrieve k = P.mapError ioErrorToPandocError $ C.retrieve cereal k
 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k. 
@@ -102,7 +106,7 @@ retrieveOrMake
   -> P.Sem r a
   -> P.Sem r a
 retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
-  ma <- C.retrieveMaybe cerealStrict k
+  ma <- C.retrieveMaybe cereal k
   case ma of
     Nothing -> do
       K.logLE K.Diagnostic $ k <> " not found in cache. Making..."
