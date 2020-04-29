@@ -46,6 +46,7 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Text                     as T
 import qualified Data.Serialize                as S
+import qualified Data.Word                     as Word
 
 import           Text.Pandoc.Error              ( PandocError
                                                   ( PandocSomeError
@@ -57,26 +58,34 @@ import qualified System.IO.Error               as IE
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
-type KnitCache = C.AtomicCache IE.IOError T.Text BL.ByteString BS.ByteString
+--import qualified Streamly                      as Streamly
+import qualified Streamly.Prelude              as Streamly
+import qualified Streamly.Memory.Array         as Streamly.Array
+import qualified Streamly.Cereal               as Streamly.Cereal
+
+type KnitCache = C.AtomicCache IE.IOError T.Text (Streamly.Array.Array Word.Word8)
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 
-cerealStrict :: S.Serialize a => C.Serialize PandocError a BS.ByteString BS.ByteString
+cerealStrict :: S.Serialize a => C.Serialize r PandocError a BS.ByteString
 cerealStrict = C.Serialize
-  S.encode
-  (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
+  (return . S.encode)
+  (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
 
-cereal :: S.Serialize a => C.Serialize PandocError a BL.ByteString BS.ByteString
+cereal :: S.Serialize a => C.Serialize r PandocError a BL.ByteString
 cereal = C.Serialize
-  S.encodeLazy
-  (mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
+  (return . S.encodeLazy)
+  (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
 
-
+cerealStreamly :: (S.Serialize a, P.Member (P.Embed IO) r) => C.Serialize r PandocError a (Streamly.Array.Array Word.Word8)
+cerealStreamly = C.Serialize
+  (Streamly.fold Streamly.Array.write . Streamly.Cereal.encodeStreamly)
+  (fmap (mapLeft (PandocSomeError . K.textToPandocText)) . Streamly.Cereal.decodeStreamly . Streamly.unfold Streamly.Array.read)
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
 store
-  :: ( P.Members '[KnitCache, P.Error PandocError] r
+  :: ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , S.Serialize a
      )
@@ -85,20 +94,20 @@ store
   -> P.Sem r ()
 store k a = K.wrapPrefix "knitStore" $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
-  P.mapError ioErrorToPandocError $ C.store cereal k a
+  P.mapError ioErrorToPandocError $ C.store cerealStreamly k a
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError
 retrieve
-  :: (P.Members '[KnitCache, P.Error PandocError] r, S.Serialize a)
+  :: (P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r, S.Serialize a)
   => T.Text
   -> P.Sem r a
-retrieve k = P.mapError ioErrorToPandocError $ C.retrieve cereal k
+retrieve k = P.mapError ioErrorToPandocError $ C.retrieve cerealStreamly k
 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k. 
 retrieveOrMake
   :: forall a r
-   . ( P.Members '[KnitCache, P.Error PandocError] r
+   . ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , S.Serialize a
      )
@@ -106,7 +115,7 @@ retrieveOrMake
   -> P.Sem r a
   -> P.Sem r a
 retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
-  ma <- C.retrieveMaybe cereal k
+  ma <- C.retrieveMaybe cerealStreamly k
   case ma of
     Nothing -> do
       K.logLE K.Diagnostic $ k <> " not found in cache. Making..."
@@ -120,7 +129,7 @@ retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
 
 retrieveOrMakeTransformed
   :: forall a b r
-   . ( P.Members '[KnitCache, P.Error PandocError] r
+   . ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , S.Serialize b
      )

@@ -41,8 +41,11 @@ module Knit.Effect.AtomicCache
   , Persist(..)
   , persistAsByteString
   , persistAsStrictByteString
+  , persistAsByteArray
     -- * Interpretations
   , runPersistentAtomicCache
+  , runPersistentAtomicCacheC
+  , runPersistentAtomicCacheCFromEmpty
   )
 where
 
@@ -53,28 +56,28 @@ import qualified Knit.Effect.Logger            as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
-import qualified Data.Cache                    as DC
-import qualified Data.Clock as Clock
+--import qualified Data.Cache                    as DC
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
+import qualified Data.Word                     as Word
 
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as X
-import           Control.Monad                  ( join )
+--import           Control.Monad                  ( join )
 import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
-{-
-import qualified Data.Word as Word
-import qualified Streamly as Streamly
-import qualified Streamly.Prelude as Streamly
-import qualified Streamly.FileSystem.Handle as Streamly
--}
-import qualified System.Directory              as S
+--import qualified Streamly                      as Streamly
+import qualified Streamly.Prelude              as Streamly
+import qualified Streamly.Memory.Array         as Streamly.Array
+import qualified Streamly.FileSystem.Handle    as Streamly.Handle
+
+import qualified System.IO                     as System
+import qualified System.Directory              as System
 
 -- | data type to store encode/decode functins for users serializer of choice
 -- | We encode (serialize) to @enc@ and decode (deserialize) from @dec@
-data Serialize e a ct where
-  Serialize :: (a -> ct) -> (ct -> Either e a) -> Serialize e a ct
+data Serialize r e a ct where
+  Serialize :: (a -> P.Sem r ct) -> (ct -> P.Sem r (Either e a)) -> Serialize r e a ct
 
 -- | This is a Key/Value store with a parameterized error type @e@ and
 -- @Either e@ as its return type
@@ -97,30 +100,32 @@ hush = either (const Nothing) Just
 -- | Combinator to combine the action of serializing and caching
 store
   :: P.Members '[AtomicCache e1 k ct, P.Error e1] r
-  => Serialize e2 a ct
+  => Serialize r e2 a ct
   -> k
   -> a
   -> P.Sem r ()
-store (Serialize encode _) k x = eitherThrow $ atomicUpdate k (Just $ encode x)
+store (Serialize encode _) k x = do
+  encoded <- encode x
+  eitherThrow $ atomicUpdate k (Just encoded)
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
 -- NB. Either action may have an error
 retrieve
   :: P.Members '[AtomicCache e1 k ct, P.Error e1, P.Error e2] r
-  => Serialize e2 a ct
+  => Serialize r e2 a ct
   -> k
   -> P.Sem r a
-retrieve (Serialize _ decode) k =
-  eitherThrow $ fmap decode $ eitherThrow $ atomicRetrieve k
+retrieve (Serialize _ decode) k = eitherThrow (atomicRetrieve k) >>= eitherThrow . decode 
+--  eitherThrow $ join $ fmap decode $ eitherThrow $ atomicRetrieve k
 
 retrieveMaybe
   :: forall e1 e2 k a ct r
    . P.Members '[AtomicCache e1 k ct] r
-  => Serialize e2 a ct
+  => Serialize r e2 a ct
   -> k
   -> P.Sem r (Maybe a)
-retrieveMaybe (Serialize _ decode) k =
-  fmap (join . fmap (hush . decode) . hush) $ atomicRetrieve k
+retrieveMaybe (Serialize _ decode) k = fmap hush (atomicRetrieve k) >>= fmap (>>= hush) . traverse decode 
+--  fmap (join . fmap (hush . decode) . hush) $ atomicRetrieve k
 
 -- | Combinator for clearing the cache at a given key
 clear :: P.Members '[AtomicCache e k ct, P.Error e] r => k -> P.Sem r ()
@@ -134,30 +139,135 @@ data Persist e r k ct where
   Persist :: (k -> P.Sem r (Either e ct))
           -> (k -> ct -> P.Sem r (Either e ()))
           -> (k -> P.Sem r (Either e ()))
-          -> Persist e r k enc dec
+          -> Persist e r k ct
 
 -- structure for actual cache
--- Do we need the outer TVar?  What if 2 th
-type Cache k v = TVar (M.Map k (C.TVar v))
+-- outer TVar so only one thread can get the inner TMVar at a time
+-- TMVar so we can block if mulitple threads are trying to read or update
+type Cache k v = C.TVar (M.Map k (C.TMVar v))
+
+-- Either so we can fail to read
+type PCache e k v = Cache k (Either e v)
+
+-- read interpret via Cache and Persistence layer
+atomicLookupC :: (Ord k,  P.Member (P.Embed IO) r)
+              => PCache e k ct
+              -> k
+              -> P.Sem r (Either (C.TMVar (Either e ct)) (Either e ct))
+atomicLookupC cache key = P.embed $ C.atomically $ do    
+  m <- C.readTVar cache    
+  case M.lookup key m of    
+    Just tmv -> fmap Right $ C.readTMVar tmv -- block until this has a value and then return it
+    Nothing -> do
+      tmv <- C.newEmptyTMVar -- create a new empty TMVar and put it in the map
+      C.modifyTVar' cache (M.insert key tmv)
+      return $ Left tmv           
+
+atomicReadC :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+            => Persist e r k ct
+            -> PCache e k ct
+            -> k
+            -> P.Sem r (Either e ct)
+atomicReadC (Persist readP _ _) cache key = do
+  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=\"" <> (T.pack $ show key) <> "\" " <> t
+  lookupResult <- atomicLookupC cache key 
+  case lookupResult of
+    Right x -> do
+      case x of
+        Right _ -> cacheMsg "exists in memory/found in persistent store."
+        Left _ -> cacheMsg "not found in persistent store (on another thread)."
+      return x
+    Left tmv -> do
+      cacheMsg "not in memory. Checking persistent store."
+      readResult <- readP key
+      case readResult of
+        Left _ -> cacheMsg "not found in persistent store (on this thread)."
+        Right _ -> cacheMsg "found in persistent store."
+      P.embed $ C.atomically $ C.putTMVar tmv readResult
+      return readResult
+
+atomicWriteC
+ :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+  => Persist e r k ct
+  -> PCache e k ct
+  -> k
+  -> ct
+  -> P.Sem r (Either e ())
+atomicWriteC (Persist _ writeP _) cache key ctVal = do
+  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=\"" <> (T.pack $ show key) <> "\" " <> t
+  lookupResult <- atomicLookupC cache key
+  case lookupResult of
+    Right alreadyPresent -> do
+      case alreadyPresent of
+        Left _ -> cacheMsg "failed to load (on another thread)."
+        Right _ -> cacheMsg "already in cache, ignoring this write attempt."
+      return $ fmap (const ()) $ alreadyPresent
+    Left tmv -> do
+      cacheMsg "absent from cache.  Storing asset"
+      P.embed $ C.atomically $ C.putTMVar tmv $ Right ctVal
+      writeP key ctVal
+
+atomicDeleteC
+  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+  => Persist e r k ct
+  -> PCache e k ct
+  -> k
+  -> P.Sem r (Either e ())
+atomicDeleteC  (Persist _ _ deleteP) cache key = do
+  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=\"" <> (T.pack $ show key) <> "\" " <> t
+  deleted <- P.embed $ C.atomically $ do
+    m <- C.readTVar cache
+    case M.lookup key m of
+      Nothing -> return False
+      Just _ -> do
+        C.modifyTVar' cache (M.delete key)
+        return True 
+  case deleted of
+    True ->  cacheMsg "deleted from in-memory cache. Deleting from persistent store..." >> deleteP key
+    False -> cacheMsg "not found though delete was called." >> return (Right ())
 
 
--- set up to interpret via Data.Cache
-atomicReadC :: (Eq k, Hashable k) => (k -> P.Sem r (Either e ct)) -> DC.Cache k ct -> k -> P.Sem r (Either e ct)
-atomicReadC readP cache key = do
-  curTime <- P.embed Clock.getTime
-  P.embed $ C.atomically $ do    
-    mVal <- DC.lookupSTM False key cache curTime
-     case mVal of
-       Just val -> return $ Right v
-       Nothing -> 
-      
 
-{-
-runPersistentAtomicCache :: Persist e1 r k ct -> DC.Cache k ct -> P.Sem (AtomicCache e k ct ': r) a -> P.Sem r a
-runPersistentAtomicCache (pRead pWrite pDelete) cache =
+runPersistentAtomicCacheC :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+                          => Persist e r k ct -> PCache e k ct -> P.Sem (AtomicCache e k ct ': r) a -> P.Sem r a
+runPersistentAtomicCacheC persist cache = 
   P.interpret $ \case
-  AtomicRetrieve k -> 
--}
+    AtomicRetrieve key -> atomicReadC persist cache key
+    AtomicUpdate key mb -> case mb of
+      Nothing -> atomicDeleteC persist cache key
+      Just ct  -> atomicWriteC persist cache key ct
+
+runPersistentAtomicCacheCFromEmpty :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+                                   => Persist e r k ct -> P.Sem (AtomicCache e k ct ': r) a -> P.Sem r a
+                                   
+runPersistentAtomicCacheCFromEmpty persist x = do
+  cache <- P.embed $ C.newTVarIO M.empty
+  runPersistentAtomicCacheC persist cache x
+  
+
+persistAsByteArray
+  :: (P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> Persist X.IOException r k (Streamly.Array.Array Word.Word8)
+persistAsByteArray keyToFilePath = Persist readBA writeBA deleteFile
+ where
+  readArrayFromHandle h = Streamly.fold Streamly.Array.write $ Streamly.unfold Streamly.Handle.read h
+  writeArrayToHandle ba h = Streamly.fold (Streamly.Handle.write h) $ Streamly.unfold Streamly.Array.read ba
+  readBA k = do
+    let filePath = keyToFilePath k
+    P.embed
+      $         fmap Right (System.withFile filePath System.ReadMode readArrayFromHandle)
+      `X.catch` (return . Left)
+  writeBA k ba = do
+    let filePath     = (keyToFilePath k)
+        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+    _ <- createDirIfNecessary dirPath
+    K.logLE K.Diagnostic $ "Writing serialization to disk."
+    liftIO $ fmap Right (System.withFile filePath System.WriteMode $ writeArrayToHandle ba) `X.catch` (return . Left) -- maybe we should do this in another thread?
+  deleteFile k =
+    liftIO
+      $         fmap Right (System.removeFile (keyToFilePath k))
+      `X.catch` (return . Left)      
 
 atomicRead
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -205,13 +315,13 @@ atomicWrite
   -> k
   -> ct
   -> P.Sem (P.AtomicState (M.Map k (C.TMVar ct)) ': r) (Either e ())
-atomicWrite encToDec writeF k ct = K.wrapPrefix "AtomicCache.atomicWrite" $ do
+atomicWrite writeF k ct = K.wrapPrefix "AtomicCache.atomicWrite" $ do
   K.logLE K.Diagnostic
     $  "Writing asset to cache (memory and persistent store) at key="
     <> (T.pack $ show k)
   tv <- P.embed $ C.atomically $ C.newTMVar ct -- TODO: do we want conversion to happen outside the STM transaction? How?
   P.atomicModify' $ M.alter (const $ Just tv) k
-  P.raise $ writeF k enc
+  P.raise $ writeF k ct
 
 atomicDelete
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -279,7 +389,7 @@ persistAsStrictByteString keyToFilePath = Persist readBS writeBS deleteFile
     liftIO $ fmap Right (BS.writeFile filePath b) `X.catch` (return . Left) -- maybe we should do this in another thread?
   deleteFile k =
     liftIO
-      $         fmap Right (S.removeFile (keyToFilePath k))
+      $         fmap Right (System.removeFile (keyToFilePath k))
       `X.catch` (return . Left)
 
 -- | Persist functions for disk-based persistence with a lazy ByteString interface on the serialization side
@@ -287,13 +397,13 @@ persistAsByteString
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> Persist X.IOException r k BL.ByteString
-persistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
+persistAsByteString keyToFilePath = Persist readBL writeBL deleteFile
  where
-  readBS k =
+  readBL k =
     liftIO
-      $         fmap Right (BS.readFile (keyToFilePath k))
+      $         fmap Right (BL.readFile (keyToFilePath k))
       `X.catch` (return . Left)
-  writeBS k bs = do
+  writeBL k bs = do
     let filePath     = (keyToFilePath k)
         (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
     _ <- createDirIfNecessary dirPath
@@ -302,7 +412,7 @@ persistAsByteString keyToFilePath = Persist readBS writeBS deleteFile
     liftIO $ fmap Right (BL.writeFile filePath bs) `X.catch` (return . Left) -- maybe we should do this in another thread?
   deleteFile k =
     liftIO
-      $         fmap Right (S.removeFile (keyToFilePath k))
+      $         fmap Right (System.removeFile (keyToFilePath k))
       `X.catch` (return . Left)
 {-
 type StreamlyBytes = Streamly.Serial Word.Word8
@@ -321,7 +431,7 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
   K.logLE K.Diagnostic $ "Checking if cache path (\"" <> dir <> "\") exists."
   existsE <-
     P.embed
-    $         fmap Right (S.doesDirectoryExist (T.unpack dir))
+    $         fmap Right (System.doesDirectoryExist (T.unpack dir))
     `X.catch` (return . Left)
   case existsE of
     Left e -> do
@@ -334,7 +444,7 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
           <> dir
           <> "\") not found. Atttempting to create."
         P.embed
-          $         fmap Right (S.createDirectoryIfMissing True (T.unpack dir))
+          $         fmap Right (System.createDirectoryIfMissing True (T.unpack dir))
           `X.catch` (return . Left)
       True -> return $ Right ()
 

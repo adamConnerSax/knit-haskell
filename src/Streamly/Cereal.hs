@@ -9,11 +9,22 @@ where
 import qualified Streamly as Streamly
 import qualified Streamly.Prelude as Streamly
 
+
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
+import           Data.Functor.Identity (Identity(..))
 import qualified Data.Serialize as Cereal
 import qualified Data.Text as Text
 import qualified Data.Word as Word
+
+-- These go through []. I'm hoping the list fuses away.
+-- One issue is that Cereal wants a length first and that requires spine strictness
+-- on the encoding side.
+putStreamOf :: Cereal.Putter a -> Cereal.Putter (Streamly.SerialT Identity a)
+putStreamOf pa = runIdentity . fmap (Cereal.putListOf pa) . Streamly.toList 
+
+getStreamOf :: Monad m => Cereal.Get a -> Cereal.Get (Streamly.SerialT m a)
+getStreamOf ga = fmap Streamly.fromList $ Cereal.getListOf ga
 
 encodeStreamly :: (Cereal.Serialize a, Monad m) => a -> Streamly.SerialT m Word.Word8
 encodeStreamly = encodePut . Cereal.put

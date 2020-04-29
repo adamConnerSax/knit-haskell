@@ -43,16 +43,18 @@ module Knit.Report.EffectStack
 where
 
 import           Control.Monad.Except           ( MonadIO )
-import qualified Data.ByteString               as BS
-import qualified Data.ByteString.Lazy          as BL
+--import qualified Data.ByteString               as BS
+--import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
-
+import qualified Data.Word                     as Word 
 import qualified Polysemy                      as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
+
+import qualified Streamly.Memory.Array         as Streamly.Array
 
 import qualified System.IO.Error               as IE
 
@@ -124,7 +126,7 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 
-type KnitCache =  KC.AtomicCache IE.IOError T.Text BL.ByteString BS.ByteString
+type KnitCache =  KC.AtomicCache IE.IOError T.Text (Streamly.Array.Array Word.Word8)
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
@@ -154,7 +156,7 @@ type KnitEffectStack m
   = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
-     , KnitCache --KC.AtomicCache IE.IOError T.Text BL.ByteString
+     , KnitCache
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -197,8 +199,8 @@ consumeKnitEffectStack config =
   . PE.runError
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
-  . KC.runPersistentAtomicCache
-  (KC.persistAsByteString
+  . KC.runPersistentAtomicCacheCFromEmpty
+  (KC.persistAsByteArray
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
   . KPM.interpretInIO -- PA.PandocIO
@@ -219,8 +221,8 @@ consumeKnitEffectStack config =
   . PE.runError
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
-  . KC.runPersistentAtomicCache
-  (KC.persistAsByteString
+  . KC.runPersistentAtomicCacheCFromEmpty
+  (KC.persistAsByteArray
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
   . KPM.interpretInIO -- PA.PandocIO        
