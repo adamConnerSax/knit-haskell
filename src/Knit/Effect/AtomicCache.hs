@@ -41,6 +41,7 @@ module Knit.Effect.AtomicCache
   , Persist(..)
   , persistAsByteString
   , persistAsStrictByteString
+  , persistAsByteStreamly
   , persistAsByteArray
     -- * Interpretations
   , runPersistentAtomicCache
@@ -56,7 +57,7 @@ import qualified Knit.Effect.Logger            as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
---import qualified Data.Cache                    as DC
+import           Data.Functor.Identity          (Identity(..))
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
@@ -66,7 +67,7 @@ import qualified Control.Exception             as X
 --import           Control.Monad                  ( join )
 import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
---import qualified Streamly                      as Streamly
+import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.FileSystem.Handle    as Streamly.Handle
@@ -253,6 +254,36 @@ runPersistentAtomicCacheCFromEmpty persist x = do
   cache <- P.embed $ C.newTVarIO M.empty
   runPersistentAtomicCacheC persist cache x
 {-# INLINEABLE runPersistentAtomicCacheCFromEmpty #-}  
+
+persistAsByteStreamly
+  :: (P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> Persist X.IOException r k (Streamly.SerialT Identity Word.Word8)
+persistAsByteStreamly keyToFilePath = Persist readBA writeBA deleteFile
+ where
+  sequenceStreamlyIO :: Streamly.SerialT IO Word.Word8 -> IO (Streamly.SerialT Identity Word.Word8)
+  sequenceStreamlyIO = fmap Streamly.fromList . Streamly.toList
+  toStreamlyIO :: Streamly.SerialT Identity Word.Word8 -> Streamly.SerialT IO Word.Word8
+  toStreamlyIO = Streamly.fromList . runIdentity . Streamly.toList
+  readFromHandle h = sequenceStreamlyIO $ Streamly.unfold Streamly.Handle.read h
+  writeToHandle bs h = Streamly.fold (Streamly.Handle.write h) $ toStreamlyIO bs
+  readBA k = do
+    let filePath = keyToFilePath k
+    P.embed
+      $         fmap Right (System.withFile filePath System.ReadMode readFromHandle)
+      `X.catch` (return . Left)
+  writeBA k bs = do
+    let filePath     = (keyToFilePath k)
+        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+    _ <- createDirIfNecessary dirPath
+    K.logLE K.Diagnostic $ "Writing serialization to disk."
+    liftIO $ fmap Right (System.withFile filePath System.WriteMode $ writeToHandle bs) `X.catch` (return . Left) -- maybe we should do this in another thread?
+  deleteFile k =
+    liftIO
+      $         fmap Right (System.removeFile (keyToFilePath k))
+      `X.catch` (return . Left)      
+{-# INLINEABLE persistAsByteStreamly #-}
+
 
 persistAsByteArray
   :: (P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)

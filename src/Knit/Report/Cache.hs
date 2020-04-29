@@ -44,6 +44,7 @@ import qualified Knit.Effect.PandocMonad       as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
+import           Data.Functor.Identity          (Identity(..))
 import qualified Data.Text                     as T
 import qualified Data.Serialize                as S
 import qualified Data.Word                     as Word
@@ -58,12 +59,12 @@ import qualified System.IO.Error               as IE
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
---import qualified Streamly                      as Streamly
-import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Memory.Array         as Streamly.Array
+import qualified Streamly                      as Streamly
+--import qualified Streamly.Prelude              as Streamly
+--import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.Cereal               as Streamly.Cereal
 
-type KnitCache = C.AtomicCache IE.IOError T.Text (Streamly.Array.Array Word.Word8)
+type KnitCache = C.AtomicCache IE.IOError T.Text (Streamly.SerialT Identity Word.Word8)
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
@@ -81,10 +82,10 @@ cereal = C.Serialize
   (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
 {-# INLINEABLE cereal #-}
 
-cerealStreamly :: (S.Serialize a, P.Member (P.Embed IO) r) => C.Serialize r PandocError a (Streamly.Array.Array Word.Word8)
+cerealStreamly :: (S.Serialize a, P.Member (P.Embed IO) r) => C.Serialize r PandocError a (Streamly.SerialT Identity Word.Word8)
 cerealStreamly = C.Serialize
-  (Streamly.fold Streamly.Array.write . Streamly.Cereal.encodeStreamly)
-  (fmap (mapLeft (PandocSomeError . K.textToPandocText)) . Streamly.Cereal.decodeStreamly . Streamly.unfold Streamly.Array.read)
+  (return . Streamly.Cereal.encodeStreamly)
+  (return . (mapLeft (PandocSomeError . K.textToPandocText)) . runIdentity . Streamly.Cereal.decodeStreamly)
 {-# INLINEABLE cerealStreamly #-}
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
