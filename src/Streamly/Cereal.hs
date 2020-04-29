@@ -22,18 +22,23 @@ import qualified Data.Word as Word
 -- on the encoding side.
 putStreamOf :: Cereal.Putter a -> Cereal.Putter (Streamly.SerialT Identity a)
 putStreamOf pa = runIdentity . fmap (Cereal.putListOf pa) . Streamly.toList 
+{-# INLINEABLE putStreamOf #-}
 
 getStreamOf :: Monad m => Cereal.Get a -> Cereal.Get (Streamly.SerialT m a)
 getStreamOf ga = fmap Streamly.fromList $ Cereal.getListOf ga
+{-# INLINEABLE getStreamOf #-}
 
 encodeStreamly :: (Cereal.Serialize a, Monad m) => a -> Streamly.SerialT m Word.Word8
 encodeStreamly = encodePut . Cereal.put
+{-# INLINEABLE encodeStreamly #-}
 
 encodePut :: Monad m => Cereal.Put -> Streamly.SerialT m Word.Word8
 encodePut = Streamly.unfoldr BL.uncons . Cereal.runPutLazy
+{-# INLINEABLE encodePut #-}
 
 decodeStreamly :: (Cereal.Serialize a, Monad m) => Streamly.SerialT m Word.Word8 -> m (Either Text.Text a)
 decodeStreamly = decodeGet Cereal.get
+{-# INLINEABLE decodeStreamly #-}
 
 decodeGet :: Monad m => Cereal.Get a -> Streamly.SerialT m Word.Word8 -> m (Either Text.Text a)
 decodeGet g s = go s $ Cereal.runGetPartial g where
@@ -45,6 +50,7 @@ decodeGet g s = go s $ Cereal.runGetPartial g where
         Cereal.Fail e _ -> return $ Left $ "Cereal Error: " <> (Text.pack e)
         Cereal.Done a _ -> return $ Right a
         Cereal.Partial f' -> go tx f'
+{-# INLINEABLE decodeGet #-}
 
 {-
 decodeGet' :: Monad m => Cereal.Get a -> Streamly.SerialT m Word.Word8 -> m (Either Text.Text a)

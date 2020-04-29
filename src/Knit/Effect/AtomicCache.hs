@@ -93,20 +93,25 @@ eitherThrow x = do
   case ea of
     Left  e -> P.throw e
     Right a -> return a --fmap (either (P.throw @e) id)
+{-# INLINEABLE eitherThrow #-}
 
 hush :: Either e a -> Maybe a
 hush = either (const Nothing) Just
+{-# INLINEABLE hush #-}
 
 -- | Combinator to combine the action of serializing and caching
 store
-  :: P.Members '[AtomicCache e1 k ct, P.Error e1] r
+  :: (Show k, P.Members '[AtomicCache e1 k ct, P.Error e1] r,  K.LogWithPrefixesLE r)
   => Serialize r e2 a ct
   -> k
   -> a
   -> P.Sem r ()
-store (Serialize encode _) k x = do
+store (Serialize encode _) k x = K.wrapPrefix "Knit.Atomic.Cache.store" $ do
+  K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
   encoded <- encode x
+  K.logLE K.Diagnostic $ "Storing encoded data in cache for key=" <> (T.pack $ show k) 
   eitherThrow $ atomicUpdate k (Just encoded)
+{-# INLINEABLE store #-}
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
 -- NB. Either action may have an error
@@ -116,7 +121,7 @@ retrieve
   -> k
   -> P.Sem r a
 retrieve (Serialize _ decode) k = eitherThrow (atomicRetrieve k) >>= eitherThrow . decode 
---  eitherThrow $ join $ fmap decode $ eitherThrow $ atomicRetrieve k
+{-# INLINEABLE retrieve #-}
 
 retrieveMaybe
   :: forall e1 e2 k a ct r
@@ -125,11 +130,12 @@ retrieveMaybe
   -> k
   -> P.Sem r (Maybe a)
 retrieveMaybe (Serialize _ decode) k = fmap hush (atomicRetrieve k) >>= fmap (>>= hush) . traverse decode 
---  fmap (join . fmap (hush . decode) . hush) $ atomicRetrieve k
+{-# INLINEABLE retrieveMaybe #-}
 
 -- | Combinator for clearing the cache at a given key
 clear :: P.Members '[AtomicCache e k ct, P.Error e] r => k -> P.Sem r ()
 clear k = eitherThrow $ atomicUpdate k Nothing
+{-# INLINEABLE clear #-}
 
 -- | Data type to hold the persistence functions of:
 -- reading from the store
@@ -162,6 +168,7 @@ atomicLookupC cache key = P.embed $ C.atomically $ do
       tmv <- C.newEmptyTMVar -- create a new empty TMVar and put it in the map
       C.modifyTVar' cache (M.insert key tmv)
       return $ Left tmv           
+{-# INLINEABLE atomicLookupC #-}
 
 atomicReadC :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
             => Persist e r k ct
@@ -169,7 +176,7 @@ atomicReadC :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
             -> k
             -> P.Sem r (Either e ct)
 atomicReadC (Persist readP _ _) cache key = do
-  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=\"" <> (T.pack $ show key) <> "\" " <> t
+  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=" <> (T.pack $ show key) <> " " <> t
   lookupResult <- atomicLookupC cache key 
   case lookupResult of
     Right x -> do
@@ -185,6 +192,7 @@ atomicReadC (Persist readP _ _) cache key = do
         Right _ -> cacheMsg "found in persistent store."
       P.embed $ C.atomically $ C.putTMVar tmv readResult
       return readResult
+{-# INLINEABLE atomicReadC #-}
 
 atomicWriteC
  :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -194,7 +202,7 @@ atomicWriteC
   -> ct
   -> P.Sem r (Either e ())
 atomicWriteC (Persist _ writeP _) cache key ctVal = do
-  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=\"" <> (T.pack $ show key) <> "\" " <> t
+  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=" <> (T.pack $ show key) <> " " <> t
   lookupResult <- atomicLookupC cache key
   case lookupResult of
     Right alreadyPresent -> do
@@ -206,6 +214,7 @@ atomicWriteC (Persist _ writeP _) cache key ctVal = do
       cacheMsg "absent from cache.  Storing asset"
       P.embed $ C.atomically $ C.putTMVar tmv $ Right ctVal
       writeP key ctVal
+{-# INLINEABLE atomicWriteC #-}
 
 atomicDeleteC
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -214,7 +223,7 @@ atomicDeleteC
   -> k
   -> P.Sem r (Either e ())
 atomicDeleteC  (Persist _ _ deleteP) cache key = do
-  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=\"" <> (T.pack $ show key) <> "\" " <> t
+  let cacheMsg t = K.logLE K.Diagnostic $ "cached asset at key=" <> (T.pack $ show key) <> " " <> t
   deleted <- P.embed $ C.atomically $ do
     m <- C.readTVar cache
     case M.lookup key m of
@@ -225,8 +234,7 @@ atomicDeleteC  (Persist _ _ deleteP) cache key = do
   case deleted of
     True ->  cacheMsg "deleted from in-memory cache. Deleting from persistent store..." >> deleteP key
     False -> cacheMsg "not found though delete was called." >> return (Right ())
-
-
+{-# INLINEABLE atomicDeleteC #-}
 
 runPersistentAtomicCacheC :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
                           => Persist e r k ct -> PCache e k ct -> P.Sem (AtomicCache e k ct ': r) a -> P.Sem r a
@@ -236,6 +244,7 @@ runPersistentAtomicCacheC persist cache =
     AtomicUpdate key mb -> case mb of
       Nothing -> atomicDeleteC persist cache key
       Just ct  -> atomicWriteC persist cache key ct
+{-# INLINEABLE runPersistentAtomicCacheC #-}
 
 runPersistentAtomicCacheCFromEmpty :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
                                    => Persist e r k ct -> P.Sem (AtomicCache e k ct ': r) a -> P.Sem r a
@@ -243,7 +252,7 @@ runPersistentAtomicCacheCFromEmpty :: (Ord k, Show k, P.Member (P.Embed IO) r, K
 runPersistentAtomicCacheCFromEmpty persist x = do
   cache <- P.embed $ C.newTVarIO M.empty
   runPersistentAtomicCacheC persist cache x
-  
+{-# INLINEABLE runPersistentAtomicCacheCFromEmpty #-}  
 
 persistAsByteArray
   :: (P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -268,6 +277,7 @@ persistAsByteArray keyToFilePath = Persist readBA writeBA deleteFile
     liftIO
       $         fmap Right (System.removeFile (keyToFilePath k))
       `X.catch` (return . Left)      
+{-# INLINEABLE persistAsByteArray #-}
 
 atomicRead
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -308,6 +318,7 @@ atomicRead readF k = K.wrapPrefix "AtomicCache.atomicRead" $ do
             <> " found and loaded from persistent store and added to in-memory cache."
           P.embed $ C.atomically $ C.putTMVar tv b
           return $ Right b
+{-# INLINEABLE atomicRead #-}
 
 atomicWrite
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -322,6 +333,7 @@ atomicWrite writeF k ct = K.wrapPrefix "AtomicCache.atomicWrite" $ do
   tv <- P.embed $ C.atomically $ C.newTMVar ct -- TODO: do we want conversion to happen outside the STM transaction? How?
   P.atomicModify' $ M.alter (const $ Just tv) k
   P.raise $ writeF k ct
+{-# INLINEABLE atomicWrite #-}
 
 atomicDelete
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -334,7 +346,7 @@ atomicDelete deleteF k = do
     <> (T.pack $ show k)
   P.atomicModify $ M.alter (const Nothing) k
   P.raise $ deleteF k
-
+{-# INLINEABLE atomicDelete #-}
 
 -- | Interpret AtomicDataCache effect via AtomicState and Persist
 runPersistentAtomicCacheInAtomicState
@@ -348,6 +360,7 @@ runPersistentAtomicCacheInAtomicState (Persist readP writeP deleteP) =
     AtomicUpdate k mb -> case mb of
       Nothing -> atomicDelete deleteP k
       Just ct  -> atomicWrite writeP k ct
+{-# INLINEABLE runPersistentAtomicCacheInAtomicState #-}
 
 runPersistentAtomicCache
   :: (Ord k, Show k, P.Member (P.Embed IO) r, K.LogWithPrefixesLE r)
@@ -357,7 +370,7 @@ runPersistentAtomicCache
 runPersistentAtomicCache p mx = do
   tv <- P.embed $ C.atomically $ C.newTVar M.empty
   P.runAtomicStateTVar tv $ runPersistentAtomicCacheInAtomicState p mx
-
+{-# INLINEABLE runPersistentAtomicCache #-}
 -- | Persist functions for disk-based persistence with a strict ByteString interface
 {-
 We should perhaps do the writing, and maybe some version of the reading, on a separate thread.
@@ -391,6 +404,7 @@ persistAsStrictByteString keyToFilePath = Persist readBS writeBS deleteFile
     liftIO
       $         fmap Right (System.removeFile (keyToFilePath k))
       `X.catch` (return . Left)
+{-# INLINEABLE persistAsStrictByteString #-}
 
 -- | Persist functions for disk-based persistence with a lazy ByteString interface on the serialization side
 persistAsByteString
@@ -414,6 +428,7 @@ persistAsByteString keyToFilePath = Persist readBL writeBL deleteFile
     liftIO
       $         fmap Right (System.removeFile (keyToFilePath k))
       `X.catch` (return . Left)
+{-# INLINEABLE persistAsByteString #-}
 {-
 type StreamlyBytes = Streamly.Serial Word.Word8
 
@@ -447,4 +462,4 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
           $         fmap Right (System.createDirectoryIfMissing True (T.unpack dir))
           `X.catch` (return . Left)
       True -> return $ Right ()
-
+{-# INLINEABLE createDirIfNecessary #-}

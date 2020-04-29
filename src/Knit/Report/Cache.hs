@@ -67,21 +67,25 @@ type KnitCache = C.AtomicCache IE.IOError T.Text (Streamly.Array.Array Word.Word
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
+{-# INLINEABLE mapLeft #-}
 
 cerealStrict :: S.Serialize a => C.Serialize r PandocError a BS.ByteString
 cerealStrict = C.Serialize
   (return . S.encode)
   (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
+{-# INLINEABLE cerealStrict #-}
 
 cereal :: S.Serialize a => C.Serialize r PandocError a BL.ByteString
 cereal = C.Serialize
   (return . S.encodeLazy)
   (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
+{-# INLINEABLE cereal #-}
 
 cerealStreamly :: (S.Serialize a, P.Member (P.Embed IO) r) => C.Serialize r PandocError a (Streamly.Array.Array Word.Word8)
 cerealStreamly = C.Serialize
   (Streamly.fold Streamly.Array.write . Streamly.Cereal.encodeStreamly)
   (fmap (mapLeft (PandocSomeError . K.textToPandocText)) . Streamly.Cereal.decodeStreamly . Streamly.unfold Streamly.Array.read)
+{-# INLINEABLE cerealStreamly #-}
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
 store
@@ -95,6 +99,7 @@ store
 store k a = K.wrapPrefix "knitStore" $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
   P.mapError ioErrorToPandocError $ C.store cerealStreamly k a
+{-# INLINEABLE store #-}
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError
 retrieve
@@ -102,6 +107,7 @@ retrieve
   => T.Text
   -> P.Sem r a
 retrieve k = P.mapError ioErrorToPandocError $ C.retrieve cerealStreamly k
+{-# INLINEABLE retrieve #-}
 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k. 
@@ -126,6 +132,7 @@ retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
     Just a -> do
       K.logLE K.Diagnostic $ k <> " found in cache."
       return a
+{-# INLINEABLE retrieveOrMake #-}
 
 retrieveOrMakeTransformed
   :: forall a b r
@@ -140,11 +147,13 @@ retrieveOrMakeTransformed
   -> P.Sem r a
 retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
   fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
+{-# INLINEABLE retrieveOrMakeTransformed #-}
 
 -- | Clear the @b@ stored at key k.
 clear :: K.KnitEffects r => T.Text -> P.Sem r ()
 clear k = P.mapError ioErrorToPandocError $ C.clear k
-
+{-# INLINEABLE clear #-}
 
 ioErrorToPandocError :: IE.IOError -> PandocError
 ioErrorToPandocError e = PandocIOError (K.textToPandocText $ T.pack $ show e) e
+{-# INLINEABLE ioErrorToPandocError #-}
