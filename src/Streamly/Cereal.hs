@@ -3,12 +3,20 @@ module Streamly.Cereal
   (
     encodeStreamly
   , decodeStreamly
+  , encodeStream
+  , decodeStream
   )
 where
 
 import qualified Streamly as Streamly
 import qualified Streamly.Prelude as Streamly
+import qualified Streamly.Internal.Prelude as Streamly (splitParse)
+--import qualified Streamly.Internal.Data.Parser as Streamly.Parser
+import qualified Streamly.Internal.Data.Parser.Types as Streamly.Parser
 
+import qualified Control.Monad.Catch as Exceptions (MonadThrow(..), MonadCatch(..))
+
+--import qualified Text.Pandoc as Pandoc
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
@@ -52,15 +60,19 @@ decodeGet g s = go s $ Cereal.runGetPartial g where
         Cereal.Partial f' -> go tx f'
 {-# INLINEABLE decodeGet #-}
 
-{-
-decodeGet' :: Monad m => Cereal.Get a -> Streamly.SerialT m Word.Word8 -> m (Either Text.Text a)
-decodeGet' g = Streamly.foldrM buildResult (return $ Cereal.Fail "Stream exhausted while decoding" BS.empty) where
-  buildResult :: Word.Word8 -> m (Result a) -> m (Result a)
-  buildResult nextByte mr = do
-    r <- mr
-    case r of
-      Cereal.Partial f -> return (f 
-      Cereal.Fail e _ -> return r
-      Cereal.Done a _ -> return r
-      Cereal.Partial f' -> return
--}
+encodeStream :: (Monad m, Cereal.Serialize a) => Streamly.SerialT m a -> Streamly.SerialT m Word.Word8
+encodeStream = Streamly.concatMap encodeStreamly
+
+-- NB this will keep decoding as until failure.  But it can't know why it failed so it
+-- assumes failure indicates end of the input stream.
+streamlyDecodeParser :: (Monad m, Exceptions.MonadThrow m, Cereal.Serialize a) => Streamly.Parser.Parser m Word.Word8 a
+streamlyDecodeParser = Streamly.Parser.Parser step (return $ Cereal.runGetPartial Cereal.get) extract where
+  step f w = case f $ BS.singleton w of
+    Cereal.Fail e _ -> return $ Streamly.Parser.Error e
+    Cereal.Done a _ -> return $ Streamly.Parser.Stop 0 a
+    Cereal.Partial f' -> return $ Streamly.Parser.Skip 0 f' 
+  extract _ = Exceptions.throwM $ Streamly.Parser.ParseError "Parsing error in streamlyDecodeParser (\"extract\" called)."   
+
+decodeStream :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
+             => Streamly.SerialT m Word.Word8 -> Streamly.SerialT m a
+decodeStream = Streamly.splitParse streamlyDecodeParser

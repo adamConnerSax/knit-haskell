@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: dd1e1f4ef537e158ba1e839050a2876ba3596603e4732fba532a038011db3cf1
+-- hash: dec55a536c4d026fb972db947824e95ce0a8d60474eb981f23a58454b98921f2
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -76,10 +76,8 @@ library
     , blaze-colonnade >=1.2.2 && <1.3
     , blaze-html >=0.9.1 && <0.10
     , bytestring >=0.10.8 && <0.11
-    , cache >=0.1.2.0 && <0.1.4
     , case-insensitive >=1.2.0.11 && <1.3
     , cereal >=0.5.7 && <0.6
-    , clock >=0.7 && <0.9
     , colonnade >=1.1 && <1.3
     , constraints >=0.10 && <0.12
     , containers >=0.5.0 && <0.7
@@ -87,6 +85,7 @@ library
     , diagrams-svg >=1.4.1 && <1.5.0.0
     , directory >=1.3.3.0 && <1.4.0.0
     , doctemplates >=0.2 && <0.9
+    , exceptions >=0.10.0 && <0.11
     , http-client >=0.6.4 && <0.7.0
     , http-client-tls >=0.3.5.3 && <0.4.0.0
     , http-types >=0.12.3 && <0.13.0
@@ -105,6 +104,7 @@ library
     , say >=0.1.0 && <0.2
     , stm >=2.4.5.1 && <2.6
     , streamly >=0.7.2 && <0.8
+    , streamly-bytestring >=0.1.0 && <0.2
     , svg-builder >=0.1.1 && <0.2
     , text >=1.2.3 && <1.3
     , time >=1.8.0 && <2.0.0

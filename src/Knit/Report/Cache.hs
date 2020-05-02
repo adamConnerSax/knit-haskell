@@ -42,6 +42,8 @@ import qualified Knit.Effect.Logger            as K
 import qualified Knit.Effect.PandocMonad       as K
                                                 ( textToPandocText )
 
+import qualified Control.Monad.Catch as Exceptions (SomeException)
+
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity(..))
@@ -58,6 +60,7 @@ import qualified System.IO.Error               as IE
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
+import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy.MonadCatch
 
 import qualified Streamly                      as Streamly
 --import qualified Streamly.Prelude              as Streamly
@@ -70,23 +73,39 @@ mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 {-# INLINEABLE mapLeft #-}
 
-cerealStrict :: S.Serialize a => C.Serialize r PandocError a BS.ByteString
+cerealStrict :: (S.Serialize a, P.MemberWithError (P.Error PandocError) r)
+             => C.Serialize r PandocError a BS.ByteString
 cerealStrict = C.Serialize
   (return . S.encode)
-  (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
+  (P.fromEither . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decode)
 {-# INLINEABLE cerealStrict #-}
 
-cereal :: S.Serialize a => C.Serialize r PandocError a BL.ByteString
+cereal :: (S.Serialize a, P.MemberWithError (P.Error PandocError) r)
+       => C.Serialize r PandocError a BL.ByteString
 cereal = C.Serialize
   (return . S.encodeLazy)
-  (return . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
+  (P.fromEither . mapLeft (PandocSomeError . K.textToPandocText . T.pack) . S.decodeLazy)
 {-# INLINEABLE cereal #-}
 
-cerealStreamly :: (S.Serialize a, P.Member (P.Embed IO) r) => C.Serialize r PandocError a (Streamly.SerialT Identity Word.Word8)
+cerealStreamly :: (S.Serialize a
+                  , P.Member (P.Embed IO) r
+                  , P.MemberWithError (P.Error PandocError) r
+                  ) => C.Serialize r PandocError a (Streamly.SerialT Identity Word.Word8)
 cerealStreamly = C.Serialize
   (return . Streamly.Cereal.encodeStreamly)
-  (return . (mapLeft (PandocSomeError . K.textToPandocText)) . runIdentity . Streamly.Cereal.decodeStreamly)
+  (P.fromEither . (mapLeft (PandocSomeError . K.textToPandocText)) . runIdentity . Streamly.Cereal.decodeStreamly)
 {-# INLINEABLE cerealStreamly #-}
+
+
+cerealStream :: (S.Serialize a
+                , P.Member (P.Embed IO) r                
+                , P.MemberWithError (P.Error Exceptions.SomeException) r
+                , P.MemberWithError (P.Error PandocError) r
+                )
+             => C.Serialize r PandocError (Streamly.SerialT (P.Sem r) a) (Streamly.SerialT (K.Sem r) Word.Word8)
+cerealStream = C.Serialize
+  (return . Streamly.Cereal.encodeStream)
+  (\x -> Polysemy.MonadCatch.absorbMonadCatch $ return $ Streamly.Cereal.decodeStream x)
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
 store

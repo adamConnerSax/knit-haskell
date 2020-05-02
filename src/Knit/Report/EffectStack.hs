@@ -43,6 +43,7 @@ module Knit.Report.EffectStack
 where
 
 import           Control.Monad.Except           ( MonadIO )
+import qualified Control.Monad.Catch as Exceptions (SomeException)
 --import qualified Data.ByteString               as BS
 --import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity)
@@ -54,6 +55,7 @@ import qualified Polysemy                      as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
+--import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy 
 
 import qualified Streamly                      as Streamly
 --import qualified Streamly.Memory.Array         as Streamly.Array
@@ -62,6 +64,8 @@ import qualified System.IO.Error               as IE
 
 import qualified Text.Pandoc                   as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
+
+
 
 import qualified Knit.Report.Output            as KO
 import qualified Knit.Report.Output.Html       as KO
@@ -140,6 +144,7 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , KLog.PrefixLog
                                  , P.Async
                                  , KnitCache
+                                 , PE.Error Exceptions.SomeException
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
@@ -162,6 +167,7 @@ type KnitEffectStack m
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
+     , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m
@@ -174,6 +180,7 @@ type KnitEffectStack m
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
+     , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m
@@ -199,6 +206,7 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError
+  . PE.mapError (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistentAtomicCacheCFromEmpty
@@ -221,6 +229,7 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError
+  . PE.mapError (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistentAtomicCacheCFromEmpty
