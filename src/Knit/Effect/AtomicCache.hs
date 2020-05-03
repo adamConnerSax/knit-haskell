@@ -316,7 +316,7 @@ runPersistenceBackedAtomicInMemoryCache' p x = do
 
 
 persistAsByteStreamly
-  :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error Exception.IOException) r, K.LogWithPrefixesLE r)
+  :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> Persist r k (Streamly.SerialT Identity Word.Word8)
 persistAsByteStreamly keyToFilePath = Persist readBA writeBA deleteFile
@@ -408,23 +408,18 @@ createDirIfNecessary
   -> K.Sem r ()
 createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
   K.logLE K.Diagnostic $ "Checking if cache path (\"" <> dir <> "\") exists."
-  existsE <-
-    P.embed
-    $         fmap Right (System.doesDirectoryExist (T.unpack dir))
-    `Exception.catch` (\(e :: Exception.IOException) -> return $ Left e)
-  case existsE of
-    Left e -> do
+  existsB <- P.embed $ (System.doesDirectoryExist (T.unpack dir))
+  case existsB of
+    True -> do
       K.logLE K.Diagnostic $ "\"" <> dir <> "\" exists."
       return ()
-    Right exists -> case exists of
-      False -> do
-        K.logLE K.Info
-          $  "Cache directory (\""
-          <> dir
-          <> "\") not found. Atttempting to create."
-        P.embed
-          $ System.createDirectoryIfMissing True (T.unpack dir)
-      True -> return ()
+    False -> do
+      K.logLE K.Info
+        $  "Cache directory (\""
+        <> dir
+        <> "\") not found. Atttempting to create."
+      P.embed
+        $ System.createDirectoryIfMissing True (T.unpack dir)
 {-# INLINEABLE createDirIfNecessary #-}
 
 
@@ -435,7 +430,4 @@ fileNotFoundToNothing x = (fmap Just x) `Exception.catch` f where
 {-# INLINEABLE fileNotFoundToNothing #-}
 
 rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r) => IO a -> P.Sem r a
-rethrowIOErrorAsCacheError x =
-  (P.embed x)
-  `Exception.catch`
-  (\(e :: IO.Error.IOError) -> P.throw $ PersistError $ "IOError: " <> (T.pack $ show e)) 
+rethrowIOErrorAsCacheError x = P.fromExceptionVia (\(e :: IO.Error.IOError) -> PersistError $ "IOError: " <> (T.pack $ show e)) x
