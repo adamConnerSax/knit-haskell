@@ -43,7 +43,7 @@ module Knit.Report.EffectStack
 where
 
 import           Control.Monad.Except           ( MonadIO )
-import qualified Control.Monad.Catch as Exceptions (SomeException)
+--import qualified Control.Monad.Catch as Exceptions (SomeException) 
 --import qualified Data.ByteString               as BS
 --import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity)
@@ -132,7 +132,7 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 
-type KnitCache =  KC.AtomicCache IE.IOError T.Text (Streamly.SerialT Identity Word.Word8)
+type KnitCache =  KC.Cache T.Text (Streamly.SerialT Identity Word.Word8)
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
@@ -205,11 +205,11 @@ consumeKnitEffectStack config =
   P.runFinal
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
-  . PE.runError
-  . PE.mapError (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
+  . PE.runError @KPM.PandocError
+  . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))  
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
-  . KC.runPersistentAtomicCacheCFromEmpty
+  . KC.runPersistenceBackedAtomicInMemoryCache' 
   (KC.persistAsByteStreamly
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
@@ -229,10 +229,10 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError
-  . PE.mapError (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
+  . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
-  . KC.runPersistentAtomicCacheCFromEmpty
+  . KC.runPersistentBackedAtomicInmemoryCache'
   (KC.persistAsByteStreamly
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
@@ -240,3 +240,8 @@ consumeKnitEffectStack config =
   . KUI.runUnusedId
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #endif    
+
+
+ioErrorToPandocError :: IE.IOError -> KPM.PandocError
+ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText $ ("IOError: " <> (T.pack $ show e))) e
+{-# INLINEABLE ioErrorToPandocError #-}

@@ -169,11 +169,61 @@ retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
   fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformed #-}
 
+{-
+-- | Retrieve an a from the store at key k. Throw if not found or IOError
+retrieveStream
+  :: (P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r, S.Serialize a)
+  => T.Text
+  -> Streamly.SerialT (P.Sem r) a
+retrieveStream k = P.mapError ioErrorToPandocError $ C.retrieve cerealStream k
+{-# INLINEABLE retrieve #-}
+
+-- | Retrieve an a from the store at key k.
+-- If retrieve fails then perform the action and store the resulting a at key k. 
+retrieveOrMake
+  :: forall a r
+   . ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
+     , K.LogWithPrefixesLE r
+     , S.Serialize a
+     )
+  => T.Text
+  -> P.Sem r a
+  -> P.Sem r a
+retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
+  ma <- C.retrieveMaybe cerealStreamly k
+  case ma of
+    Nothing -> do
+      K.logLE K.Diagnostic $ k <> " not found in cache. Making..."
+      a <- toMake
+      store k a
+      K.logLE K.Diagnostic $ "Asset Stored."
+      return a
+    Just a -> do
+      K.logLE K.Diagnostic $ k <> " found in cache."
+      return a
+{-# INLINEABLE retrieveOrMake #-}
+
+retrieveOrMakeTransformed
+  :: forall a b r
+   . ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
+     , K.LogWithPrefixesLE r
+     , S.Serialize b
+     )
+  => (a -> b)
+  -> (b -> a)
+  -> T.Text
+  -> P.Sem r a
+  -> P.Sem r a
+retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
+  fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
+{-# INLINEABLE retrieveOrMakeTransformed #-}
+-}
+
 -- | Clear the @b@ stored at key k.
 clear :: K.KnitEffects r => T.Text -> P.Sem r ()
 clear k = P.mapError ioErrorToPandocError $ C.clear k
 {-# INLINEABLE clear #-}
 
 ioErrorToPandocError :: IE.IOError -> PandocError
-ioErrorToPandocError e = PandocIOError (K.textToPandocText $ T.pack $ show e) e
+ioErrorToPandocError e = PandocIOError (K.textToPandocText $ ("IOError: " <> (T.pack $ show e)) e
 {-# INLINEABLE ioErrorToPandocError #-}
