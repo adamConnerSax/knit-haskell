@@ -77,7 +77,7 @@ import qualified Streamly.FileSystem.Handle    as Streamly.Handle
 
 import qualified System.IO                     as System
 import qualified System.Directory              as System
-
+import qualified GHC.IO.Exception              as GHC.IO.Exception
 {-
 data Serialize e a ct where
   Serialize :: (Monad (DecodeMonad a), MTL.Exception.MonadError e (DecodeMonad a))
@@ -285,18 +285,16 @@ persistAsByteStreamly
   -> Persist Exception.IOException r k (Streamly.SerialT Identity Word.Word8)
 persistAsByteStreamly keyToFilePath = Persist readBA writeBA deleteFile
  where
-  sequenceStreamlyIO :: Streamly.SerialT IO Word.Word8 -> IO (Streamly.SerialT Identity Word.Word8)
-  sequenceStreamlyIO = fmap Streamly.fromList . Streamly.toList
-  toStreamlyIO :: Streamly.SerialT Identity Word.Word8 -> Streamly.SerialT IO Word.Word8
-  toStreamlyIO = Streamly.fromList . runIdentity . Streamly.toList
-  readFromHandle h = sequenceStreamlyIO $ Streamly.unfold Streamly.Handle.read h
-  writeToHandle bs h = Streamly.fold (Streamly.Handle.write h) $ toStreamlyIO bs
+  sequenceStreamly :: Monad m => Streamly.SerialT m Word.Word8 -> m (Streamly.SerialT Identity Word.Word8)
+  sequenceStreamly = fmap Streamly.fromList . Streamly.toList
+  streamlyRaise :: Monad m => Streamly.SerialT Identity Word.Word8 -> Streamly.SerialT m Word.Word8
+  streamlyRaise = Streamly.fromList . runIdentity . Streamly.toList
+  readFromHandle h = sequenceStreamly $ Streamly.unfold Streamly.Handle.read h
+  writeToHandle bs h = Streamly.fold (Streamly.Handle.write h) $ streamlyRaise bs
   readBA k = do
     let filePath = keyToFilePath k
     K.logLE K.Diagnostic $ "Reading serialization from disk."
-    P.embed
-      $         fmap Just (System.withBinaryFile filePath System.ReadMode readFromHandle)
-      `Exception.catch` (\(e::Exception.IOException) -> return Nothing)
+    fileNotFoundToNothing $ System.withBinaryFile filePath System.ReadMode readFromHandle
   writeBA k bs = do
     let filePath     = (keyToFilePath k)
         (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
@@ -319,18 +317,55 @@ persistAsByteArray keyToFilePath = Persist readBA writeBA deleteFile
   writeArrayToHandle ba h = Streamly.fold (Streamly.Handle.write h) $ Streamly.unfold Streamly.Array.read ba
   readBA k = do
     let filePath = keyToFilePath k
-    P.embed
-      $        fmap Just (System.withFile filePath System.ReadMode readArrayFromHandle)
-      `Exception.catch` (\(e::Exception.IOException) -> return Nothing)
+    K.logLE K.Diagnostic $ "Reading serialization from disk."
+    fileNotFoundToNothing $ System.withFile filePath System.ReadMode readArrayFromHandle
   writeBA k ba = do
     let filePath     = (keyToFilePath k)
         (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
     _ <- createDirIfNecessary dirPath
     K.logLE K.Diagnostic $ "Writing serialization to disk."
-    liftIO $ (System.withFile filePath System.WriteMode $ writeArrayToHandle ba) -- should we do on another thread??
+    liftIO $ System.withFile filePath System.WriteMode $ writeArrayToHandle ba -- should we do on another thread??
   deleteFile k = liftIO $ System.removeFile (keyToFilePath k)
 {-# INLINEABLE persistAsByteArray #-}
 
+
+persistAsStrictByteString
+  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error Exception.IOException) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> Persist Exception.IOException r k BS.ByteString
+persistAsStrictByteString keyToFilePath = Persist readBS writeBS deleteFile
+ where
+  readBS k = do
+    K.logLE K.Diagnostic $ "Reading serialization from disk."
+    fileNotFoundToNothing $ BS.readFile (keyToFilePath k)
+  writeBS k !b = do
+    let filePath     = (keyToFilePath k)
+        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+    _ <- createDirIfNecessary dirPath
+    K.logLE K.Diagnostic $ "Writing serialization to disk."
+    liftIO $ BS.writeFile filePath b  -- maybe we should do this in another thread?
+  deleteFile k = liftIO $ System.removeFile (keyToFilePath k)
+{-# INLINEABLE persistAsStrictByteString #-}
+
+-- | Persist functions for disk-based persistence with a lazy ByteString interface on the serialization side
+persistAsByteString
+  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error Exception.IOException) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> Persist Exception.IOException r k BL.ByteString
+persistAsByteString keyToFilePath = Persist readBL writeBL deleteFile
+ where
+  readBL k = do
+    K.logLE K.Diagnostic $ "Reading serialization from disk."
+    fileNotFoundToNothing $ BL.readFile (keyToFilePath k)
+  writeBL k bs = do
+    let filePath     = (keyToFilePath k)
+        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+    _ <- createDirIfNecessary dirPath
+    K.logLE K.Diagnostic $ "Writing serialization to disk:"
+    K.logLE K.Diagnostic $ "Bytestring is " <> (T.pack $ show $ BL.length bs) <> " bytes."
+    liftIO $ BL.writeFile filePath bs -- maybe we should do this in another thread?
+  deleteFile k = liftIO $ System.removeFile (keyToFilePath k)
+{-# INLINEABLE persistAsByteString #-}
 
 createDirIfNecessary
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
@@ -341,7 +376,7 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
   existsE <-
     P.embed
     $         fmap Right (System.doesDirectoryExist (T.unpack dir))
-    `Exception.catch` (\(e::Exception.IOException) -> return $ Left e)
+    `Exception.catch` (\(e :: Exception.IOException) -> return $ Left e)
   case existsE of
     Left e -> do
       K.logLE K.Diagnostic $ "\"" <> dir <> "\" exists."
@@ -358,6 +393,10 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
 {-# INLINEABLE createDirIfNecessary #-}
 
 
+fileNotFoundToNothing :: P.Member (P.Embed IO) r => P.MemberWithError (P.Error Exception.IOException) r => IO a -> P.Sem r (Maybe a)
+fileNotFoundToNothing x = P.embed $ (fmap Just x) `Exception.catch` f where
+  f :: Exception.IOException -> IO (Maybe a)
+  f e = if (GHC.IO.Exception.ioe_type e == GHC.IO.Exception.NoSuchThing) then return Nothing else Exception.throw e 
 
 {-    
 
@@ -571,51 +610,7 @@ how to thread the Async return through?
 
 We could add a State ([P.Async (Either PandocError ())]) or some such and await on all of them at the end?
 -}
-persistAsStrictByteString
-  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
-  => (k -> FilePath)
-  -> Persist X.IOException r k BS.ByteString
-persistAsStrictByteString keyToFilePath = Persist readBS writeBS deleteFile
- where
-  readBS k =
-    liftIO
-      $         fmap Right (BS.readFile (keyToFilePath k))
-      `X.catch` (return . Left)
-  writeBS k !b = do
-    let filePath     = (keyToFilePath k)
-        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-    _ <- createDirIfNecessary dirPath
-    K.logLE K.Diagnostic $ "Writing serialization to disk."
-    liftIO $ fmap Right (BS.writeFile filePath b) `X.catch` (return . Left) -- maybe we should do this in another thread?
-  deleteFile k =
-    liftIO
-      $         fmap Right (System.removeFile (keyToFilePath k))
-      `X.catch` (return . Left)
-{-# INLINEABLE persistAsStrictByteString #-}
 
--- | Persist functions for disk-based persistence with a lazy ByteString interface on the serialization side
-persistAsByteString
-  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
-  => (k -> FilePath)
-  -> Persist X.IOException r k BL.ByteString
-persistAsByteString keyToFilePath = Persist readBL writeBL deleteFile
- where
-  readBL k =
-    liftIO
-      $         fmap Right (BL.readFile (keyToFilePath k))
-      `X.catch` (return . Left)
-  writeBL k bs = do
-    let filePath     = (keyToFilePath k)
-        (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-    _ <- createDirIfNecessary dirPath
-    K.logLE K.Diagnostic $ "Writing serialization to disk:"
-    K.logLE K.Diagnostic $ "Bytestring is " <> (T.pack $ show $ BL.length bs) <> " bytes."
-    liftIO $ fmap Right (BL.writeFile filePath bs) `X.catch` (return . Left) -- maybe we should do this in another thread?
-  deleteFile k =
-    liftIO
-      $         fmap Right (System.removeFile (keyToFilePath k))
-      `X.catch` (return . Left)
-{-# INLINEABLE persistAsByteString #-}
 {-
 type StreamlyBytes = Streamly.Serial Word.Word8
 
