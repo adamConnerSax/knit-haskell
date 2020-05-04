@@ -132,7 +132,7 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 
-type KnitCache =  KC.Cache T.Text (Streamly.SerialT Identity Word.Word8)
+type KnitCache =  KC.AtomicCache T.Text (Streamly.SerialT Identity Word.Word8)
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
@@ -144,7 +144,7 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , KLog.PrefixLog
                                  , P.Async
                                  , KnitCache
-                                 , PE.Error AtomicCache.CacheError
+                                 , PE.Error KC.CacheError
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
@@ -167,7 +167,8 @@ type KnitEffectStack m
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
-     , PE.Error Exceptions.SomeException
+     , PE.Error IOError
+     , PE.Error KC.CacheError
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m
@@ -180,7 +181,9 @@ type KnitEffectStack m
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
-     , PE.Error Exceptions.SomeException
+--     , PE.Error Exceptions.SomeException
+     , PE.Error IOError
+     , PE.Error KC.CacheError
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m
@@ -206,7 +209,8 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError @KPM.PandocError
-  . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))  
+  . PE.mapError cacheErrorToPandocError
+  . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' 
@@ -229,6 +233,7 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError
+  . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
@@ -245,3 +250,7 @@ consumeKnitEffectStack config =
 ioErrorToPandocError :: IE.IOError -> KPM.PandocError
 ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText $ ("IOError: " <> (T.pack $ show e))) e
 {-# INLINEABLE ioErrorToPandocError #-}
+
+cacheErrorToPandocError :: KC.CacheError -> KPM.PandocError
+cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText $ ("CacheError: " <> (T.pack $ show e)))
+{-# INLINEABLE cacheErrorToPandocError #-}

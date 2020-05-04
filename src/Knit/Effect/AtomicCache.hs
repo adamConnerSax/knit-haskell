@@ -29,26 +29,24 @@ they are serializable.
 module Knit.Effect.AtomicCache
   (
     -- * Effect
-    Cache    
+    AtomicCache
+  , SimpleCache
     -- * Actions
-  , cacheLookup
-  , cacheUpdate
-{-  
+--  , cacheLookup
+--  , cacheUpdate  
   , encodeAndStore
   , retrieveAndDecode
   , lookupAndDecode
--}
+  , retrieveOrMake
   , clear
     -- * Serialization
   , Serialize(..)
     -- * Persistance
-  , Persist(..)
   , persistAsByteString
   , persistAsStrictByteString
   , persistAsByteStreamly
   , persistAsByteArray
     -- * Interpretations
-  , runPersistentCache
   , runAtomicInMemoryCache
   , runBackedAtomicInMemoryCache
   , runPersistenceBackedAtomicInMemoryCache
@@ -60,13 +58,12 @@ where
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
-import qualified Polysemy.AtomicState          as P
-import qualified Polysemy.Internal.Tactics     as P
 import qualified Knit.Effect.Logger            as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity(..))
+import           Data.Int (Int64)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
@@ -74,8 +71,8 @@ import qualified Data.Word                     as Word
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 --import qualified Control.Monad.Exception       as MTL.Exception
-import           Control.Monad                  ( join, when )
-import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
+import           Control.Monad                  ( join )
+--import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
@@ -86,14 +83,23 @@ import qualified System.IO                     as System
 import qualified System.Directory              as System
 import qualified System.IO.Error               as IO.Error
 
+
+{- TODO:
+1. Can this deisgn be simplified, part 1. The Maybe in the TMVar seems like it should be uneccessary.
+2. Can this design be simplified, part 2. Returning the emptyTMVar from the lookup seems...leaky.
+Can this be done in a way so that it must be filled?
+3. We should be able to factor out some things around handling the returned TMVar
+-}
+
 data CacheError =
   ItemNotFoundError T.Text
-  | DeserializationError T.Text
-  | PersistError T.Text deriving (Show, Eq)
+  | DeSerializationError T.Text
+  | PersistError T.Text
+  | OtherCacheError T.Text deriving (Show, Eq)
 
 data Serialize r a ct where
   Serialize :: (P.MemberWithError (P.Error CacheError) r)
-            => (a -> ct) -> (ct -> P.Sem r a) -> (ct -> Int) -> Serialize r a ct
+            => (a -> ct) -> (ct -> P.Sem r a) -> (ct -> P.Sem r (Int64)) -> Serialize r a ct
 
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v
@@ -102,7 +108,6 @@ data Cache k v h m a where
   CacheLookup :: k -> Cache k v h m (Either h v)
   CacheUpdate :: k -> Maybe v -> Cache k v h m ()
   
-
 P.makeSem ''Cache
 
 -- | Combinator to combine the action of serializing and caching
@@ -117,10 +122,38 @@ encodeAndStore
 encodeAndStore (Serialize encode _ encBytes) k x = K.wrapPrefix "Knit.AtomicCache.store" $ do
   K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
   let encoded = encode x
-  K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show $ encBytes encoded) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
+  nBytes <- encBytes encoded
+  K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show nBytes) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
   cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
 
+-- We need some exception handling here to make sure the TMVar gets filled somehow
+handleAtomicLookup
+  :: ( P.Members [AtomicCache k ct, P.Embed IO] r
+     ,  K.LogWithPrefixesLE r
+     )
+  => Serialize r a ct -> P.Sem r (Maybe a) -> k -> P.Sem r (Maybe a)
+handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = do
+  fromCache <- cacheLookup key
+  case fromCache of
+    Right ct -> do
+      nBytes <- encBytes ct
+      K.logLE K.Diagnostic $ "Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
+      fmap Just $ decode ct
+    Left emptyTMV -> do
+      ma <- tryIfMissing
+      case ma of
+        Nothing -> do
+          cacheUpdate key Nothing
+          P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
+          return Nothing
+        Just a -> do
+          let ct' = encode a
+          nBytes <- encBytes ct'
+          K.logLE K.Diagnostic $ "Serialized to " <> (T.pack $ show nBytes) <> " bytes. Caching."
+          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct')
+          return $ Just a
+  
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
 -- | throws if item not found or any other error during retrieval
@@ -134,16 +167,11 @@ retrieveAndDecode
   => Serialize r a ct
   -> k
   -> P.Sem r a
-retrieveAndDecode (Serialize _ decode encBytes) k = do
-  fromCache <- cacheLookup k
+retrieveAndDecode s k = do
+  fromCache <- handleAtomicLookup s (return Nothing) k
   case fromCache of
-    Left emptyTMV -> do
-      cacheUpdate k Nothing -- clean up the
-      P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
-      P.throw $ ItemNotFoundError $ "No item found in cache for key=" <> (T.pack $ show k) <> "."
-    Right x -> do
-      K.logLE K.Diagnostic $ "Retrieved " <> (T.pack $ show $ encBytes x) <> " bytes from cache. Deserializing..."
-      decode x
+    Nothing -> P.throw $ ItemNotFoundError $ "No item found in cache for key=" <> (T.pack $ show k) <> "."
+    Just x -> return x
 {-# INLINEABLE retrieveAndDecode #-}
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -159,7 +187,7 @@ lookupAndDecode
   => Serialize r a ct
   -> k
   -> P.Sem r (Maybe a)
-lookupAndDecode s k = fmap Just (retrieveAndDecode s k) `P.catch` (\_ -> return Nothing) 
+lookupAndDecode s k = handleAtomicLookup s (return Nothing) k 
 {-# INLINEABLE lookupAndDecode #-}
 
 retrieveOrMake
@@ -173,19 +201,14 @@ retrieveOrMake
   -> k
   -> P.Sem r a
   -> P.Sem r a
-retrieveOrMake (Serialize encode decode encBytes) key makeAction = do
-  fromCache <- cacheLookup key
+retrieveOrMake s key makeAction = do
+  let makeIfMissing = do
+        K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found in cache. Making..."
+        fmap Just makeAction
+  fromCache <- handleAtomicLookup s makeIfMissing key
   case fromCache of
-    Right x -> do
-      K.logLE K.Diagnostic $ "Retrieved " <> (T.pack $ show $ encBytes x) <> " bytes from cache. Deserializing..."
-      decode x
-    Left emptyTMV -> do
-      K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found in cache. Making..."
-      a <- makeAction
-      let ct = encode a
-      K.logLE K.Diagnostic $ "Serialized to " <> (T.pack $ show $ encBytes ct) <> " bytes. Caching."
-      P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct)
-      return a
+    Just x -> return x
+    Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible."
 
 -- | Combinator for clearing the cache at a given key
 clear :: P.Member (Cache k ct h) r => k -> P.Sem r ()
