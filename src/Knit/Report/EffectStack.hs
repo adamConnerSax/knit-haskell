@@ -144,7 +144,7 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , KLog.PrefixLog
                                  , P.Async
                                  , KnitCache
-                                 , PE.Error Exceptions.SomeException
+                                 , PE.Error AtomicCache.CacheError
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )

@@ -71,7 +71,7 @@ import qualified Data.Word                     as Word
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 --import qualified Control.Monad.Exception       as MTL.Exception
---import           Control.Monad                  ( join )
+import           Control.Monad                  ( join )
 import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
 import qualified Streamly                      as Streamly
@@ -99,19 +99,6 @@ data Cache k v m a where
   CacheUpdate :: k -> Maybe v -> Cache k v m ()
 
 P.makeSem ''Cache
-{-
-eitherThrow :: P.MemberWithError (P.Error e) r => P.Sem r (Either e a) -> P.Sem r a
-eitherThrow x = do
-  ea <- x
-  case ea of
-    Left  e -> P.throw e
-    Right a -> return a --fmap (either (P.throw @e) id)
-{-# INLINEABLE eitherThrow #-}
-
-hush :: Either e a -> Maybe a
-hush = either (const Nothing) Just
-{-# INLINEABLE hush #-}
--}
 
 -- | Combinator to combine the action of serializing and caching
 encodeAndStore
@@ -206,14 +193,16 @@ runPersistentCache p =
 -- structure for in-memory cache
 -- outer TVar so only one thread can get the inner TMVar at a time
 -- TMVar so we can block if mulitple threads are trying to read or update
-type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar v))
+-- Maybe inside so we can notify waiting threads that whatever they were waiting on
+-- to fill the TMVar failed.
+type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe v)))
 
 -- interpret via MemCache
 atomicMemLookup :: (Ord k, P.Member (P.Embed IO) r)
               => AtomicMemCache k ct
               -> k
               -> P.Sem r (Maybe ct) -- we either return the value or a tvar to be filled
-atomicMemLookup cache key = P.embed $ C.atomically $ (C.readTVar cache >>= traverse C.readTMVar . M.lookup key)
+atomicMemLookup cache key = P.embed $ C.atomically $ (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
 {-# INLINEABLE atomicMemLookup #-}
 
 atomicMemUpdate :: (Ord k, P.Member (P.Embed IO) r)
@@ -228,9 +217,9 @@ atomicMemUpdate cache key mct = P.embed $ C.atomically $ do
       m <- C.readTVar cache
       case M.lookup key m of
         Nothing -> do
-          newTMV <- C.newTMVar ct
+          newTMV <- C.newTMVar (Just ct)
           C.modifyTVar cache (M.insert key newTMV)
-        Just tmv -> C.putTMVar tmv ct
+        Just tmvM -> C.putTMVar tmvM (Just ct)
 {-# INLINEABLE atomicMemUpdate #-}
 
 runAtomicInMemoryCache :: (Ord k, P.Member (P.Embed IO) r) => AtomicMemCache k ct -> P.InterpreterFor (Cache k ct) r
@@ -251,21 +240,23 @@ atomicMemLookupB cache key = do
   x <- P.embed $ C.atomically $ do
     mTMV <- M.lookup key <$> C.readTVar cache
     case mTMV of
-      Just x -> fmap Right $ C.readTMVar x -- already in memory so get/wait for it
+      Just tmv -> fmap Right $ C.readTMVar tmv -- already in memory so get/wait for it
       Nothing -> do
         newTMV <- C.newEmptyTMVar
         C.modifyTVar cache (M.insert key newTMV)
         return $ Left newTMV
   case x of
-    Right ct -> return $ Just ct
+    Right ctM -> return ctM
     Left emptyTMV -> do
       inOtherM <- cacheLookup key
       case inOtherM of
         Nothing -> do
-          P.embed $ C.atomically $ C.modifyTVar cache (M.delete key)
+          P.embed $ C.atomically $ do
+            C.modifyTVar cache (M.delete key)
+            C.putTMVar emptyTMV Nothing 
           return Nothing
         Just ct -> do
-          P.embed $ C.atomically $ C.putTMVar emptyTMV ct
+          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct)
           return $ Just ct
 {-# INLINEABLE atomicMemLookupB #-}
             
@@ -431,3 +422,4 @@ fileNotFoundToNothing x = (fmap Just x) `Exception.catch` f where
 
 rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r) => IO a -> P.Sem r a
 rethrowIOErrorAsCacheError x = P.fromExceptionVia (\(e :: IO.Error.IOError) -> PersistError $ "IOError: " <> (T.pack $ show e)) x
+
