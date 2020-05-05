@@ -43,7 +43,7 @@ module Knit.Report.EffectStack
 where
 
 import           Control.Monad.Except           ( MonadIO )
---import qualified Control.Monad.Catch as Exceptions (SomeException) 
+import qualified Control.Monad.Catch as Exceptions (SomeException, displayException) 
 --import qualified Data.ByteString               as BS
 --import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity)
@@ -145,6 +145,7 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , P.Async
                                  , KnitCache
                                  , PE.Error KC.CacheError
+                                 , PE.Error Exceptions.SomeException
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
@@ -169,6 +170,7 @@ type KnitEffectStack m
      , P.Async
      , PE.Error IOError
      , PE.Error KC.CacheError
+     , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m
@@ -181,9 +183,9 @@ type KnitEffectStack m
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
---     , PE.Error Exceptions.SomeException
      , PE.Error IOError
      , PE.Error KC.CacheError
+     , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
      , P.Embed IO
      , P.Embed m
@@ -209,6 +211,7 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError @KPM.PandocError
+  . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
@@ -233,6 +236,7 @@ consumeKnitEffectStack config =
   . P.embedToFinal
   . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError
+  . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
@@ -254,3 +258,7 @@ ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText $ ("IOError: " <
 cacheErrorToPandocError :: KC.CacheError -> KPM.PandocError
 cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText $ ("CacheError: " <> (T.pack $ show e)))
 {-# INLINEABLE cacheErrorToPandocError #-}
+
+someExceptionToPandocError :: Exceptions.SomeException -> KPM.PandocError
+someExceptionToPandocError = PA.PandocSomeError . T.pack . Exceptions.displayException 
+{-# INLINEABLE someExceptionToPandocError #-}
