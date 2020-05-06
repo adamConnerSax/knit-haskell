@@ -99,7 +99,7 @@ data CacheError =
 
 data Serialize r a ct where
   Serialize :: (P.MemberWithError (P.Error CacheError) r)
-            => (a -> ct) -> (ct -> P.Sem r a) -> (ct -> P.Sem r (Int64)) -> Serialize r a ct
+            => (a -> P.Sem r ct) -> (ct -> P.Sem r a) -> (ct -> Int64) -> Serialize r a ct
 
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v
@@ -112,17 +112,19 @@ P.makeSem ''Cache
 
 -- | Combinator to combine the action of serializing and caching
 encodeAndStore
-  :: (Show k
+  :: forall h ct k a r.
+     ( Show k
      , P.Member (Cache k ct h) r
-     ,  K.LogWithPrefixesLE r)
+     , K.LogWithPrefixesLE r
+     )
   => Serialize r a ct
   -> k
   -> a
   -> P.Sem r ()
 encodeAndStore (Serialize encode _ encBytes) k x = K.wrapPrefix "Knit.AtomicCache.store" $ do
   K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
-  let encoded = encode x
-  nBytes <- encBytes encoded
+  encoded <- encode x
+  let nBytes = encBytes encoded
   K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show nBytes) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
   cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
@@ -137,7 +139,7 @@ handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = do
   fromCache <- cacheLookup key
   case fromCache of
     Right ct -> do
-      nBytes <- encBytes ct
+      let nBytes = encBytes ct
       K.logLE K.Diagnostic $ "Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
       fmap Just $ decode ct
     Left emptyTMV -> do
@@ -148,8 +150,9 @@ handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = do
           P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
           return Nothing
         Just a -> do
-          let ct' = encode a
-          nBytes <- encBytes ct'
+          K.logLE K.Diagnostic "Encoding..."
+          ct' <- encode a
+          let nBytes = encBytes ct'
           K.logLE K.Diagnostic $ "Serialized to " <> (T.pack $ show nBytes) <> " bytes. Caching."
           P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct')
           return $ Just a
