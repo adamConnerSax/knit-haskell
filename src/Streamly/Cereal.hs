@@ -66,12 +66,14 @@ encodeStream = Streamly.concatMap encodeStreamly
 -- NB this will keep decoding as until failure.  But it can't know why it failed so it
 -- assumes failure indicates end of the input stream.
 streamlyDecodeParser :: (Monad m, Exceptions.MonadThrow m, Cereal.Serialize a) => Streamly.Parser.Parser m Word.Word8 a
-streamlyDecodeParser = Streamly.Parser.Parser step (return $ Cereal.runGetPartial Cereal.get) extract where
-  step f w = case f $ BS.singleton w of
+streamlyDecodeParser = Streamly.Parser.Parser step (return $ (Nothing, Cereal.runGetPartial Cereal.get)) extract where
+  step (_, f) w = case f $ BS.singleton w of
     Cereal.Fail e _ -> return $ Streamly.Parser.Error e
-    Cereal.Done a _ -> return $ Streamly.Parser.Stop 0 a
-    Cereal.Partial f' -> return $ Streamly.Parser.Skip 0 f' 
-  extract _ = Exceptions.throwM $ Streamly.Parser.ParseError "Parsing error in streamlyDecodeParser (\"extract\" called)."   
+    Cereal.Done a _ -> return $ Streamly.Parser.Yield 0 (Just a, Cereal.runGetPartial Cereal.get)
+    Cereal.Partial f' -> return $ Streamly.Parser.Skip 0 (Nothing, f')
+  extract (ma, _)  = case ma of
+    Just a -> return a
+    Nothing -> Exceptions.throwM $ Streamly.Parser.ParseError "Parsing error in streamlyDecodeParser (\"extract\" called on incomplete parse.)."   
 
 decodeStream :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
              => Streamly.SerialT m Word.Word8 -> Streamly.SerialT m a

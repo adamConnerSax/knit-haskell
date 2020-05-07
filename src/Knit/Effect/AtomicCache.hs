@@ -153,8 +153,9 @@ handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = do
           K.logLE K.Diagnostic "Encoding..."
           ct' <- encode a
           let nBytes = encBytes ct'
-          K.logLE K.Diagnostic $ "Serialized to " <> (T.pack $ show nBytes) <> " bytes. Caching."
-          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct')
+          K.logLE K.Diagnostic $ "Serialized to " <> (T.pack $ show nBytes) <> " bytes. Updating cache..."          
+          cacheUpdate key (Just ct')
+          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct') -- for any thread waiting on the TMVar
           return $ Just a
   
 

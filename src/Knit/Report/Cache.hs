@@ -31,6 +31,10 @@ module Knit.Report.Cache
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
+  , storeStream
+  , retrieveStream
+  , retrieveOrMakeStream
+  , retrieveOrMakeTransformedStream
   , clear
   )
 where
