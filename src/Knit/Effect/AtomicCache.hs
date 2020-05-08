@@ -78,6 +78,7 @@ import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.FileSystem.Handle    as Streamly.Handle
+import qualified Streamly.Internal.FileSystem.File as Streamly.File
 
 import qualified System.IO                     as System
 import qualified System.Directory              as System
@@ -133,29 +134,35 @@ encodeAndStore (Serialize encode _ encBytes) k x = K.wrapPrefix "Knit.AtomicCach
 handleAtomicLookup
   :: ( P.Members [AtomicCache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
+     , Show k
      )
   => Serialize r a ct -> P.Sem r (Maybe a) -> k -> P.Sem r (Maybe a)
-handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = do
+handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = K.wrapPrefix "handleAtomicLookup" $ do
   fromCache <- cacheLookup key
   case fromCache of
     Right ct -> do
       let nBytes = encBytes ct
-      K.logLE K.Diagnostic $ "Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
+      K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
       fmap Just $ decode ct
     Left emptyTMV -> do
+      K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
       ma <- tryIfMissing
       case ma of
         Nothing -> do
-          cacheUpdate key Nothing
+          K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making failed."
           P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
+          cacheUpdate key Nothing
           return Nothing
         Just a -> do
-          K.logLE K.Diagnostic "Encoding..."
-          ct' <- encode a
+          K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
+          ct' <- encode a          
           let nBytes = encBytes ct'
-          K.logLE K.Diagnostic $ "Serialized to " <> (T.pack $ show nBytes) <> " bytes. Updating cache..."          
-          cacheUpdate key (Just ct')
+          K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to "
+          K.logLE K.Diagnostic $ (T.pack $ show nBytes) <> " bytes. Updating TMVar..."          
           P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct') -- for any thread waiting on the TMVar
+          K.logLE K.Diagnostic $ "Updating cache..."          
+          cacheUpdate key (Just ct')
+          K.logLE K.Diagnostic $ "Finished making and updating."          
           return $ Just a
   
 
@@ -229,38 +236,67 @@ type AtomicCache k ct = Cache k ct (C.TMVar (Maybe ct))
 type SimpleCache k ct = Cache k ct ()
 
 -- interpret via MemCache
-atomicMemLookup :: (Ord k, P.Member (P.Embed IO) r)
+atomicMemLookup :: (Ord k
+                   , Show k
+                   , P.Member (P.Embed IO) r
+                   , K.LogWithPrefixesLE r
+                   )
               => AtomicMemCache k ct
               -> k
               -> P.Sem r (Either (C.TMVar (Maybe ct)) ct) -- we either return the value or a tvar to be filled
-atomicMemLookup cache key = P.embed $ C.atomically $ do
-  mv <- (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
-  case mv of
-    Just v -> return $ Right v
-    Nothing -> do
-      newTMV <- C.newEmptyTMVar
-      C.modifyTVar cache (M.insert key newTMV)
-      return $ Left newTMV
+atomicMemLookup cache key = 
+  K.wrapPrefix "atomicMemLookup" $ do
+  K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Called."
+  P.embed $ C.atomically $ do
+    mv <- (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
+    case mv of
+      Just v -> return $ Right v
+      Nothing -> do
+        newTMV <- C.newEmptyTMVar
+        C.modifyTVar cache (M.insert key newTMV)
+        return $ Left newTMV
 {-# INLINEABLE atomicMemLookup #-}
 
-atomicMemUpdate :: (Ord k, P.Member (P.Embed IO) r)
+data MemUpdateAction = Deleted | Replaced | Filled deriving (Show)
+
+atomicMemUpdate :: (Ord k
+                   , Show k
+                   , P.Member (P.Embed IO) r
+                   , K.LogWithPrefixesLE r
+                   )
                 => AtomicMemCache k ct
                 -> k
                 -> Maybe ct
                 -> P.Sem r ()
-atomicMemUpdate cache key mct = P.embed $ C.atomically $ do
-  case mct of
-    Nothing -> C.modifyTVar cache (M.delete key) 
-    Just ct -> do
+atomicMemUpdate cache key mct =
+  K.wrapPrefix "atomicMemUpdate" $ do
+  let keyText = "key=" <> (T.pack $ show key) <> ": "
+  K.logLE K.Diagnostic $ keyText <> "called."
+  updateAction <- case mct of
+    Nothing -> (P.embed $ C.atomically $ C.modifyTVar cache (M.delete key)) >> return Deleted
+    Just ct -> P.embed $ C.atomically $ do
       m <- C.readTVar cache
       case M.lookup key m of
         Nothing -> do
           newTMV <- C.newTMVar (Just ct)
           C.modifyTVar cache (M.insert key newTMV)
-        Just tmvM -> C.putTMVar tmvM (Just ct)
+          return Filled
+        Just tmvM -> do
+          wasEmptyTMVar <- C.tryPutTMVar tmvM (Just ct)
+          if wasEmptyTMVar
+            then return Filled
+            else (C.swapTMVar tmvM (Just ct)) >> return Replaced
+  case updateAction of
+    Deleted -> K.logLE K.Diagnostic $ keyText <> "deleted"
+    Replaced -> K.logLE K.Diagnostic $ keyText <> "replaced"
+    Filled -> K.logLE K.Diagnostic $ keyText <> "filled"
 {-# INLINEABLE atomicMemUpdate #-}
 
-runAtomicInMemoryCache :: (Ord k, P.Member (P.Embed IO) r)
+runAtomicInMemoryCache :: (Ord k
+                          , Show k
+                          , P.Member (P.Embed IO) r
+                          , K.LogWithPrefixesLE r
+                          )
                        => AtomicMemCache k ct
                        -> P.InterpreterFor (AtomicCache k ct) r
 runAtomicInMemoryCache cache =
@@ -273,11 +309,17 @@ runAtomicInMemoryCache cache =
 -- Backed by Another Cache
 -- lookup is the hard case.  If we don't find it, we want to check the backup cache
 -- and fill in this cache from there, if possible
-atomicMemLookupB :: (Ord k, P.Members '[P.Embed IO, SimpleCache k ct] r)
+atomicMemLookupB :: (Ord k
+                    , P.Members '[P.Embed IO, SimpleCache k ct] r
+                    , K.LogWithPrefixesLE r
+                    , Show k
+                    )
                  =>  AtomicMemCache k ct
                  -> k
                  -> P.Sem r (Either (C.TMVar (Maybe ct)) ct)
-atomicMemLookupB cache key = do
+atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
+  let keyText = "key=" <> (T.pack $ show key) <> ": "
+  K.logLE K.Diagnostic $ keyText <> "checking in mem cache..."
   x <- P.embed $ C.atomically $ do
     mTMV <- M.lookup key <$> C.readTVar cache
     case mTMV of
@@ -293,27 +335,40 @@ atomicMemLookupB cache key = do
         C.modifyTVar cache (M.insert key newTMV)
         return $ Left newTMV
   case x of
-    Right ct -> return $ Right ct
+    Right ct -> K.logLE K.Diagnostic (keyText <> "found.") >> return (Right ct)
     Left emptyTMV -> do
-      inOtherM <- cacheLookup key
+      K.logLE K.Diagnostic (keyText <> "not found.  Holding empty TMVar. Checking backup cache...")
+      inOtherM <- cacheLookup key      
       case inOtherM of
-        Left () -> return $ Left emptyTMV 
+        Left () -> K.logLE K.Diagnostic (keyText <> "not found in backup cache.  Returning empty TMVar.") >> return (Left emptyTMV)
         Right ct -> do
+          K.logLE K.Diagnostic (keyText <> "Found in backup cache.  Putting in TMVar.")
           P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct)
+          K.logLE K.Diagnostic (keyText <> "Returning")
           return $ Right ct
 {-# INLINEABLE atomicMemLookupB #-}
             
-atomicMemUpdateB ::  (Ord k, P.Members '[P.Embed IO, SimpleCache k ct] r)
+atomicMemUpdateB ::  (Ord k
+                     , Show k
+                     , K.LogWithPrefixesLE r
+                     , P.Members '[P.Embed IO, SimpleCache k ct] r)
                  => AtomicMemCache k ct
                  -> k
                  -> Maybe ct
                  -> P.Sem r ()
-atomicMemUpdateB cache key mct = do
+atomicMemUpdateB cache key mct = K.wrapPrefix "atomicMemUpdateB" $ do
+  let keyText = "key=" <> (T.pack $ show key) <> ": "
+  K.logLE K.Diagnostic $ keyText <> "Calling atomicMemUpdate"
   atomicMemUpdate cache key mct
+  K.logLE K.Diagnostic $ keyText <> "Calling cacheUpdate in backup cache."
   cacheUpdate key mct
 {-# INLINEABLE atomicMemUpdateB #-}
 
-runBackedAtomicInMemoryCache :: (Ord k, P.Members '[P.Embed IO, SimpleCache k ct] r)
+runBackedAtomicInMemoryCache :: (Ord k
+                                , Show k
+                                , K.LogWithPrefixesLE r
+                                , P.Members '[P.Embed IO, SimpleCache k ct] r
+                                )
                              => AtomicMemCache k ct
                              -> P.InterpreterFor (AtomicCache k ct) r
 runBackedAtomicInMemoryCache cache =
@@ -322,7 +377,11 @@ runBackedAtomicInMemoryCache cache =
     CacheUpdate k mct -> atomicMemUpdateB cache k mct
 {-# INLINEABLE runBackedAtomicInMemoryCache #-}
 
-backedAtomicInMemoryCache :: (Ord k, P.Member (P.Embed IO) r)
+backedAtomicInMemoryCache :: (Ord k
+                             , Show k
+                             , P.Member (P.Embed IO) r
+                             , K.LogWithPrefixesLE r
+                             )
                           => AtomicMemCache k ct
                           -> P.Sem ((AtomicCache k ct) ': r) a
                           -> P.Sem ((SimpleCache k ct) ': r) a
@@ -333,7 +392,12 @@ backedAtomicInMemoryCache cache =
 {-# INLINEABLE backedAtomicInMemoryCache #-} 
 
 
-runPersistenceBackedAtomicInMemoryCache :: (Ord k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r)
+runPersistenceBackedAtomicInMemoryCache :: (Ord k
+                                           , Show k
+                                           , P.Member (P.Embed IO) r
+                                           , P.MemberWithError (P.Error CacheError) r
+                                           , K.LogWithPrefixesLE r
+                                           )
                                         => P.InterpreterFor (SimpleCache k ct) r -- persistence layer interpreter
                                         -> AtomicMemCache k ct
                                         -> P.InterpreterFor (AtomicCache k ct) r
@@ -341,7 +405,12 @@ runPersistenceBackedAtomicInMemoryCache runPersistentCache cache = runPersistent
 {-# INLINEABLE runPersistenceBackedAtomicInMemoryCache #-}
 
 
-runPersistenceBackedAtomicInMemoryCache' :: (Ord k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r)
+runPersistenceBackedAtomicInMemoryCache' :: (Ord k
+                                            , Show k
+                                            , P.Member (P.Embed IO) r
+                                            , P.MemberWithError (P.Error CacheError) r
+                                            , K.LogWithPrefixesLE r
+                                            )
                                         => P.InterpreterFor (SimpleCache k ct) r
                                         -> P.InterpreterFor (AtomicCache k ct) r
 runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
@@ -351,24 +420,30 @@ runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
 
 
 persistAsByteStreamly
-  :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+  :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> P.InterpreterFor (SimpleCache k (Streamly.SerialT Identity Word.Word8)) r
 persistAsByteStreamly keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> do
+    CacheLookup k -> K.wrapPrefix "persistAsByteStreamly.CacheLookup" $ do
       let filePath = keyToFilePath k
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ System.withBinaryFile filePath System.ReadMode readFromHandle
-    CacheUpdate k mct -> case mct of
-      Nothing ->  rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-      Just ct -> do
-        let filePath     = (keyToFilePath k)
-            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-        _ <- createDirIfNecessary dirPath
-        K.logLE K.Diagnostic $ "Writing serialization to disk."
-        K.logLE K.Diagnostic $ "Writing " <> (T.pack $ show $ Streamly.length ct) <> " bytes to disk." 
-        rethrowIOErrorAsCacheError $ (System.withBinaryFile filePath System.WriteMode $ writeToHandle ct) -- maybe we should do this in another thread?
+      K.logLE K.Diagnostic $ "Attempting to read serialization from disk."
+      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ sequenceStreamly $ Streamly.File.toBytes filePath --System.withBinaryFile filePath System.ReadMode readFromHandle
+    CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
+      let keyText = "key=" <> (T.pack $ show k) <> ": "
+      case mct of
+        Nothing -> do
+          K.logLE K.Diagnostic $ keyText <> "called with Nothing. Deleting file."
+          rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+        Just ct -> do
+          K.logLE K.Diagnostic $ keyText <> "called with content. Writing file."
+          let filePath     = (keyToFilePath k)
+              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+          _ <- createDirIfNecessary dirPath
+          K.logLE K.Diagnostic $ keyText <> "Writing serialization to disk."
+          let sLength = runIdentity $ Streamly.length ct
+          K.logLE K.Diagnostic $ keyText <> "Writing " <> (T.pack $ show sLength) <> " bytes to disk." 
+          rethrowIOErrorAsCacheError $ (System.withBinaryFile filePath System.WriteMode $ writeToHandle ct) -- maybe we should do this in another thread?
   where
     sequenceStreamly :: Monad m => Streamly.SerialT m Word.Word8 -> m (Streamly.SerialT Identity Word.Word8)
     sequenceStreamly = fmap Streamly.fromList . Streamly.toList
