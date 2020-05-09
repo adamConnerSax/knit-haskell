@@ -76,7 +76,7 @@ import           Control.Monad                  ( join )
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Memory.Array         as Streamly.Array
+import qualified Streamly.Internal.Memory.Array         as Streamly.Array
 import qualified Streamly.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.FileSystem.File as Streamly.File
 
@@ -449,31 +449,34 @@ persistAsByteStreamly keyToFilePath =
     sequenceStreamly = fmap Streamly.fromList . Streamly.toList
     streamlyRaise :: Monad m => Streamly.SerialT Identity Word.Word8 -> Streamly.SerialT m Word.Word8
     streamlyRaise = Streamly.fromList . runIdentity . Streamly.toList
-    readFromHandle h = sequenceStreamly $ Streamly.unfold Streamly.Handle.read h
+--    readFromHandle h = sequenceStreamly $ Streamly.unfold Streamly.Handle.read h
     writeToHandle bs h = Streamly.fold (Streamly.Handle.write h) $ streamlyRaise bs
 {-# INLINEABLE persistAsByteStreamly #-}
 
 persistAsByteArray
-  :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+  :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> P.InterpreterFor (SimpleCache k (Streamly.Array.Array Word.Word8)) r
 persistAsByteArray keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> do
+    CacheLookup k -> K.wrapPrefix "persistAsByteArray.CacheLookup" $ do
       let filePath = keyToFilePath k
       K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ System.withFile filePath System.ReadMode readArrayFromHandle
-    CacheUpdate k mct -> case mct of
-      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-      Just ct -> do
-        let filePath     = (keyToFilePath k)
-            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-        _ <- createDirIfNecessary dirPath
-        K.logLE K.Diagnostic $ "Writing serialization to disk."
-        rethrowIOErrorAsCacheError $ System.withFile filePath System.WriteMode $ writeArrayToHandle ct
- where
-  readArrayFromHandle h = Streamly.fold Streamly.Array.write $ Streamly.unfold Streamly.Handle.read h
-  writeArrayToHandle ba h = Streamly.fold (Streamly.Handle.write h) $ Streamly.unfold Streamly.Array.read ba
+      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ Streamly.Array.fromStream $ Streamly.File.toBytes filePath
+    CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
+      let keyText = "key=" <> (T.pack $ show k) <> ": "
+      case mct of
+        Nothing -> do
+           K.logLE K.Diagnostic $ keyText <> "called with Nothing. Deleting file."
+           rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+        Just ct -> do
+          K.logLE K.Diagnostic $ keyText <> "called with content. Writing file."
+          let filePath     = (keyToFilePath k)
+              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+          _ <- createDirIfNecessary dirPath
+          K.logLE K.Diagnostic $ "Writing serialization to disk."
+          K.logLE K.Diagnostic $ keyText <> "Writing " <> (T.pack $ show $ Streamly.Array.length ct) <> " bytes to disk." 
+          rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
 {-# INLINEABLE persistAsByteArray #-}
 
 
