@@ -1,20 +1,28 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Streamly.Cereal
+module Streamly.External.Cereal
   (
     encodeStreamly
   , decodeStreamly
+  , encodeStreamlyArray
+  , decodeStreamlyArray  
   , encodeStream
   , decodeStream
+  , encodeStreamArray
+  , decodeStreamArray
   )
 where
 
 import qualified Streamly as Streamly
 import qualified Streamly.Prelude as Streamly
 import qualified Streamly.Internal.Prelude as Streamly (splitParse)
+import qualified Streamly.Internal.Memory.Array as Streamly.Array
+import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
 --import qualified Streamly.Internal.Data.Parser as Streamly.Parser
 import qualified Streamly.Internal.Data.Parser.Types as Streamly.Parser
+import qualified Streamly.External.ByteString as Streamly.ByteString
 
 import qualified Control.Monad.Catch as Exceptions (MonadThrow(..), MonadCatch(..))
+import Control.Monad.IO.Class (MonadIO)
 
 --import qualified Text.Pandoc as Pandoc
 
@@ -40,9 +48,17 @@ encodeStreamly :: (Cereal.Serialize a, Monad m) => a -> Streamly.SerialT m Word.
 encodeStreamly = encodePut . Cereal.put
 {-# INLINEABLE encodeStreamly #-}
 
+encodeStreamlyArray :: Cereal.Serialize a => a -> Streamly.Array.Array Word.Word8
+encodeStreamlyArray = encodePutArray . Cereal.put
+{-# INLINEABLE encodeStreamlyArray #-}
+
 encodePut :: Monad m => Cereal.Put -> Streamly.SerialT m Word.Word8
 encodePut = Streamly.unfoldr BL.uncons . Cereal.runPutLazy
 {-# INLINEABLE encodePut #-}
+
+encodePutArray :: Cereal.Put -> Streamly.Array.Array Word.Word8
+encodePutArray = Streamly.ByteString.toArray  . Cereal.runPut
+{-# INLINEABLE encodePutArray #-}
 
 decodeStreamly :: (Cereal.Serialize a, Monad m) => Streamly.SerialT m Word.Word8 -> m (Either Text.Text a)
 decodeStreamly = decodeGet Cereal.get
@@ -60,8 +76,17 @@ decodeGet g s = go s $ Cereal.runGetPartial g where
         Cereal.Partial f' -> go tx f'
 {-# INLINEABLE decodeGet #-}
 
+decodeStreamlyArray :: (Cereal.Serialize a) => Streamly.Array.Array Word.Word8 -> Either Text.Text a
+decodeStreamlyArray = either (Left . Text.pack) Right . Cereal.decode . Streamly.ByteString.fromArray 
+{-# INLINEABLE decodeStreamlyArray #-}
+
 encodeStream :: (Monad m, Cereal.Serialize a) => Streamly.SerialT m a -> Streamly.SerialT m Word.Word8
 encodeStream = Streamly.concatMap encodeStreamly
+{-# INLINEABLE encodeStream #-}
+
+encodeStreamArray :: (Monad m, MonadIO m, Cereal.Serialize a) => Streamly.SerialT m a -> m (Streamly.Array.Array Word.Word8)
+encodeStreamArray = Streamly.Array.toArray . Streamly.map encodeStreamlyArray 
+{-# INLINEABLE encodeStreamArray #-}
 
 -- NB this will keep decoding as until failure.  But it can't know why it failed so it
 -- assumes failure indicates end of the input stream.
@@ -75,7 +100,15 @@ streamlyDecodeParser = Streamly.Parser.Parser step (return $ (Nothing, Cereal.ru
   extract (ma, _)  = case ma of
     Just a -> return a
     Nothing -> Exceptions.throwM $ Streamly.Parser.ParseError "Parsing error in streamlyDecodeParser (\"extract\" called on incomplete parse.)."   
+{-# INLINEABLE streamlyDecodeParser #-}
 
 decodeStream :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
              => Streamly.SerialT m Word.Word8 -> Streamly.SerialT m a
 decodeStream = Streamly.splitParse streamlyDecodeParser
+{-# INLINEABLE decodeStream #-}
+
+-- we convert the array to a stream so we can decode lazily (?)
+decodeStreamArray :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
+                  => Streamly.Array.Array Word.Word8 -> Streamly.SerialT m a
+decodeStreamArray = decodeStream . Streamly.Array.toStream 
+{-# INLINEABLE decodeStreamArray #-}

@@ -45,7 +45,8 @@ import qualified Knit.Effect.AtomicCache       as C
 import           Knit.Effect.AtomicCache        (clear)
 import qualified Knit.Effect.Logger            as K
 
-import qualified Control.Monad.Catch as Exceptions (SomeException)
+import           Control.Monad (join)
+import qualified Control.Monad.Catch.Pure      as Exceptions
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
@@ -62,7 +63,7 @@ import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Internal.Prelude              as Streamly
 import qualified Streamly.Memory.Array         as Streamly.Array
-import qualified Streamly.Cereal               as Streamly.Cereal
+import qualified Streamly.External.Cereal      as Streamly.Cereal
 
 type KnitCache = C.AtomicCache T.Text CacheData
 
@@ -72,7 +73,7 @@ knitSerialize :: ( S.Serialize a
                  , P.Member (P.Embed IO) r
                  , P.MemberWithError (P.Error C.CacheError) r
                  )
-              => S.Serialize r a CacheData
+              => C.Serialize r a CacheData
 knitSerialize = cerealArray
 {-# INLINEABLE knitSerialize #-}
 
@@ -82,7 +83,7 @@ knitSerializeStream :: (S.Serialize a
                        , P.MemberWithError (P.Error Exceptions.SomeException) r
                        , P.MemberWithError (P.Error C.CacheError) r
                        )
-                       => S.Serialize r (Streamly.SerialT (K.Sem r) a) CacheData
+                       => C.Serialize r (Streamly.SerialT (K.Sem r) a) CacheData
 knitSerializeStream = cerealStreamArray
 {-# INLINEABLE knitSerializeStream #-}
 
@@ -127,8 +128,27 @@ cerealStream = C.Serialize
   (fmap Streamly.fromList . Streamly.toList . Streamly.Cereal.encodeStream)
   (\x -> Polysemy.MonadCatch.absorbMonadCatch $ return $ Streamly.Cereal.decodeStream $ Streamly.generally x)
   (fromIntegral . runIdentity . Streamly.length)
+{-# INLINEABLE cerealStream #-}
 
+cerealArray :: (S.Serialize a
+               , P.Member (P.Embed IO) r
+               , P.MemberWithError (P.Error C.CacheError) r
+               ) => C.Serialize r a (Streamly.Array.Array Word.Word8)
+cerealArray = C.Serialize
+  (return . Streamly.Cereal.encodeStreamlyArray)
+  (P.fromEither . mapLeft C.DeSerializationError . Streamly.Cereal.decodeStreamlyArray)
+  (fromIntegral . Streamly.Array.length)
 
+cerealStreamArray :: (S.Serialize a
+                     , P.Member (P.Embed IO) r                
+                     , P.MemberWithError (P.Error Exceptions.SomeException) r
+                     , P.MemberWithError (P.Error C.CacheError) r
+                     )
+                  => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
+cerealStreamArray = C.Serialize
+  Streamly.Cereal.encodeStreamArray
+  (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
+  (fromIntegral . Streamly.Array.length)
 
 
 -- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
@@ -142,7 +162,7 @@ store
   -> P.Sem r ()
 store k a = K.wrapPrefix "Knit.store" $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
-  C.encodeAndStore cerealStreamly k a
+  C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError
@@ -248,6 +268,14 @@ retrieveOrMakeTransformedStream toSerializable fromSerializable k toMake =
   $ retrieveOrMakeStream k (Streamly.map toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
 
+
+
+fixMonadCatch :: (P.MemberWithError (P.Error Exceptions.SomeException) r)
+              => Streamly.SerialT (Exceptions.CatchT (K.Sem r)) a -> Streamly.SerialT (K.Sem r) a
+fixMonadCatch = Streamly.hoist f where
+  f :: forall r a. (P.MemberWithError (P.Error Exceptions.SomeException) r) =>  Exceptions.CatchT (K.Sem r) a -> K.Sem r a
+  f = join . fmap P.fromEither . Exceptions.runCatchT
+{-# INLINEABLE fixMonadCatch #-}
 
 {-
 -- | Retrieve an a from the store at key k. Throw if not found or IOError
