@@ -9,6 +9,8 @@ module Streamly.External.Cereal
   , decodeStream
   , encodeStreamArray
   , decodeStreamArray
+  , putStreamOf
+  , getStreamOf
   )
 where
 
@@ -112,3 +114,10 @@ decodeStreamArray :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
                   => Streamly.Array.Array Word.Word8 -> Streamly.SerialT m a
 decodeStreamArray = decodeStream . Streamly.Array.toStream 
 {-# INLINEABLE decodeStreamArray #-}
+
+{-
+newtype CerealStreamly m a = CerealStreamly { unCerealStreamly :: Streamly.SerialT m a }
+instance (Monad m, Cereal.Serialize a) => Cereal.Serialize (CerealStreamly m a) where
+  put = putStreamOf Cereal.put . unCerealStreamly
+  get = fmap CerealStreamly $ getStreamOf Cereal.get
+-}

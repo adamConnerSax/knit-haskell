@@ -64,6 +64,7 @@ import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Internal.Prelude              as Streamly
 import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
+import qualified Streamly.External.ByteString as Streamly.ByteString
 
 type KnitCache = C.AtomicCache T.Text CacheData
 
@@ -84,7 +85,7 @@ knitSerializeStream :: (S.Serialize a
                        , P.MemberWithError (P.Error C.CacheError) r
                        )
                        => C.Serialize r (Streamly.SerialT (K.Sem r) a) CacheData
-knitSerializeStream = cerealStreamArray
+knitSerializeStream = cerealStreamViaListArray
 {-# INLINEABLE knitSerializeStream #-}
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
@@ -150,8 +151,20 @@ cerealStreamArray = C.Serialize
   (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
   (fromIntegral . Streamly.Array.length)
 
+-- go via list?
+cerealStreamViaListArray :: (S.Serialize a
+                            , P.Member (P.Embed IO) r                
+                            , P.MemberWithError (P.Error Exceptions.SomeException) r
+                            , P.MemberWithError (P.Error C.CacheError) r
+                            )
+                         => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
+cerealStreamViaListArray = C.Serialize
+  (fmap (Streamly.ByteString.toArray . S.runPut . S.putListOf S.put) . Streamly.toList)
+  (P.fromEither . mapLeft (C.DeSerializationError . T.pack) . S.runGet (Streamly.Cereal.getStreamOf S.get) . Streamly.ByteString.fromArray)
+  (fromIntegral . Streamly.Array.length)
 
--- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
+
+-- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
 store
   :: ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r

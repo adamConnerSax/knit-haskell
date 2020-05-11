@@ -44,22 +44,14 @@ where
 
 import           Control.Monad.Except           ( MonadIO )
 import qualified Control.Monad.Catch as Exceptions (SomeException, displayException) 
---import qualified Data.ByteString               as BS
---import qualified Data.ByteString.Lazy          as BL
-import           Data.Functor.Identity          (Identity)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
-import qualified Data.Word                     as Word 
 import qualified Polysemy                      as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
---import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy 
-
-import qualified Streamly                      as Streamly
---import qualified Streamly.Memory.Array         as Streamly.Array
-
+import qualified Polysemy.Reader               as PR
 import qualified System.IO.Error               as IE
 
 import qualified Text.Pandoc                   as PA
@@ -69,6 +61,7 @@ import qualified Text.Blaze.Html.Renderer.Text as BH
 
 import qualified Knit.Report.Output            as KO
 import qualified Knit.Report.Output.Html       as KO
+import qualified Knit.Report.Cache             as KC
 import qualified Knit.Effect.Docs              as KD
 import qualified Knit.Effect.Pandoc            as KP
 import qualified Knit.Effect.PandocMonad       as KPM
@@ -132,7 +125,7 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 
-type KnitCache =  KC.AtomicCache T.Text (Streamly.SerialT Identity Word.Word8)
+--type KnitCache =  KC.AtomicCache T.Text (Streamly.Array.Array Word.Word8)
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling Knit.
@@ -140,10 +133,11 @@ type KnitCache =  KC.AtomicCache T.Text (Streamly.SerialT Identity Word.Word8)
 -- Any other effects will need to be run before @knitHtml(s)@
 type KnitEffects r = (KPM.PandocEffects r
                      , P.Members [ KUI.UnusedId
+                                 , PR.Reader KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
                                  , P.Async
-                                 , KnitCache
+                                 , KC.KnitCache
                                  , PE.Error KC.CacheError
                                  , PE.Error Exceptions.SomeException
                                  , PE.Error PA.PandocError
@@ -164,7 +158,8 @@ type KnitEffectStack m
   = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
-     , KnitCache
+     , KC.KnitCache
+     , PR.Reader KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -179,7 +174,8 @@ type KnitEffectStack m
 type KnitEffectStack m
   = '[ KUI.UnusedId
      , KPM.Pandoc
-     , KnitCache
+     , KC.KnitCache
+     , PR.Reader KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -217,7 +213,7 @@ consumeKnitEffectStack config =
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' 
-  (KC.persistAsByteStreamly
+  (KC.persistAsByteArray
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
   . KPM.interpretInIO -- PA.PandocIO
@@ -242,7 +238,7 @@ consumeKnitEffectStack config =
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredAsyncLogEntriesToIO (logIf config)
   . KC.runPersistentBackedAtomicInmemoryCache'
-  (KC.persistAsByteStreamly
+  (KC.persistAsByteArray
     (\t -> T.unpack (cacheDir config <> "/" <> t))
   )
   . KPM.interpretInIO -- PA.PandocIO        

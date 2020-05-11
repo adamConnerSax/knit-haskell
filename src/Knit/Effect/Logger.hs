@@ -35,13 +35,15 @@ module Knit.Effect.Logger
 
   -- * Effects
   , Logger(..)
-  , PrefixLog
+  , PrefixLog  
 
   -- * Actions
   , log
   , logLE
   , wrapPrefix
-
+  , monadIOLogger
+  , getPrefix
+  
   -- * Interpreters
   , filteredLogEntriesToIO
   , filteredAsyncLogEntriesToIO
@@ -57,7 +59,8 @@ module Knit.Effect.Logger
   , PrefixedLogEffectsLE
   , LogWithPrefixes
   , LogWithPrefixesLE
-
+  , LogWithPrefixIO
+  
   -- * Re-Exports
   , Sem
   , Member
@@ -72,6 +75,7 @@ import           Polysemy                       ( Member
 import qualified Polysemy.Async                as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
+import qualified Polysemy.Reader                as P
 
 import qualified Control.Concurrent.STM        as C
 import           Control.Monad                  ( when )
@@ -261,27 +265,44 @@ prefixedLogEntryToTChan
   :: MonadIO m => C.TChan NextOrDone -> Handler m (WithPrefix LogEntry)
 prefixedLogEntryToTChan ch = logToTChan ch prefixedLogEntryToText
 
+-- | A synonym for a function to handle direct logging from IO.  Allows the Sem stack to handoff logging to any stack with IO.
+type LogWithPrefixIO = T.Text -> LogEntry -> IO ()
+
+monadIOLogger :: (MonadIO m
+                 , P.Member (P.Reader LogWithPrefixIO) r
+                 )
+              => T.Text
+              -> P.Sem r (LogSeverity -> T.Text -> m ())
+monadIOLogger p = do
+  f <- P.ask
+  return $ \ls t -> liftIO $ f p (LogEntry ls t)
+
 -- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the union.
 filteredLogEntriesToIO
   :: MonadIO (P.Sem r)
   => (LogSeverity -> Bool)
-  -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
+  -> P.Sem (P.Reader LogWithPrefixIO ': (Logger LogEntry ': (PrefixLog ': r))) x
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do
   let f a = lsF (severity $ discardPrefix a)
-  logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) mx
+      g :: LogWithPrefixIO
+      g prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToIO wp
+  logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) $ P.runReader g mx
+
+
 
 filteredAsyncLogEntriesToIO
   :: (MonadIO (P.Sem r), P.Member P.Async r)
   => (LogSeverity -> Bool)
-  -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
+  -> P.Sem (P.Reader LogWithPrefixIO ': (Logger LogEntry ': (PrefixLog ': r))) x
   -> P.Sem r x
 filteredAsyncLogEntriesToIO lsF mx = do
-  ch            <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
+  ch             <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
   loggingThread <- P.async $ liftIO $ printNextUntilDone ch -- launch a thread for printing them
+  let g prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToTChan ch wp
   res           <- logAndHandlePrefixed
     (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
-    mx
+    (P.runReader g mx)
   liftIO $ C.atomically $ C.writeTChan ch Done -- tell the printing thread to finish
   _ <- P.await loggingThread -- wait until it finishes printing any remaining messages
   return res

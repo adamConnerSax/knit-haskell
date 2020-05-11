@@ -90,6 +90,7 @@ import           Polysemy.Internal              ( send )
 import           Polysemy.Internal.Combinators  ( stateful )
 import qualified Polysemy.Error                as P
 import qualified Polysemy.ConstraintAbsorber   as P
+import qualified Polysemy.Reader               as P
 
 import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
@@ -481,6 +482,7 @@ runIO
   -> P.Sem
      '[Template
       , Pandoc
+      , P.Reader Log.LogWithPrefixIO
       , Log.Logger Log.LogEntry
       , Log.PrefixLog
       , P.Error PA.PandocError
@@ -494,6 +496,7 @@ runIO
   :: (Log.LogSeverity -> Bool)
   -> P.Sem
      '[Pandoc
+      , P.Reader Log.LogWithPrefixIO
       , Log.Logger Log.LogEntry
       , Log.PrefixLog
       , P.Error PA.PandocError
