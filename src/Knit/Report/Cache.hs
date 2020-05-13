@@ -185,7 +185,7 @@ retrieve
      , S.Serialize a)
   => T.Text
   -> P.Sem r a
-retrieve k =  K.wrapPrefix "Knit.retrieve" $ C.retrieveAndDecode knitSerialize k
+retrieve k =  K.wrapPrefix "Cache.retrieve" $ C.retrieveAndDecode knitSerialize k
 {-# INLINEABLE retrieve #-}
 
 -- | Retrieve an a from the store at key k.
@@ -199,7 +199,7 @@ retrieveOrMake
   => T.Text
   -> P.Sem r a
   -> P.Sem r a
-retrieveOrMake k toMake = K.wrapPrefix "Knit.retrieveOrMake" $ C.retrieveOrMake knitSerialize k toMake
+retrieveOrMake k toMake = K.wrapPrefix "Cache.retrieveOrMake" $ C.retrieveOrMake knitSerialize k toMake
 {-# INLINEABLE retrieveOrMake #-}
 
 retrieveOrMakeTransformed
@@ -214,7 +214,7 @@ retrieveOrMakeTransformed
   -> P.Sem r a
   -> P.Sem r a
 retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
-  K.wrapPrefix "Knit.retrieveOrMakeTransformed" $ 
+  K.wrapPrefix "retrieveOrMakeTransformed" $ 
   fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformed #-}
 
@@ -229,7 +229,7 @@ storeStream
   => T.Text
   -> Streamly.SerialT (P.Sem r) a
   -> P.Sem r ()
-storeStream k aS = K.wrapPrefix "Knit.storeStream" $ do
+storeStream k aS = K.wrapPrefix "Cache.storeStream" $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
   C.encodeAndStore knitSerializeStream k aS
 {-# INLINEABLE storeStream #-}
@@ -243,7 +243,7 @@ retrieveStream
      , S.Serialize a)
   => T.Text
   -> Streamly.SerialT (P.Sem r) a
-retrieveStream k =  Streamly.concatM $ K.wrapPrefix "Knit.retrieve" $ C.retrieveAndDecode knitSerializeStream k
+retrieveStream k =  Streamly.concatM $ K.wrapPrefix "Cache.retrieve" $ C.retrieveAndDecode knitSerializeStream k
 {-# INLINEABLE retrieveStream #-}
 
 
@@ -259,7 +259,7 @@ retrieveOrMakeStream
   => T.Text
   -> Streamly.SerialT (P.Sem r) a
   -> Streamly.SerialT (P.Sem r) a
-retrieveOrMakeStream k toMake = Streamly.concatM $ K.wrapPrefix "Knit.retrieveOrMake" $ C.retrieveOrMake knitSerializeStream k (return toMake)
+retrieveOrMakeStream k toMake = Streamly.concatM $ K.wrapPrefix "Cache.retrieveOrMakeStream" $ C.retrieveOrMake knitSerializeStream k (return toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
 
 --  This one needs a "wrapPrefix".  But how, in stream land?
@@ -275,9 +275,8 @@ retrieveOrMakeTransformedStream
   -> T.Text
   -> Streamly.SerialT (P.Sem r) a
   -> Streamly.SerialT (P.Sem r) a
-retrieveOrMakeTransformedStream toSerializable fromSerializable k toMake = 
-  Streamly.hoist (K.wrapPrefix "Knit.retrieveOrMakeTransformedStream")
-  $ Streamly.map fromSerializable
+retrieveOrMakeTransformedStream toSerializable fromSerializable k toMake =
+  Streamly.map fromSerializable
   $ retrieveOrMakeStream k (Streamly.map toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
 

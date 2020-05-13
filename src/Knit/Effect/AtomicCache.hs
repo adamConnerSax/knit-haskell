@@ -122,12 +122,13 @@ encodeAndStore
   -> k
   -> a
   -> P.Sem r ()
-encodeAndStore (Serialize encode _ encBytes) k x = K.wrapPrefix "Knit.AtomicCache.store" $ do
-  K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
-  encoded <- encode x
-  let nBytes = encBytes encoded
-  K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show nBytes) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
-  cacheUpdate k (Just encoded)
+encodeAndStore (Serialize encode _ encBytes) k x =
+  K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> (T.pack $ show k) <> ")") $ do
+    K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
+    encoded <- encode x
+    let nBytes = encBytes encoded
+    K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show nBytes) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
+    cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
 
 -- We need some exception handling here to make sure the TMVar gets filled somehow
@@ -137,33 +138,34 @@ handleAtomicLookup
      , Show k
      )
   => Serialize r a ct -> P.Sem r (Maybe a) -> k -> P.Sem r (Maybe a)
-handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key = K.wrapPrefix "handleAtomicLookup" $ do
-  fromCache <- cacheLookup key
-  case fromCache of
-    Right ct -> do
-      let nBytes = encBytes ct
-      K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
-      fmap Just $ decode ct
-    Left emptyTMV -> do
-      K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
-      ma <- tryIfMissing
-      case ma of
-        Nothing -> do
-          K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making failed."
-          P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
-          cacheUpdate key Nothing
-          return Nothing
-        Just a -> do
-          K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
-          ct' <- encode a          
-          let nBytes = encBytes ct'
-          K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to "
-          K.logLE K.Diagnostic $ (T.pack $ show nBytes) <> " bytes. Updating TMVar..."          
-          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct') -- for any thread waiting on the TMVar
-          K.logLE K.Diagnostic $ "Updating cache..."          
-          cacheUpdate key (Just ct')
-          K.logLE K.Diagnostic $ "Finished making and updating."          
-          return $ Just a
+handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key =
+  K.wrapPrefix ("AtomicCache.handleAtomicLookup (key=" <> (T.pack $ show key) <> ")") $ do
+    fromCache <- cacheLookup key
+    case fromCache of
+      Right ct -> do
+        let nBytes = encBytes ct
+        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
+        fmap Just $ decode ct
+      Left emptyTMV -> do
+        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
+        ma <- tryIfMissing
+        case ma of
+          Nothing -> do
+            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making failed."
+            P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
+            cacheUpdate key Nothing
+            return Nothing
+          Just a -> do
+            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
+            ct' <- encode a          
+            let nBytes = encBytes ct'
+            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
+            K.logLE K.Diagnostic "Updating TMVar..."          
+            P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct') -- for any thread waiting on the TMVar
+            K.logLE K.Diagnostic $ "Updating cache..."          
+            cacheUpdate key (Just ct')
+            K.logLE K.Diagnostic $ "Finished making and updating."          
+            return $ Just a
   
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -178,7 +180,7 @@ retrieveAndDecode
   => Serialize r a ct
   -> k
   -> P.Sem r a
-retrieveAndDecode s k = do
+retrieveAndDecode s k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
   fromCache <- handleAtomicLookup s (return Nothing) k
   case fromCache of
     Nothing -> P.throw $ ItemNotFoundError $ "No item found in cache for key=" <> (T.pack $ show k) <> "."
@@ -198,7 +200,7 @@ lookupAndDecode
   => Serialize r a ct
   -> k
   -> P.Sem r (Maybe a)
-lookupAndDecode s k = handleAtomicLookup s (return Nothing) k 
+lookupAndDecode s k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ handleAtomicLookup s (return Nothing) k 
 {-# INLINEABLE lookupAndDecode #-}
 
 retrieveOrMake
@@ -212,8 +214,8 @@ retrieveOrMake
   -> k
   -> P.Sem r a
   -> P.Sem r a
-retrieveOrMake s key makeAction = do
-  let makeIfMissing = do
+retrieveOrMake s key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
+  let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found in cache. Making..."
         fmap Just makeAction
   fromCache <- handleAtomicLookup s makeIfMissing key
@@ -244,8 +246,7 @@ atomicMemLookup :: (Ord k
               => AtomicMemCache k ct
               -> k
               -> P.Sem r (Either (C.TMVar (Maybe ct)) ct) -- we either return the value or a tvar to be filled
-atomicMemLookup cache key = 
-  K.wrapPrefix "atomicMemLookup" $ do
+atomicMemLookup cache key = K.wrapPrefix "atomicMemLookup" $ do
   K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Called."
   P.embed $ C.atomically $ do
     mv <- (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
