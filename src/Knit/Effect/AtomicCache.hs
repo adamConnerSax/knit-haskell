@@ -98,9 +98,15 @@ data CacheError =
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
 
+-- encode has a weird return type because sometimes a is monadic and we need to run something to get the result.
+-- The a we return should be just be a stored version.  It will often be the a we input.
+
 data Serialize r a ct where
   Serialize :: (P.MemberWithError (P.Error CacheError) r)
-            => (a -> P.Sem r ct) -> (ct -> P.Sem r a) -> (ct -> Int64) -> Serialize r a ct
+            => (a -> P.Sem r (ct, a)) -- encode
+            -> (ct -> P.Sem r a) -- decode
+            -> (ct -> Int64) -- size (in Bytes)
+            -> Serialize r a ct
 
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v
@@ -125,7 +131,7 @@ encodeAndStore
 encodeAndStore (Serialize encode _ encBytes) k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> (T.pack $ show k) <> ")") $ do
     K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
-    encoded <- encode x
+    encoded <- fst <$> encode x
     let nBytes = encBytes encoded
     K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show nBytes) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
     cacheUpdate k (Just encoded)
@@ -157,7 +163,7 @@ handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key =
             return Nothing
           Just a -> do
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
-            ct' <- encode a          
+            (ct', a') <- encode a -- a' is the "already computed" version of a
             let nBytes = encBytes ct'
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
             K.logLE K.Diagnostic "Updating TMVar..."          
@@ -165,7 +171,7 @@ handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key =
             K.logLE K.Diagnostic $ "Updating cache..."          
             cacheUpdate key (Just ct')
             K.logLE K.Diagnostic $ "Finished making and updating."          
-            return $ Just a
+            return $ Just a'
   
 
 -- | Combinator to combine the action of retrieving from cache and deserializing

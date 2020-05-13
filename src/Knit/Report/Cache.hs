@@ -62,7 +62,12 @@ import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy.MonadCatch
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Internal.Prelude              as Streamly
+import qualified Streamly.Data.Fold                 as Streamly.Fold
+import qualified Streamly.Internal.Data.Fold                 as Streamly.Fold
 import qualified Streamly.Memory.Array         as Streamly.Array
+import qualified Streamly.Internal.Memory.ArrayStream         as Streamly.Array
+import qualified Streamly.Internal.Data.Array           as Streamly.Data.Array
+import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
 import qualified Streamly.External.ByteString as Streamly.ByteString
 
@@ -95,7 +100,7 @@ mapLeft f = either (Left . f) Right
 cerealStrict :: (S.Serialize a, P.MemberWithError (P.Error C.CacheError) r)
              => C.Serialize r a BS.ByteString
 cerealStrict = C.Serialize 
-  (return . S.encode)
+  (\a -> return $ (S.encode a, a))
   (P.fromEither @C.CacheError . mapLeft (C.DeSerializationError . T.pack) . S.decode)
   (fromIntegral . BS.length)
 {-# INLINEABLE cerealStrict #-}
@@ -103,7 +108,7 @@ cerealStrict = C.Serialize
 cereal :: (S.Serialize a, P.MemberWithError (P.Error C.CacheError) r)
        => C.Serialize r a BL.ByteString
 cereal = C.Serialize
-  (return . S.encodeLazy)
+  (\a -> return $ (S.encodeLazy a, a))
   (P.fromEither . mapLeft (C.DeSerializationError . T.pack) . S.decodeLazy)
   BL.length
 {-# INLINEABLE cereal #-}
@@ -113,12 +118,12 @@ cerealStreamly :: (S.Serialize a
                   , P.MemberWithError (P.Error C.CacheError) r
                   ) => C.Serialize r a (Streamly.SerialT Identity Word.Word8)
 cerealStreamly = C.Serialize
-  (return . Streamly.Cereal.encodeStreamly)
+  (\a -> return $  (Streamly.Cereal.encodeStreamly a, a))
   (P.fromEither . mapLeft C.DeSerializationError . runIdentity . Streamly.Cereal.decodeStreamly)
   (fromIntegral . runIdentity . Streamly.length)
 {-# INLINEABLE cerealStreamly #-}
 
-
+{-
 cerealStream :: (S.Serialize a
                 , P.Member (P.Embed IO) r                
                 , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -126,30 +131,35 @@ cerealStream :: (S.Serialize a
                 )
              => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.SerialT Identity Word.Word8)
 cerealStream = C.Serialize
-  (fmap Streamly.fromList . Streamly.toList . Streamly.Cereal.encodeStream)
+  (\a -> fmap Streamly.fromList . Streamly.toList . Streamly.Cereal.encodeStream)
   (\x -> Polysemy.MonadCatch.absorbMonadCatch $ return $ Streamly.Cereal.decodeStream $ Streamly.generally x)
   (fromIntegral . runIdentity . Streamly.length)
 {-# INLINEABLE cerealStream #-}
-
+-}
 cerealArray :: (S.Serialize a
                , P.Member (P.Embed IO) r
                , P.MemberWithError (P.Error C.CacheError) r
                ) => C.Serialize r a (Streamly.Array.Array Word.Word8)
 cerealArray = C.Serialize
-  (return . Streamly.Cereal.encodeStreamlyArray)
+  (\a -> return $ (Streamly.Cereal.encodeStreamlyArray a, a))
   (P.fromEither . mapLeft C.DeSerializationError . Streamly.Cereal.decodeStreamlyArray)
   (fromIntegral . Streamly.Array.length)
 
-cerealStreamArray :: (S.Serialize a
+cerealStreamArray :: forall r a.(S.Serialize a
                      , P.Member (P.Embed IO) r                
                      , P.MemberWithError (P.Error Exceptions.SomeException) r
                      , P.MemberWithError (P.Error C.CacheError) r
                      )
                   => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
-cerealStreamArray = C.Serialize
-  Streamly.Cereal.encodeStreamArray
-  (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
-  (fromIntegral . Streamly.Array.length)
+cerealStreamArray = 
+  let foldToArray :: Streamly.Fold.Fold m a (Streamly.Array.Array Word.Word8)
+      foldToArray = fmap Streamly.Array.toArray $ Streamly.Fold.lmap (Streamly.Cereal.encodeStreamly) $ Streamly.Array.write
+      foldToStream :: Streamly.Fold.Fold m a (Streamly.SerialT (P.Sem r) a)
+      foldToStream = fmap Streamly.Data.Array.toStream $ Streamly.Data.Array.write 
+  in C.Serialize
+     (\sa -> Streamly.fold (Streamly.Fold.tee foldToArray foldToStream) sa)  --Streamly.Cereal.encodeStreamArray)
+     (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
+     (fromIntegral . Streamly.Array.length)
 
 -- go via list?
 cerealStreamViaListArray :: (S.Serialize a
@@ -173,7 +183,7 @@ store
   => T.Text
   -> a
   -> P.Sem r ()
-store k a = K.wrapPrefix "Knit.store" $ do
+store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
@@ -185,7 +195,8 @@ retrieve
      , S.Serialize a)
   => T.Text
   -> P.Sem r a
-retrieve k =  K.wrapPrefix "Cache.retrieve" $ C.retrieveAndDecode knitSerialize k
+retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> k <> ")")
+              $ C.retrieveAndDecode knitSerialize k
 {-# INLINEABLE retrieve #-}
 
 -- | Retrieve an a from the store at key k.
@@ -199,7 +210,9 @@ retrieveOrMake
   => T.Text
   -> P.Sem r a
   -> P.Sem r a
-retrieveOrMake k toMake = K.wrapPrefix "Cache.retrieveOrMake" $ C.retrieveOrMake knitSerialize k toMake
+retrieveOrMake k toMake =
+  K.wrapPrefix ("Cache.retrieveOrMake (key=" <> k <> ")")
+  $ C.retrieveOrMake knitSerialize k toMake
 {-# INLINEABLE retrieveOrMake #-}
 
 retrieveOrMakeTransformed
@@ -229,7 +242,7 @@ storeStream
   => T.Text
   -> Streamly.SerialT (P.Sem r) a
   -> P.Sem r ()
-storeStream k aS = K.wrapPrefix "Cache.storeStream" $ do
+storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
   K.logLE K.Diagnostic $ "Called with k=" <> k
   C.encodeAndStore knitSerializeStream k aS
 {-# INLINEABLE storeStream #-}
@@ -243,7 +256,9 @@ retrieveStream
      , S.Serialize a)
   => T.Text
   -> Streamly.SerialT (P.Sem r) a
-retrieveStream k =  Streamly.concatM $ K.wrapPrefix "Cache.retrieve" $ C.retrieveAndDecode knitSerializeStream k
+retrieveStream k =  Streamly.concatM
+                    $ K.wrapPrefix ("Cache.retrieveStream (key=" <> k <> ")")
+                    $ C.retrieveAndDecode knitSerializeStream k
 {-# INLINEABLE retrieveStream #-}
 
 
@@ -259,7 +274,9 @@ retrieveOrMakeStream
   => T.Text
   -> Streamly.SerialT (P.Sem r) a
   -> Streamly.SerialT (P.Sem r) a
-retrieveOrMakeStream k toMake = Streamly.concatM $ K.wrapPrefix "Cache.retrieveOrMakeStream" $ C.retrieveOrMake knitSerializeStream k (return toMake)
+retrieveOrMakeStream k toMake = Streamly.hoist (K.wrapPrefix $ "Cache.retrieveOrMakeStream (key=" <> k <> ")")
+                                $ Streamly.concatM
+                                $ C.retrieveOrMake knitSerializeStream k (return toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
 
 --  This one needs a "wrapPrefix".  But how, in stream land?
@@ -276,7 +293,8 @@ retrieveOrMakeTransformedStream
   -> Streamly.SerialT (P.Sem r) a
   -> Streamly.SerialT (P.Sem r) a
 retrieveOrMakeTransformedStream toSerializable fromSerializable k toMake =
-  Streamly.map fromSerializable
+  Streamly.hoist (K.wrapPrefix $ "retrieveOrMakeTransformedStream (key=" <> k <> ")")
+  $ Streamly.map fromSerializable
   $ retrieveOrMakeStream k (Streamly.map toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
 
