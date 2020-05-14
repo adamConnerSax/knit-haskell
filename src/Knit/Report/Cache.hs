@@ -57,7 +57,6 @@ import qualified Data.Word                     as Word
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
---import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy.MonadCatch
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
@@ -66,13 +65,11 @@ import qualified Streamly.Data.Fold                 as Streamly.Fold
 import qualified Streamly.Internal.Data.Fold                 as Streamly.Fold
 import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.Internal.Memory.Array         as Streamly.Array
---import qualified Streamly.Internal.Memory.ArrayStream         as Streamly.Array
 import qualified Streamly.Internal.Data.Array           as Streamly.Data.Array
---import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
 import qualified Streamly.External.ByteString as Streamly.ByteString
 
-type KnitCache = C.AtomicCache T.Text CacheData
+type KnitCache = C.Cache T.Text CacheData
 
 type CacheData = Streamly.Array.Array Word.Word8
 
@@ -147,10 +144,9 @@ cerealArray = C.Serialize
   (\a -> return $ (Streamly.Cereal.encodeStreamlyArray a, a))
   (P.fromEither . mapLeft C.DeSerializationError . Streamly.Cereal.decodeStreamlyArray)
   (fromIntegral . Streamly.Array.length)
+{-# INLINEABLE cerealArray #-}
 
-
--- for these, if necessary,  we buffer after makingin a Streamly.Data.Array, an array of boxed values.
-
+-- for these, if necessary,  we buffer after making with a Streamly.Data.Array, an array of boxed values.
 cerealStreamArray :: forall r a.(S.Serialize a                                
                      , P.Member (P.Embed IO) r                
                      , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -165,11 +161,7 @@ cerealStreamArray = C.Serialize
   )
   (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
   (fromIntegral . Streamly.Array.length)
-
--- via list
---dataArrayF :: Streamly.Fold.Fold m a (Streamly.Data.Array a)
---dataArrayF = Streamly.Data.Array.write
-
+{-# INLINEABLE cerealStreamArray #-}
 
 cerealStreamViaListArray :: (S.Serialize a
                             , P.Member (P.Embed IO) r                
@@ -185,7 +177,7 @@ cerealStreamViaListArray = C.Serialize
   )
   (P.fromEither . mapLeft (C.DeSerializationError . T.pack) . S.runGet (Streamly.Cereal.getStreamOf S.get) . Streamly.ByteString.fromArray)
   (fromIntegral . Streamly.Array.length)
-
+{-# INLINEABLE cerealStreamViaListArray #-}
 
 -- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
 store

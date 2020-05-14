@@ -29,11 +29,8 @@ they are serializable.
 module Knit.Effect.AtomicCache
   (
     -- * Effect
-    AtomicCache
-  , SimpleCache
+    Cache
     -- * Actions
---  , cacheLookup
---  , cacheUpdate  
   , encodeAndStore
   , retrieveAndDecode
   , lookupAndDecode
@@ -87,20 +84,22 @@ import qualified System.IO.Error               as IO.Error
 
 {- TODO:
 1. Can this deisgn be simplified, part 1. The Maybe in the TMVar seems like it should be uneccessary.
-2. Can this design be simplified, part 2. Returning the emptyTMVar from the lookup seems...leaky.
-Can this be done in a way so that it must be filled?
+2. It'd be nice to make sure we can't leave the empty TVar. Can this be done in a way so that it must be filled?
 3. We should be able to factor out some things around handling the returned TMVar
 -}
-
+-- | Error Type for Cache errors.  Simplifies catching them and reporting them.
 data CacheError =
   ItemNotFoundError T.Text
   | DeSerializationError T.Text
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
 
--- encode has a weird return type because sometimes a is monadic and we need to run something to get the result.
--- The a we return should be just be a stored version.  It will often be the a we input.
-
+-- | Type to carry encoding/decoding functions for Serializing data.  Allows for different Serializers as well as
+-- Serializing to different types of in memory store.
+-- @encode@ returns the encoded value *and* a (possibly buffered) copy of its input in the case where the imput is expensive to produce.
+-- This is designed around serialization of streams, where the original stream may be expensive to run but once run,
+-- we can return a "buffered" stream which just unfolds from a memory buffer.
+-- In many cases, we will just return the input in that slot.
 data Serialize r a ct where
   Serialize :: (P.MemberWithError (P.Error CacheError) r)
             => (a -> P.Sem r (ct, a)) -- encode
@@ -111,17 +110,17 @@ data Serialize r a ct where
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v
 -- | h is a type we use for holding a resource
-data Cache k v h m a where
-  CacheLookup :: k -> Cache k v h m (Either h v)
-  CacheUpdate :: k -> Maybe v -> Cache k v h m ()
+data Cache k v m a where
+  CacheLookup :: k -> Cache k v m (Maybe v)
+  CacheUpdate :: k -> Maybe v -> Cache k v m ()
   
 P.makeSem ''Cache
 
 -- | Combinator to combine the action of serializing and caching
 encodeAndStore
-  :: forall h ct k a r.
+  :: forall ct k a r.
      ( Show k
-     , P.Member (Cache k ct h) r
+     , P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      )
   => Serialize r a ct
@@ -137,47 +136,46 @@ encodeAndStore (Serialize encode _ encBytes) k x =
     cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
 
--- We need some exception handling here to make sure the TMVar gets filled somehow
-handleAtomicLookup
-  :: ( P.Members [AtomicCache k ct, P.Embed IO] r
+-- | Combinator to handle the frequent combination of lookup and, if that fails, running an action to update the cache. 
+-- TODO: We need some exception handling here to make sure, in the case of an Atomic cache,
+-- the TMVar gets filled somehow and the key deleted from cache.
+retrieveOrMakeAndUpdateCache
+  :: ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
      )
   => Serialize r a ct -> P.Sem r (Maybe a) -> k -> P.Sem r (Maybe a)
-handleAtomicLookup (Serialize encode decode encBytes) tryIfMissing key =
-  K.wrapPrefix ("AtomicCache.handleAtomicLookup (key=" <> (T.pack $ show key) <> ")") $ do
+retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key =
+  K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
     fromCache <- cacheLookup key
     case fromCache of
-      Right ct -> do
+      Just ct -> do
         let nBytes = encBytes ct
         K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
         fmap Just $ decode ct
-      Left emptyTMV -> do
+      Nothing -> do
         K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
         ma <- tryIfMissing
         case ma of
           Nothing -> do
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making failed."
-            P.embed $ C.atomically $ C.putTMVar emptyTMV Nothing
             cacheUpdate key Nothing
             return Nothing
           Just a -> do
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
-            (ct', a') <- encode a -- a' is the "already computed" version of a
+            (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
             let nBytes = encBytes ct'
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
-            K.logLE K.Diagnostic "Updating TMVar..."          
-            P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct') -- for any thread waiting on the TMVar
             K.logLE K.Diagnostic $ "Updating cache..."          
             cacheUpdate key (Just ct')
             K.logLE K.Diagnostic $ "Finished making and updating."          
             return $ Just a'
-  
+{-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
 -- | throws if item not found or any other error during retrieval
 retrieveAndDecode
-  :: (P.Member (AtomicCache k ct) r
+  :: (P.Member (Cache k ct) r
      , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r
      , K.LogWithPrefixesLE r
@@ -187,7 +185,7 @@ retrieveAndDecode
   -> k
   -> P.Sem r a
 retrieveAndDecode s k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
-  fromCache <- handleAtomicLookup s (return Nothing) k
+  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) k
   case fromCache of
     Nothing -> P.throw $ ItemNotFoundError $ "No item found in cache for key=" <> (T.pack $ show k) <> "."
     Just x -> return x
@@ -197,7 +195,7 @@ retrieveAndDecode s k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (
 -- | Returns @Nothing@ if item not found and throws on any other error.
 lookupAndDecode
   :: forall k a ct r
-   . ( P.Member (AtomicCache k ct) r
+   . ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r
@@ -206,11 +204,13 @@ lookupAndDecode
   => Serialize r a ct
   -> k
   -> P.Sem r (Maybe a)
-lookupAndDecode s k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ handleAtomicLookup s (return Nothing) k 
+lookupAndDecode s k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) k 
 {-# INLINEABLE lookupAndDecode #-}
 
+-- | Combinator to combine the action of retrieving from cache and deserializing
+-- | Throws if item not found and making fails.
 retrieveOrMake
-  :: ( P.Member (AtomicCache k ct) r
+  :: ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r
@@ -224,26 +224,24 @@ retrieveOrMake s key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pac
   let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found in cache. Making..."
         fmap Just makeAction
-  fromCache <- handleAtomicLookup s makeIfMissing key
+  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key
   case fromCache of
     Just x -> return x
-    Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible."
+    Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
 
 -- | Combinator for clearing the cache at a given key
-clear :: P.Member (Cache k ct h) r => k -> P.Sem r ()
+clear :: P.Member (Cache k ct) r => k -> P.Sem r ()
 clear k = cacheUpdate k Nothing
 {-# INLINEABLE clear #-}
 
--- structure for in-memory cache
+-- structure for in-memory atomic cache
 -- outer TVar so only one thread can get the inner TMVar at a time
 -- TMVar so we can block if mulitple threads are trying to read or update
 -- Maybe inside so we can notify waiting threads that whatever they were waiting on
 -- to fill the TMVar failed.
 type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe v)))
-type AtomicCache k ct = Cache k ct (C.TMVar (Maybe ct)) 
-type SimpleCache k ct = Cache k ct ()
 
--- interpret via MemCache
+-- | lookup combinator for in-memory AtomicMemCache
 atomicMemLookup :: (Ord k
                    , Show k
                    , P.Member (P.Embed IO) r
@@ -251,21 +249,23 @@ atomicMemLookup :: (Ord k
                    )
               => AtomicMemCache k ct
               -> k
-              -> P.Sem r (Either (C.TMVar (Maybe ct)) ct) -- we either return the value or a tvar to be filled
+              -> P.Sem r (Maybe ct) -- we either return the value or a tvar to be filled
 atomicMemLookup cache key = K.wrapPrefix "atomicMemLookup" $ do
   K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Called."
   P.embed $ C.atomically $ do
     mv <- (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
     case mv of
-      Just v -> return $ Right v
+      Just v -> return $ Just v
       Nothing -> do
         newTMV <- C.newEmptyTMVar
         C.modifyTVar cache (M.insert key newTMV)
-        return $ Left newTMV
+        return Nothing
 {-# INLINEABLE atomicMemLookup #-}
 
+-- | data type to simplify logging in AtomicMemCache updates
 data MemUpdateAction = Deleted | Replaced | Filled deriving (Show)
 
+-- | update combinator for in-memory AtomicMemCache
 atomicMemUpdate :: (Ord k
                    , Show k
                    , P.Member (P.Embed IO) r
@@ -299,13 +299,14 @@ atomicMemUpdate cache key mct =
     Filled -> K.logLE K.Diagnostic $ keyText <> "filled"
 {-# INLINEABLE atomicMemUpdate #-}
 
+-- | Interpreter for in-memory only AtomicMemCache
 runAtomicInMemoryCache :: (Ord k
                           , Show k
                           , P.Member (P.Embed IO) r
                           , K.LogWithPrefixesLE r
                           )
                        => AtomicMemCache k ct
-                       -> P.InterpreterFor (AtomicCache k ct) r
+                       -> P.InterpreterFor (Cache k ct) r
 runAtomicInMemoryCache cache =
   P.interpret $ \case
     CacheLookup key -> atomicMemLookup cache key
@@ -316,14 +317,15 @@ runAtomicInMemoryCache cache =
 -- Backed by Another Cache
 -- lookup is the hard case.  If we don't find it, we want to check the backup cache
 -- and fill in this cache from there, if possible
+-- | lookup for an AtomicMemCache which is backed by some other cache, probably a persistence layer.
 atomicMemLookupB :: (Ord k
-                    , P.Members '[P.Embed IO, SimpleCache k ct] r
+                    , P.Members '[P.Embed IO, Cache k ct] r
                     , K.LogWithPrefixesLE r
                     , Show k
                     )
                  =>  AtomicMemCache k ct
                  -> k
-                 -> P.Sem r (Either (C.TMVar (Maybe ct)) ct)
+                 -> P.Sem r (Maybe ct)
 atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
   let keyText = "key=" <> (T.pack $ show key) <> ": "
   K.logLE K.Diagnostic $ keyText <> "checking in mem cache..."
@@ -342,23 +344,25 @@ atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
         C.modifyTVar cache (M.insert key newTMV)
         return $ Left newTMV
   case x of
-    Right ct -> K.logLE K.Diagnostic (keyText <> "found.") >> return (Right ct)
+    Right ct -> K.logLE K.Diagnostic (keyText <> "found.") >> return (Just ct)
     Left emptyTMV -> do
       K.logLE K.Diagnostic (keyText <> "not found.  Holding empty TMVar. Checking backup cache...")
       inOtherM <- cacheLookup key      
       case inOtherM of
-        Left () -> K.logLE K.Diagnostic (keyText <> "not found in backup cache.  Returning empty TMVar.") >> return (Left emptyTMV)
-        Right ct -> do
-          K.logLE K.Diagnostic (keyText <> "Found in backup cache.  Putting in TMVar.")
+        Nothing -> K.logLE K.Diagnostic (keyText <> "not found in backup cache.") >> return Nothing
+        Just ct -> do
+          K.logLE K.Diagnostic (keyText <> "Found in backup cache.  Filling empty TMVar.")
           P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct)
           K.logLE K.Diagnostic (keyText <> "Returning")
-          return $ Right ct
+          return $ Just ct
 {-# INLINEABLE atomicMemLookupB #-}
-            
+
+-- | update for an AtomicMemCache which is backed by some other cache, probably a persistence layer.
+-- This just does the update in both caches
 atomicMemUpdateB ::  (Ord k
                      , Show k
                      , K.LogWithPrefixesLE r
-                     , P.Members '[P.Embed IO, SimpleCache k ct] r)
+                     , P.Members '[P.Embed IO, Cache k ct] r)
                  => AtomicMemCache k ct
                  -> k
                  -> Maybe ct
@@ -371,27 +375,29 @@ atomicMemUpdateB cache key mct = K.wrapPrefix "atomicMemUpdateB" $ do
   cacheUpdate key mct
 {-# INLINEABLE atomicMemUpdateB #-}
 
+-- | interpret Cache via a different-Cache-backed AtomicMemCache
 runBackedAtomicInMemoryCache :: (Ord k
                                 , Show k
                                 , K.LogWithPrefixesLE r
-                                , P.Members '[P.Embed IO, SimpleCache k ct] r
+                                , P.Members '[P.Embed IO, Cache k ct] r
                                 )
                              => AtomicMemCache k ct
-                             -> P.InterpreterFor (AtomicCache k ct) r
+                             -> P.InterpreterFor (Cache k ct) r
 runBackedAtomicInMemoryCache cache =
   P.interpret $ \case
     CacheLookup k -> atomicMemLookupB cache k
     CacheUpdate k mct -> atomicMemUpdateB cache k mct
 {-# INLINEABLE runBackedAtomicInMemoryCache #-}
 
+-- | re-interpret Cache, using AtomicMemCache for in-memory store, into another cache, usually a persistent store.
 backedAtomicInMemoryCache :: (Ord k
                              , Show k
                              , P.Member (P.Embed IO) r
                              , K.LogWithPrefixesLE r
                              )
                           => AtomicMemCache k ct
-                          -> P.Sem ((AtomicCache k ct) ': r) a
-                          -> P.Sem ((SimpleCache k ct) ': r) a
+                          -> P.Sem ((Cache k ct) ': r) a
+                          -> P.Sem ((Cache k ct) ': r) a
 backedAtomicInMemoryCache cache =
   P.reinterpret $ \case
     CacheLookup k -> atomicMemLookupB cache k
@@ -399,43 +405,112 @@ backedAtomicInMemoryCache cache =
 {-# INLINEABLE backedAtomicInMemoryCache #-} 
 
 
+-- | Interpret Cache via AtomicMemCache and an interpreter for a backing cache,
+-- usually a persistence layer.
 runPersistenceBackedAtomicInMemoryCache :: (Ord k
                                            , Show k
                                            , P.Member (P.Embed IO) r
                                            , P.MemberWithError (P.Error CacheError) r
                                            , K.LogWithPrefixesLE r
                                            )
-                                        => P.InterpreterFor (SimpleCache k ct) r -- persistence layer interpreter
+                                        => P.InterpreterFor (Cache k ct) r -- persistence layer interpreter
                                         -> AtomicMemCache k ct
-                                        -> P.InterpreterFor (AtomicCache k ct) r
+                                        -> P.InterpreterFor (Cache k ct) r
 runPersistenceBackedAtomicInMemoryCache runPersistentCache cache = runPersistentCache . backedAtomicInMemoryCache cache
 {-# INLINEABLE runPersistenceBackedAtomicInMemoryCache #-}
 
-
+-- | Interpret Cache via AtomicMemCache and an interpreter for a backing cache,
+-- usually a persistence layer.  Create a new, empty, AtomicMemCache to begin.
 runPersistenceBackedAtomicInMemoryCache' :: (Ord k
                                             , Show k
                                             , P.Member (P.Embed IO) r
                                             , P.MemberWithError (P.Error CacheError) r
                                             , K.LogWithPrefixesLE r
                                             )
-                                        => P.InterpreterFor (SimpleCache k ct) r
-                                        -> P.InterpreterFor (AtomicCache k ct) r
+                                        => P.InterpreterFor (Cache k ct) r
+                                        -> P.InterpreterFor (Cache k ct) r
 runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
   cache <- P.embed $ C.atomically $ C.newTVar mempty
   runPersistenceBackedAtomicInMemoryCache runPersistentCache cache x 
 
 
+-- | Interpreter for Cache via persistence to disk as a Streamly Memory.Array (Contiguous storage of Storables) of Bytes (Word8)
+persistAsByteArray
+  :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> P.InterpreterFor (Cache k (Streamly.Array.Array Word.Word8)) r
+persistAsByteArray keyToFilePath =
+  P.interpret $ \case
+    CacheLookup k -> K.wrapPrefix "persistAsByteArray.CacheLookup" $ do
+      let filePath = keyToFilePath k
+      K.logLE K.Diagnostic $ "Reading serialization from disk."
+      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ Streamly.Array.fromStream $ Streamly.File.toBytes filePath
+    CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
+      let keyText = "key=" <> (T.pack $ show k) <> ": "
+      case mct of
+        Nothing -> do
+           K.logLE K.Diagnostic $ keyText <> "called with Nothing. Deleting file."
+           rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+        Just ct -> do
+          K.logLE K.Diagnostic $ keyText <> "called with content. Writing file."
+          let filePath     = (keyToFilePath k)
+              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+          _ <- createDirIfNecessary dirPath
+          K.logLE K.Diagnostic $ "Writing serialization to disk."
+          K.logLE K.Diagnostic $ keyText <> "Writing " <> (T.pack $ show $ Streamly.Array.length ct) <> " bytes to disk." 
+          rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
+{-# INLINEABLE persistAsByteArray #-}
 
+-- | Interpreter for Cache via persistence to disk as a strict ByteString
+persistAsStrictByteString
+  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> P.InterpreterFor (Cache k BS.ByteString) r
+persistAsStrictByteString keyToFilePath =
+  P.interpret $ \case
+    CacheLookup k -> do
+      K.logLE K.Diagnostic $ "Reading serialization from disk."
+      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ BS.readFile (keyToFilePath k)
+    CacheUpdate k mct -> case mct of
+      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+      Just ct -> do
+        let filePath     = (keyToFilePath k)
+            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+        _ <- createDirIfNecessary dirPath
+        K.logLE K.Diagnostic $ "Writing serialization to disk."
+        rethrowIOErrorAsCacheError $ BS.writeFile filePath ct  -- maybe we should do this in another thread?
+{-# INLINEABLE persistAsStrictByteString #-}
+
+-- | Interpreter for Cache via persistence to disk as a lazy ByteString
+persistAsByteString
+  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+  => (k -> FilePath)
+  -> P.InterpreterFor (Cache k BL.ByteString) r
+persistAsByteString keyToFilePath =
+  P.interpret $ \case
+    CacheLookup k -> do
+      K.logLE K.Diagnostic $ "Reading serialization from disk."
+      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ BL.readFile (keyToFilePath k)
+    CacheUpdate k mct -> case mct of
+      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+      Just ct -> do
+        let filePath     = (keyToFilePath k)
+            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+        _ <- createDirIfNecessary dirPath
+        K.logLE K.Diagnostic $ "Writing serialization to disk."
+        rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
+
+-- | Interpreter Cache via persistence to disk as a Streamly stream of Bytes (Word8)
 persistAsByteStreamly
   :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
-  -> P.InterpreterFor (SimpleCache k (Streamly.SerialT Identity Word.Word8)) r
+  -> P.InterpreterFor (Cache k (Streamly.SerialT Identity Word.Word8)) r
 persistAsByteStreamly keyToFilePath =
   P.interpret $ \case
     CacheLookup k -> K.wrapPrefix "persistAsByteStreamly.CacheLookup" $ do
       let filePath = keyToFilePath k
       K.logLE K.Diagnostic $ "Attempting to read serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ sequenceStreamly $ Streamly.File.toBytes filePath --System.withBinaryFile filePath System.ReadMode readFromHandle
+      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ sequenceStreamly $ Streamly.File.toBytes filePath --System.withBinaryFile filePath System.ReadMode readFromHandle
     CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
       let keyText = "key=" <> (T.pack $ show k) <> ": "
       case mct of
@@ -456,75 +531,8 @@ persistAsByteStreamly keyToFilePath =
     sequenceStreamly = fmap Streamly.fromList . Streamly.toList
     streamlyRaise :: Monad m => Streamly.SerialT Identity Word.Word8 -> Streamly.SerialT m Word.Word8
     streamlyRaise = Streamly.fromList . runIdentity . Streamly.toList
---    readFromHandle h = sequenceStreamly $ Streamly.unfold Streamly.Handle.read h
     writeToHandle bs h = Streamly.fold (Streamly.Handle.write h) $ streamlyRaise bs
 {-# INLINEABLE persistAsByteStreamly #-}
-
-persistAsByteArray
-  :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
-  => (k -> FilePath)
-  -> P.InterpreterFor (SimpleCache k (Streamly.Array.Array Word.Word8)) r
-persistAsByteArray keyToFilePath =
-  P.interpret $ \case
-    CacheLookup k -> K.wrapPrefix "persistAsByteArray.CacheLookup" $ do
-      let filePath = keyToFilePath k
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ Streamly.Array.fromStream $ Streamly.File.toBytes filePath
-    CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
-      let keyText = "key=" <> (T.pack $ show k) <> ": "
-      case mct of
-        Nothing -> do
-           K.logLE K.Diagnostic $ keyText <> "called with Nothing. Deleting file."
-           rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-        Just ct -> do
-          K.logLE K.Diagnostic $ keyText <> "called with content. Writing file."
-          let filePath     = (keyToFilePath k)
-              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-          _ <- createDirIfNecessary dirPath
-          K.logLE K.Diagnostic $ "Writing serialization to disk."
-          K.logLE K.Diagnostic $ keyText <> "Writing " <> (T.pack $ show $ Streamly.Array.length ct) <> " bytes to disk." 
-          rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
-{-# INLINEABLE persistAsByteArray #-}
-
-
-persistAsStrictByteString
-  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
-  => (k -> FilePath)
-  -> P.InterpreterFor (SimpleCache k BS.ByteString) r
-persistAsStrictByteString keyToFilePath =
-  P.interpret $ \case
-    CacheLookup k -> do
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ BS.readFile (keyToFilePath k)
-    CacheUpdate k mct -> case mct of
-      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-      Just ct -> do
-        let filePath     = (keyToFilePath k)
-            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-        _ <- createDirIfNecessary dirPath
-        K.logLE K.Diagnostic $ "Writing serialization to disk."
-        rethrowIOErrorAsCacheError $ BS.writeFile filePath ct  -- maybe we should do this in another thread?
-{-# INLINEABLE persistAsStrictByteString #-}
-
--- | Persist functions for disk-based persistence with a lazy ByteString interface on the serialization side
-persistAsByteString
-  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
-  => (k -> FilePath)
-  -> P.InterpreterFor (SimpleCache k BL.ByteString) r
-persistAsByteString keyToFilePath =
-  P.interpret $ \case
-    CacheLookup k -> do
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToEither $ BL.readFile (keyToFilePath k)
-    CacheUpdate k mct -> case mct of
-      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-      Just ct -> do
-        let filePath     = (keyToFilePath k)
-            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-        _ <- createDirIfNecessary dirPath
-        K.logLE K.Diagnostic $ "Writing serialization to disk."
-        rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
-
 
 createDirIfNecessary
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
@@ -552,6 +560,13 @@ fileNotFoundToEither x = (fmap Right x) `Exception.catch` f where
   f :: Exception.IOException -> IO (Either () a)
   f e = if IO.Error.isDoesNotExistError e then return (Left ()) else Exception.throw e 
 {-# INLINEABLE fileNotFoundToEither #-}
+
+fileNotFoundToMaybe :: IO a -> IO (Maybe a)
+fileNotFoundToMaybe x = (fmap Just x) `Exception.catch` f where
+  f :: Exception.IOException -> IO (Maybe a)
+  f e = if IO.Error.isDoesNotExistError e then return Nothing else Exception.throw e 
+{-# INLINEABLE fileNotFoundToMaybe #-}
+
 
 rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r) => IO a -> P.Sem r a
 rethrowIOErrorAsCacheError x = P.fromExceptionVia (\(e :: IO.Error.IOError) -> PersistError $ "IOError: " <> (T.pack $ show e)) x
