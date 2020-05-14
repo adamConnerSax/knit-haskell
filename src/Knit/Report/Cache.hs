@@ -57,7 +57,7 @@ import qualified Data.Word                     as Word
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
-import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy.MonadCatch
+--import qualified Polysemy.ConstraintAbsorber.MonadCatch as Polysemy.MonadCatch
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
@@ -65,9 +65,10 @@ import qualified Streamly.Internal.Prelude              as Streamly
 import qualified Streamly.Data.Fold                 as Streamly.Fold
 import qualified Streamly.Internal.Data.Fold                 as Streamly.Fold
 import qualified Streamly.Memory.Array         as Streamly.Array
-import qualified Streamly.Internal.Memory.ArrayStream         as Streamly.Array
+import qualified Streamly.Internal.Memory.Array         as Streamly.Array
+--import qualified Streamly.Internal.Memory.ArrayStream         as Streamly.Array
 import qualified Streamly.Internal.Data.Array           as Streamly.Data.Array
-import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
+--import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
 import qualified Streamly.External.ByteString as Streamly.ByteString
 
@@ -136,6 +137,8 @@ cerealStream = C.Serialize
   (fromIntegral . runIdentity . Streamly.length)
 {-# INLINEABLE cerealStream #-}
 -}
+
+
 cerealArray :: (S.Serialize a
                , P.Member (P.Embed IO) r
                , P.MemberWithError (P.Error C.CacheError) r
@@ -145,23 +148,29 @@ cerealArray = C.Serialize
   (P.fromEither . mapLeft C.DeSerializationError . Streamly.Cereal.decodeStreamlyArray)
   (fromIntegral . Streamly.Array.length)
 
-cerealStreamArray :: forall r a.(S.Serialize a
+
+-- for these, if necessary,  we buffer after makingin a Streamly.Data.Array, an array of boxed values.
+
+cerealStreamArray :: forall r a.(S.Serialize a                                
                      , P.Member (P.Embed IO) r                
                      , P.MemberWithError (P.Error Exceptions.SomeException) r
                      , P.MemberWithError (P.Error C.CacheError) r
                      )
                   => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
-cerealStreamArray = 
-  let foldToArray :: Streamly.Fold.Fold m a (Streamly.Array.Array Word.Word8)
-      foldToArray = fmap Streamly.Array.toArray $ Streamly.Fold.lmap (Streamly.Cereal.encodeStreamly) $ Streamly.Array.write
-      foldToStream :: Streamly.Fold.Fold m a (Streamly.SerialT (P.Sem r) a)
-      foldToStream = fmap Streamly.Data.Array.toStream $ Streamly.Data.Array.write 
-  in C.Serialize
-     (\sa -> Streamly.fold (Streamly.Fold.tee foldToArray foldToStream) sa)  --Streamly.Cereal.encodeStreamArray)
-     (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
-     (fromIntegral . Streamly.Array.length)
+cerealStreamArray = C.Serialize
+  (Streamly.fold (Streamly.Fold.tee
+                 (Streamly.Fold.lmapM (Streamly.Array.fromStream . Streamly.Cereal.encodeStreamly) $ Streamly.Fold.mconcat)
+                 (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
+                 )
+  )
+  (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
+  (fromIntegral . Streamly.Array.length)
 
--- go via list?
+-- via list
+--dataArrayF :: Streamly.Fold.Fold m a (Streamly.Data.Array a)
+--dataArrayF = Streamly.Data.Array.write
+
+
 cerealStreamViaListArray :: (S.Serialize a
                             , P.Member (P.Embed IO) r                
                             , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -169,7 +178,11 @@ cerealStreamViaListArray :: (S.Serialize a
                             )
                          => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
 cerealStreamViaListArray = C.Serialize
-  (fmap (Streamly.ByteString.toArray . S.runPut . S.putListOf S.put) . Streamly.toList)
+  (Streamly.fold (Streamly.Fold.tee
+                   (fmap ((Streamly.ByteString.toArray . S.runPut . S.putListOf S.put) ) $ Streamly.Fold.toList)
+                   (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
+                 )
+  )
   (P.fromEither . mapLeft (C.DeSerializationError . T.pack) . S.runGet (Streamly.Cereal.getStreamOf S.get) . Streamly.ByteString.fromArray)
   (fromIntegral . Streamly.Array.length)
 
