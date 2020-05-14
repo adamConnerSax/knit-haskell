@@ -36,13 +36,14 @@ module Knit.Report.Cache
   , retrieveOrMakeStream
   , retrieveOrMakeTransformedStream
   , clear
+  , clearIfPresent
   )
 where
 
 --import qualified Knit.Report.EffectStack       as K
 
 import qualified Knit.Effect.AtomicCache       as C
-import           Knit.Effect.AtomicCache        (clear)
+import           Knit.Effect.AtomicCache        (clear, clearIfPresent)
 import qualified Knit.Effect.Logger            as K
 
 import           Control.Monad (join)
@@ -73,6 +74,7 @@ type KnitCache = C.Cache T.Text CacheData
 
 type CacheData = Streamly.Array.Array Word.Word8
 
+-- | serialize a Serializable structure to the CacheData type.
 knitSerialize :: ( S.Serialize a
                  , P.Member (P.Embed IO) r
                  , P.MemberWithError (P.Error C.CacheError) r
@@ -81,7 +83,7 @@ knitSerialize :: ( S.Serialize a
 knitSerialize = cerealArray
 {-# INLINEABLE knitSerialize #-}
 
-
+-- | serialize a Streamly stream of Serializable structures to the CacheData type.
 knitSerializeStream :: (S.Serialize a
                        , P.Member (P.Embed IO) r                
                        , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -91,10 +93,12 @@ knitSerializeStream :: (S.Serialize a
 knitSerializeStream = cerealStreamViaListArray
 {-# INLINEABLE knitSerializeStream #-}
 
+-- | Map the left side of an Either
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 {-# INLINEABLE mapLeft #-}
 
+-- | Encode/Decode functions for serializing to strict ByteStrings
 cerealStrict :: (S.Serialize a, P.MemberWithError (P.Error C.CacheError) r)
              => C.Serialize r a BS.ByteString
 cerealStrict = C.Serialize 
@@ -103,6 +107,7 @@ cerealStrict = C.Serialize
   (fromIntegral . BS.length)
 {-# INLINEABLE cerealStrict #-}
 
+-- | Encode/Decode functions for serializing to lazy ByteStrings
 cereal :: (S.Serialize a, P.MemberWithError (P.Error C.CacheError) r)
        => C.Serialize r a BL.ByteString
 cereal = C.Serialize
@@ -111,6 +116,7 @@ cereal = C.Serialize
   BL.length
 {-# INLINEABLE cereal #-}
 
+-- | Encode/Decode functions for serializing to Streamly Streams
 cerealStreamly :: (S.Serialize a
                   , P.Member (P.Embed IO) r
                   , P.MemberWithError (P.Error C.CacheError) r
@@ -135,7 +141,7 @@ cerealStream = C.Serialize
 {-# INLINEABLE cerealStream #-}
 -}
 
-
+-- | Encode/Decode functions for serializing to Streamly Arrays
 cerealArray :: (S.Serialize a
                , P.Member (P.Embed IO) r
                , P.MemberWithError (P.Error C.CacheError) r
@@ -146,7 +152,8 @@ cerealArray = C.Serialize
   (fromIntegral . Streamly.Array.length)
 {-# INLINEABLE cerealArray #-}
 
--- for these, if necessary,  we buffer after making with a Streamly.Data.Array, an array of boxed values.
+-- | Encode/Decode functions for serializing Streamly streams to Streamly Arrays
+-- When encoding, we also return a "buffered" stream so that the input stream is only "run" once.
 cerealStreamArray :: forall r a.(S.Serialize a                                
                      , P.Member (P.Embed IO) r                
                      , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -163,6 +170,8 @@ cerealStreamArray = C.Serialize
   (fromIntegral . Streamly.Array.length)
 {-# INLINEABLE cerealStreamArray #-}
 
+-- | Encode/Decode functions for serializing Streamly streams to Streamly Arrays, using the Cereal functions to encode/decode lists.
+-- When encoding, we also return a "buffered" stream so that the input stream is only "run" once.
 cerealStreamViaListArray :: (S.Serialize a
                             , P.Member (P.Embed IO) r                
                             , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -193,7 +202,7 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
--- | Retrieve an a from the store at key k. Throw if not found or IOError
+-- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
   :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
@@ -220,6 +229,10 @@ retrieveOrMake k toMake =
   $ C.retrieveOrMake knitSerialize k toMake
 {-# INLINEABLE retrieveOrMake #-}
 
+-- | Retrieve an a from the store at key k.
+-- If retrieve fails then perform the action and store the resulting a at key k.
+-- Also has functions for mapping the input and output, often useful for
+-- transforming something without a 'Serialize' instance into something with one.
 retrieveOrMakeTransformed
   :: forall a b r
    . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
@@ -237,7 +250,7 @@ retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
 {-# INLINEABLE retrieveOrMakeTransformed #-}
 
 --
--- | Store an @a@ (serialized to a strict @ByteString@) at key k. Throw PandocIOError on IOError.
+-- | Store a Streamly stream of @a@ at key k. Throw @PandocIOError@ on 'IOError'.
 storeStream
   :: ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
      , P.MemberWithError (P.Error Exceptions.SomeException) r
@@ -253,7 +266,7 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
 {-# INLINEABLE storeStream #-}
 
 
--- | Retrieve an a from the store at key k. Throw if not found or IOError
+-- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 retrieveStream
   :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
@@ -267,8 +280,8 @@ retrieveStream k =  Streamly.concatM
 {-# INLINEABLE retrieveStream #-}
 
 
--- | Retrieve an a from the store at key k.
--- If retrieve fails then perform the action and store the resulting a at key k. 
+-- | Retrieve a Streamly stream of @a@ from the store at key @k@.
+-- If retrieve fails then perform the action and store the resulting stream at key @k@. 
 retrieveOrMakeStream
   :: forall a r
    . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
@@ -284,7 +297,9 @@ retrieveOrMakeStream k toMake = Streamly.hoist (K.wrapPrefix $ "Cache.retrieveOr
                                 $ C.retrieveOrMake knitSerializeStream k (return toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
 
---  This one needs a "wrapPrefix".  But how, in stream land?
+-- | Retrieve a Streamly stream of @a@ from the store at key @k@.
+-- If retrieve fails then perform the action and store the resulting stream at key @k@.
+-- Includes functions to map the stream items before encoding and after decoding.
 retrieveOrMakeTransformedStream
   :: forall a b r
    . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r

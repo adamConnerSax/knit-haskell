@@ -36,6 +36,7 @@ module Knit.Effect.AtomicCache
   , lookupAndDecode
   , retrieveOrMake
   , clear
+  , clearIfPresent
     -- * Serialization
   , Serialize(..)
     -- * Persistance
@@ -233,6 +234,11 @@ retrieveOrMake s key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pac
 clear :: P.Member (Cache k ct) r => k -> P.Sem r ()
 clear k = cacheUpdate k Nothing
 {-# INLINEABLE clear #-}
+
+-- | Combinator for clearing the cache at a given key, dosn't throw on IOError
+clearIfPresent :: (P.Member (Cache k ct) r, P.MemberWithError (P.Error CacheError) r) => k -> P.Sem r ()
+clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> return ())
+{-# INLINEABLE clearIfPresent #-}
 
 -- structure for in-memory atomic cache
 -- outer TVar so only one thread can get the inner TMVar at a time

@@ -225,6 +225,7 @@ tests:
     - plots    
     - polysemy
     - polysemy-plugin
+    - streamly
     - text
 data-dir: data
 data-files:

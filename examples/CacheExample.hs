@@ -8,10 +8,13 @@
 
 module Main where
 
-import qualified Knit.Report                   as K
-import qualified Knit.Effect.Logger            as K
-import qualified Knit.Report.Cache             as KC
+import qualified Knit.Report                   as Knit
+import qualified Knit.Utilities.Streamly       as Knit.Streamly
+--import qualified Knit.Effect.Logger            as K
 
+import qualified Streamly.Prelude as Streamly
+
+import qualified Control.Concurrent            as CC
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
@@ -29,21 +32,21 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let template = K.DefaultTemplate --K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
-  pandocWriterConfig <- K.mkPandocWriterConfig template
+  let template = Knit.DefaultTemplate --K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
+  pandocWriterConfig <- Knit.mkPandocWriterConfig template
                                                templateVars
-                                               K.mindocOptionsF
+                                               Knit.mindocOptionsF
 
-  let knitConfig = K.defaultKnitConfig
-        { K.outerLogPrefix = Just "AsyncExample.Main"
-        , K.logIf = K.logAll
-        , K.pandocWriterConfig = pandocWriterConfig
+  let knitConfig = Knit.defaultKnitConfig
+        { Knit.outerLogPrefix = Just "CacheExample.Main"
+        , Knit.logIf = Knit.logAll
+        , Knit.pandocWriterConfig = pandocWriterConfig
         }                                               
-  resE <- K.knitHtml knitConfig makeDoc
+  resE <- Knit.knitHtml knitConfig makeDoc
 
   case resE of
     Right htmlAsText ->
-      K.writeAndMakePathLT "examples/html/cache_example.html" htmlAsText
+      Knit.writeAndMakePathLT "examples/html/cache_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text
@@ -55,44 +58,61 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: K.KnitOne r => K.Sem r ()
-makeDoc = K.wrapPrefix "makeDoc" $ do
-  K.logLE K.Info "adding some markdown..."
-  K.addMarkDown md1
-  K.logLE K.Info "adding some latex..."
-  K.addMarkDown "## Some example latex"
-  K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
-  K.logLE K.Info "Creating cached action..."
-  let cachingDoubleList = K.retrieveOrMake "cacheExample/doubleList" $ doSomethingEffectful 5 2.2
-  K.logLE K.Info "adding a visualization..."
-  K.addMarkDown "## An example hvega visualization"
-  _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
-  K.addMarkDown
+makeDoc :: Knit.KnitOne r => Knit.Sem r ()
+makeDoc = Knit.wrapPrefix "makeDoc" $ do
+  Knit.logLE Knit.Info "adding some markdown..."
+  Knit.addMarkDown md1
+  Knit.logLE Knit.Info "adding some latex..."
+  Knit.addMarkDown "## Some example latex"
+  Knit.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
+  Knit.logLE Knit.Info "Clearing cacheExample from cache..."
+  Knit.clearIfPresent "cacheExample/test.sbin"
+  Knit.logLE Knit.Info "asynchronously retrieving or making stream of data, then retrieving on this thread to test atomic cache."
+  Knit.logLE Knit.Info $ "This should force the one on this thread to block until the async one,"
+    <> " which will try the cache first"
+    <> ", tries memory, then disk, then makes the data."
+  Knit.logLE Knit.Info "At which point this one will unblock and see the data in the in-memory-cache."
+  testListA <- Knit.async $ Knit.wrapPrefix "ASYNC" $ do
+    dat <- streamLoader
+    Knit.logLE Knit.Diagnostic "Waiting to return from Async"
+    Knit.liftKnit $ CC.threadDelay 1000000
+    return dat
+  Knit.liftKnit $ CC.threadDelay 100000    
+  testList <- streamLoader
+  testListM <- Knit.await testListA
+  case testListM of
+    Nothing -> Knit.logLE Knit.Diagnostic "Error in async retrieve"
+    Just l -> do
+      Knit.logLE Knit.Diagnostic "List returned from async.  Logging async then sync."
+      Knit.logLE Knit.Diagnostic $ "async:" <> (T.pack $ show l)
+      Knit.logLE Knit.Diagnostic $ "sync:" <> (T.pack $ show testList)
+  Knit.logLE Knit.Info "adding a visualization..."
+  Knit.addMarkDown "## An example hvega visualization"
+  _ <- Knit.addHvega Nothing (Just "From the cars data-set") exampleVis
+  Knit.addMarkDown
     "## Example Diagrams visualizations, the second using the plots library."
-  K.logLE K.Info "adding a Diagrams example and plots example..."
-  _ <- K.addDiagramAsSVG Nothing (Just "Example diagram") 300 300 exampleDiagram
-  _ <- K.addDiagramAsSVG
+  Knit.logLE Knit.Info "adding a Diagrams example and plots example..."
+  _ <- Knit.addDiagramAsSVG Nothing (Just "Example diagram") 300 300 exampleDiagram
+  _ <- Knit.addDiagramAsSVG
     Nothing
     (Just "Example diagrams visualization using the Plots library")
     300
     300
     samplePlot
-  K.logLE K.Info "Retrieving that stuff from the cache or running if required."
-  makeDoubleListDocPart cachingDoubleList
-  cachedDoubleList <- cachingDoubleList
-  K.addMarkDown $ "## Caching: DoubleList=" <> (T.pack $ show cachedDoubleList)
+  Knit.logLE Knit.Info "Retrieving that stuff from the cache or running if required."
+  Knit.addMarkDown $ "## Caching: List=" <> (T.pack $ show testList)
   return ()
 
-doSomethingEffectful :: K.Member (K.Logger K.LogEntry) r => Int -> Double -> K.Sem r [Double]
-doSomethingEffectful n x = do
-  K.logLE K.Info "Doing the effectful thing!"
-  return $ replicate n x
-
-makeDoubleListDocPart :: K.KnitOne r => K.Sem r [Double] -> K.Sem r ()
-makeDoubleListDocPart ca = do
-  ds <- ca
-  K.logLE K.Info $ "double list is" <> (T.pack $ show ds)
-
+streamLoader :: forall q. Knit.KnitEffects q => Knit.Sem q [Int]
+streamLoader = Streamly.toList $ Knit.retrieveOrMakeStream "cacheExample/test.sbin"
+               (do
+                   Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
+                   Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
+                   Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
+                   Knit.Streamly.streamlyToKnitS
+                     $ Streamly.fromList  [1,10,100]
+               )
+               
 -- example using HVega  
 exampleVis :: V.VegaLite
 exampleVis =
@@ -113,32 +133,32 @@ exampleVis =
 hilbert 0 = mempty
 hilbert n =
   hilbert' (n - 1)
-    K.# K.reflectY
-    <>  K.vrule 1
+    Knit.# Knit.reflectY
+    <>  Knit.vrule 1
     <>  hilbert (n - 1)
-    <>  K.hrule 1
+    <>  Knit.hrule 1
     <>  hilbert (n - 1)
-    <>  K.vrule (-1)
+    <>  Knit.vrule (-1)
     <>  hilbert' (n - 1)
-    K.# K.reflectX
-  where hilbert' m = hilbert m K.# K.rotateBy (1 / 4)
+    Knit.# Knit.reflectX
+  where hilbert' m = hilbert m Knit.# Knit.rotateBy (1 / 4)
 
-exampleDiagram :: K.Diagram K.SVG
+exampleDiagram :: Knit.Diagram Knit.SVG
 exampleDiagram =
-  K.frame 1 . K.lw K.medium . K.lc K.darkred . K.strokeT $ hilbert 5
+  Knit.frame 1 . Knit.lw Knit.medium . Knit.lc Knit.darkred . Knit.strokeT $ hilbert 5
 
 
 -- example using Plots (as an example of using Diagrams)
-samplePlot :: K.Diagram K.SVG
+samplePlot :: Knit.Diagram Knit.SVG
 samplePlot = P.renderAxis logAxis
 
-logData = [K.V2 1 10, K.V2 2 100, K.V2 2.5 316, K.V2 3 1000]
+logData = [Knit.V2 1 10, Knit.V2 2 100, Knit.V2 2.5 316, Knit.V2 3 1000]
 
-logAxis :: P.Axis K.SVG K.V2 Double
-logAxis = P.r2Axis K.&~ do
+logAxis :: P.Axis Knit.SVG Knit.V2 Double
+logAxis = P.r2Axis Knit.&~ do
   P.scatterPlot' logData
 
   P.yAxis P.&= do
-    P.logScale K..= P.LogAxis
-    P.majorTicksFunction K..= P.logMajorTicks 5 -- <> pure [1]
+    P.logScale Knit..= P.LogAxis
+    P.majorTicksFunction Knit..= P.logMajorTicks 5 -- <> pure [1]
 
