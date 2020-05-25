@@ -211,7 +211,7 @@ consumeKnitEffectStack config =
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
-  . KLog.filteredAsyncLogEntriesToIO (logIf config)
+  . KLog.filteredLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' 
   (KC.persistAsByteArray
     (\t -> T.unpack (cacheDir config <> "/" <> t))
@@ -236,7 +236,7 @@ consumeKnitEffectStack config =
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
-  . KLog.filteredAsyncLogEntriesToIO (logIf config)
+  . KLog.filteredLogEntriesToIO (logIf config)
   . KC.runPersistentBackedAtomicInmemoryCache'
   (KC.persistAsByteArray
     (\t -> T.unpack (cacheDir config <> "/" <> t))
