@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
@@ -64,13 +65,12 @@ import           Data.Functor.Identity          (Identity(..))
 import           Data.Int (Int64)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
+import qualified Data.Time.Clock               as Time
 import qualified Data.Word                     as Word
 
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
---import qualified Control.Monad.Exception       as MTL.Exception
 import           Control.Monad                  ( join )
---import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
@@ -91,6 +91,7 @@ import qualified System.IO.Error               as IO.Error
 -- | Error Type for Cache errors.  Simplifies catching them and reporting them.
 data CacheError =
   ItemNotFoundError T.Text
+  | ItemTooOldError T.Text
   | DeSerializationError T.Text
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
@@ -108,12 +109,16 @@ data Serialize r a ct where
             -> (ct -> Int64) -- size (in Bytes)
             -> Serialize r a ct
 
+data WithCacheTime a where
+  WithCacheTime :: Time.UTCTime -> a -> WithCacheTime a
+  deriving (Show, Functor)
+
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v
 -- | h is a type we use for holding a resource
 data Cache k v m a where
-  CacheLookup :: k -> Cache k v m (Maybe v)
-  CacheUpdate :: k -> Maybe v -> Cache k v m ()
+  CacheLookup :: k -> Cache k v m (Maybe (WithCacheTime v))
+  CacheUpdate :: k -> Maybe v -> Cache k v m () -- NB: this requires some way to attach a cache time during update
   
 P.makeSem ''Cache
 
@@ -141,20 +146,20 @@ encodeAndStore (Serialize encode _ encBytes) k x =
 -- TODO: We need some exception handling here to make sure, in the case of an Atomic cache,
 -- the TMVar gets filled somehow and the key deleted from cache.
 retrieveOrMakeAndUpdateCache
-  :: ( P.Members [Cache k ct, P.Embed IO] r
+  :: forall k ct r a. ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
      )
-  => Serialize r a ct -> P.Sem r (Maybe a) -> k -> P.Sem r (Maybe a)
-retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key =
+  => Serialize r a ct -- serialization/deserialization
+  -> P.Sem r (Maybe a) -- action to run to make @a@ if cache is empty or expired
+  -> Maybe Time.UTCTime -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
+  -> k 
+  -> P.Sem r (Maybe a)
+retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing oldestM key =
   K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
-    fromCache <- cacheLookup key
-    case fromCache of
-      Just ct -> do
-        let nBytes = encBytes ct
-        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
-        fmap Just $ decode ct
-      Nothing -> do
+    let
+      makeAndUpdate :: P.Sem r (Maybe a)
+      makeAndUpdate = do
         K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
         ma <- tryIfMissing
         case ma of
@@ -171,6 +176,16 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
             cacheUpdate key (Just ct')
             K.logLE K.Diagnostic $ "Finished making and updating."          
             return $ Just a'
+    fromCache <- cacheLookup key
+    case fromCache of
+      Just (WithCacheTime cached ct) -> do
+        if maybe True (\newest -> cached > newest) oldestM
+          then do
+            let nBytes = encBytes ct
+            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
+            fmap Just $ decode ct
+          else makeAndUpdate
+      Nothing -> makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -183,12 +198,13 @@ retrieveAndDecode
      , Show k
      )
   => Serialize r a ct
+  -> Maybe Time.UTCTime
   -> k
   -> P.Sem r a
-retrieveAndDecode s k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
-  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) k
+retrieveAndDecode s oldestM k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
+  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) oldestM k
   case fromCache of
-    Nothing -> P.throw $ ItemNotFoundError $ "No item found in cache for key=" <> (T.pack $ show k) <> "."
+    Nothing -> P.throw $ ItemNotFoundError $ "No item found/item too old for key=" <> (T.pack $ show k) <> "."
     Just x -> return x
 {-# INLINEABLE retrieveAndDecode #-}
 
@@ -203,9 +219,10 @@ lookupAndDecode
      , Show k
      )
   => Serialize r a ct
+  -> Maybe Time.UTCTime
   -> k
   -> P.Sem r (Maybe a)
-lookupAndDecode s k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) k 
+lookupAndDecode s oldestM k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) oldestM k 
 {-# INLINEABLE lookupAndDecode #-}
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -218,14 +235,15 @@ retrieveOrMake
      , Show k
      )
   => Serialize r a ct
+  -> Maybe Time.UTCTime
   -> k
   -> P.Sem r a
   -> P.Sem r a
-retrieveOrMake s key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
+retrieveOrMake s oldestM key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
-        K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found in cache. Making..."
+        K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
         fmap Just makeAction
-  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key
+  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing oldestM key
   case fromCache of
     Just x -> return x
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
@@ -245,7 +263,9 @@ clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> return
 -- TMVar so we can block if mulitple threads are trying to read or update
 -- Maybe inside so we can notify waiting threads that whatever they were waiting on
 -- to fill the TMVar failed.
-type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe v)))
+
+  
+type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe (WithCacheTime v))))
 
 -- | lookup combinator for in-memory AtomicMemCache
 atomicMemLookup :: (Ord k
@@ -255,7 +275,7 @@ atomicMemLookup :: (Ord k
                    )
               => AtomicMemCache k ct
               -> k
-              -> P.Sem r (Maybe ct) -- we either return the value or a tvar to be filled
+              -> P.Sem r (Maybe (WithCacheTime ct))
 atomicMemLookup cache key = K.wrapPrefix "atomicMemLookup" $ do
   K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Called."
   P.embed $ C.atomically $ do
