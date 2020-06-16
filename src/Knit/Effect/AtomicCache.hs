@@ -31,6 +31,10 @@ module Knit.Effect.AtomicCache
   (
     -- * Effect
     Cache
+    -- * TimeStamps
+  , WithCacheTime(..)
+  , unWithCacheTime
+  , cacheTime 
     -- * Actions
   , encodeAndStore
   , retrieveAndDecode
@@ -109,9 +113,17 @@ data Serialize r a ct where
             -> (ct -> Int64) -- size (in Bytes)
             -> Serialize r a ct
 
+-- | Wrapper to hold content and a timestamp
+-- The stamp must be at or after the time the data was constructed
 data WithCacheTime a where
   WithCacheTime :: Time.UTCTime -> a -> WithCacheTime a
   deriving (Show, Functor)
+
+unWithCacheTime :: WithCacheTime a -> a
+unWithCacheTime (WithCacheTime _ a) = a
+
+cacheTime :: WithCacheTime a -> Time.UTCTime
+cacheTime (WithCacheTime t _) = t
 
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v
@@ -154,11 +166,11 @@ retrieveOrMakeAndUpdateCache
   -> P.Sem r (Maybe a) -- action to run to make @a@ if cache is empty or expired
   -> Maybe Time.UTCTime -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
   -> k 
-  -> P.Sem r (Maybe a)
-retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing oldestM key =
+  -> P.Sem r (Maybe (WithCacheTime a))
+retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing newestM key =
   K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
     let
-      makeAndUpdate :: P.Sem r (Maybe a)
+      makeAndUpdate :: P.Sem r (Maybe (WithCacheTime a))
       makeAndUpdate = do
         K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
         ma <- tryIfMissing
@@ -173,17 +185,18 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing old
             let nBytes = encBytes ct'
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
             K.logLE K.Diagnostic $ "Updating cache..."          
-            cacheUpdate key (Just ct')
+            cacheUpdate key (Just ct') 
+            curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
             K.logLE K.Diagnostic $ "Finished making and updating."          
-            return $ Just a'
+            return $ Just (WithCacheTime curTime a')
     fromCache <- cacheLookup key
     case fromCache of
-      Just (WithCacheTime cached ct) -> do
-        if maybe True (\newest -> cached > newest) oldestM
+      Just (WithCacheTime cacheTime ct) -> do
+        if maybe True (\newest -> cacheTime > newest) newestM
           then do
             let nBytes = encBytes ct
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
-            fmap Just $ decode ct
+            fmap (Just . WithCacheTime cacheTime) $ decode ct
           else makeAndUpdate
       Nothing -> makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
@@ -200,9 +213,9 @@ retrieveAndDecode
   => Serialize r a ct
   -> Maybe Time.UTCTime
   -> k
-  -> P.Sem r a
-retrieveAndDecode s oldestM k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
-  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) oldestM k
+  -> P.Sem r (WithCacheTime a)
+retrieveAndDecode s newestM k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
+  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) newestM k
   case fromCache of
     Nothing -> P.throw $ ItemNotFoundError $ "No item found/item too old for key=" <> (T.pack $ show k) <> "."
     Just x -> return x
@@ -221,8 +234,8 @@ lookupAndDecode
   => Serialize r a ct
   -> Maybe Time.UTCTime
   -> k
-  -> P.Sem r (Maybe a)
-lookupAndDecode s oldestM k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) oldestM k 
+  -> P.Sem r (Maybe (WithCacheTime a))
+lookupAndDecode s newestM k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) newestM k 
 {-# INLINEABLE lookupAndDecode #-}
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -238,12 +251,12 @@ retrieveOrMake
   -> Maybe Time.UTCTime
   -> k
   -> P.Sem r a
-  -> P.Sem r a
-retrieveOrMake s oldestM key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
+  -> P.Sem r (WithCacheTime a)
+retrieveOrMake s newestM key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
         fmap Just makeAction
-  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing oldestM key
+  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing newestM key
   case fromCache of
     Just x -> return x
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
@@ -307,18 +320,21 @@ atomicMemUpdate cache key mct =
   K.logLE K.Diagnostic $ keyText <> "called."
   updateAction <- case mct of
     Nothing -> (P.embed $ C.atomically $ C.modifyTVar cache (M.delete key)) >> return Deleted
-    Just ct -> P.embed $ C.atomically $ do
-      m <- C.readTVar cache
-      case M.lookup key m of
-        Nothing -> do
-          newTMV <- C.newTMVar (Just ct)
-          C.modifyTVar cache (M.insert key newTMV)
-          return Filled
-        Just tmvM -> do
-          wasEmptyTMVar <- C.tryPutTMVar tmvM (Just ct)
-          if wasEmptyTMVar
-            then return Filled
-            else (C.swapTMVar tmvM (Just ct)) >> return Replaced
+    Just ct -> do
+      curTime <- P.embed Time.getCurrentTime
+      let wct = WithCacheTime curTime ct
+      P.embed $ C.atomically $ do
+        m <- C.readTVar cache
+        case M.lookup key m of
+          Nothing -> do
+            newTMV <- C.newTMVar (Just wct)
+            C.modifyTVar cache (M.insert key newTMV)
+            return Filled
+          Just tmvM -> do
+            wasEmptyTMVar <- C.tryPutTMVar tmvM (Just wct)
+            if wasEmptyTMVar
+              then return Filled
+              else (C.swapTMVar tmvM (Just wct)) >> return Replaced
   case updateAction of
     Deleted -> K.logLE K.Diagnostic $ keyText <> "deleted"
     Replaced -> K.logLE K.Diagnostic $ keyText <> "replaced"
@@ -351,7 +367,7 @@ atomicMemLookupB :: (Ord k
                     )
                  =>  AtomicMemCache k ct
                  -> k
-                 -> P.Sem r (Maybe ct)
+                 -> P.Sem r (Maybe (WithCacheTime ct))
 atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
   let keyText = "key=" <> (T.pack $ show key) <> ": "
   K.logLE K.Diagnostic $ keyText <> "checking in mem cache..."
@@ -361,26 +377,26 @@ atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
       Just tmv -> do
         mv <- C.takeTMVar tmv  
         case mv of
-          Just ct -> do -- in cache with value
-            C.putTMVar tmv (Just ct)
-            return $ Right ct
+          Just wct -> do -- in cache with value (and time)
+            C.putTMVar tmv (Just wct)
+            return $ Right wct
           Nothing -> return $ Left tmv  -- in cache but set to Nothing
       Nothing -> do -- not found
         newTMV <- C.newEmptyTMVar
         C.modifyTVar cache (M.insert key newTMV)
         return $ Left newTMV
   case x of
-    Right ct -> K.logLE K.Diagnostic (keyText <> "found.") >> return (Just ct)
+    Right wct -> K.logLE K.Diagnostic (keyText <> "found.") >> return (Just wct)
     Left emptyTMV -> do
       K.logLE K.Diagnostic (keyText <> "not found.  Holding empty TMVar. Checking backup cache...")
       inOtherM <- cacheLookup key      
       case inOtherM of
         Nothing -> K.logLE K.Diagnostic (keyText <> "not found in backup cache.") >> return Nothing
-        Just ct -> do
+        Just wct -> do
           K.logLE K.Diagnostic (keyText <> "Found in backup cache.  Filling empty TMVar.")
-          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just ct)
+          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just wct)
           K.logLE K.Diagnostic (keyText <> "Returning")
-          return $ Just ct
+          return $ Just wct
 {-# INLINEABLE atomicMemLookupB #-}
 
 -- | update for an AtomicMemCache which is backed by some other cache, probably a persistence layer.
@@ -469,8 +485,7 @@ persistAsByteArray keyToFilePath =
   P.interpret $ \case
     CacheLookup k -> K.wrapPrefix "persistAsByteArray.CacheLookup" $ do
       let filePath = keyToFilePath k
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ Streamly.Array.fromStream $ Streamly.File.toBytes filePath
+      getContentsWithCacheTime (Streamly.Array.fromStream . Streamly.File.toBytes) filePath
     CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
       let keyText = "key=" <> (T.pack $ show k) <> ": "
       case mct of
@@ -494,9 +509,7 @@ persistAsStrictByteString
   -> P.InterpreterFor (Cache k BS.ByteString) r
 persistAsStrictByteString keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> do
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ BS.readFile (keyToFilePath k)
+    CacheLookup k -> getContentsWithCacheTime BS.readFile (keyToFilePath k)
     CacheUpdate k mct -> case mct of
       Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
       Just ct -> do
@@ -514,9 +527,7 @@ persistAsByteString
   -> P.InterpreterFor (Cache k BL.ByteString) r
 persistAsByteString keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> do
-      K.logLE K.Diagnostic $ "Reading serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ BL.readFile (keyToFilePath k)
+    CacheLookup k -> getContentsWithCacheTime BL.readFile (keyToFilePath k)
     CacheUpdate k mct -> case mct of
       Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
       Just ct -> do
@@ -533,10 +544,7 @@ persistAsByteStreamly
   -> P.InterpreterFor (Cache k (Streamly.SerialT Identity Word.Word8)) r
 persistAsByteStreamly keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> K.wrapPrefix "persistAsByteStreamly.CacheLookup" $ do
-      let filePath = keyToFilePath k
-      K.logLE K.Diagnostic $ "Attempting to read serialization from disk."
-      rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ sequenceStreamly $ Streamly.File.toBytes filePath --System.withBinaryFile filePath System.ReadMode readFromHandle
+    CacheLookup k -> K.wrapPrefix "persistAsByteStreamly" $ getContentsWithCacheTime (sequenceStreamly . Streamly.File.toBytes) (keyToFilePath k)
     CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
       let keyText = "key=" <> (T.pack $ show k) <> ": "
       case mct of
@@ -580,6 +588,19 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
         $ System.createDirectoryIfMissing True (T.unpack dir)
 {-# INLINEABLE createDirIfNecessary #-}
 
+
+getContentsWithCacheTime :: (P.Members '[P.Embed IO] r
+                            , P.MemberWithError (P.Error CacheError) r
+                            , K.LogWithPrefixesLE r)
+                         => (FilePath -> IO a)
+                         -> FilePath
+                         -> P.Sem r (Maybe (WithCacheTime a))
+getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
+  K.logLE K.Diagnostic $ "Reading serialization from disk."
+  rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
+    ct <- f fp
+    cacheTime <- System.getModificationTime fp
+    return $ WithCacheTime cacheTime ct
 
 fileNotFoundToEither :: IO a -> IO (Either () a)
 fileNotFoundToEither x = (fmap Right x) `Exception.catch` f where
