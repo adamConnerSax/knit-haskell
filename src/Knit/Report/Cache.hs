@@ -27,12 +27,16 @@ module Knit.Report.Cache
   (
     -- * Types
     KnitCache
+  , StreamWithCacheTime
     -- * Cache Combinators
   , store
+  , ignoreCacheTime
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
+  -- * Streamly based cache combinators
   , storeStream
+  , ignoreCacheTimeStream
   , retrieveStream
   , retrieveOrMakeStream
   , retrieveOrMakeTransformedStream
@@ -41,15 +45,12 @@ module Knit.Report.Cache
   )
 where
 
---import qualified Knit.Report.EffectStack       as K
-
 import qualified Knit.Effect.AtomicCache       as C
 import           Knit.Effect.AtomicCache        (clear, clearIfPresent)
 import qualified Knit.Effect.Logger            as K
 
 import           Control.Monad (join)
 import qualified Control.Monad.Catch.Pure      as Exceptions
---import qualified Control.Monad.State.Strict    as State
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
@@ -61,9 +62,6 @@ import qualified Data.Word                     as Word
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
---import qualified Polysemy.State                as P
-
---import qualified System.Directory              as System
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
@@ -224,7 +222,7 @@ retrieve
   => T.Text
   -> P.Sem r (C.WithCacheTime a)
 retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> k <> ")")
-              $ C.retrieveAndDecode knitSerialize Nothing k
+              $ C.retrieveAndDecode knitSerialize k Nothing
 {-# INLINEABLE retrieve #-}
 
 -- | Retrieve an a from the store at key k.
@@ -241,7 +239,7 @@ retrieveOrMake
   -> P.Sem r (C.WithCacheTime a)
 retrieveOrMake k newestM toMake =
   K.wrapPrefix ("Cache.retrieveOrMake (key=" <> k <> ")")
-  $ C.retrieveOrMake knitSerialize newestM k toMake
+  $ C.retrieveOrMake knitSerialize k newestM toMake
 {-# INLINEABLE retrieveOrMake #-}
 
 -- | Retrieve an a from the store at key k.
@@ -282,8 +280,10 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
   C.encodeAndStore knitSerializeStream k aS
 {-# INLINEABLE storeStream #-}
 
+type StreamWithCacheTime r a = C.WithCacheTime (Streamly.SerialT (P.Sem r) a)
+
 -- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
-ignoreCacheTimeStream :: P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a)) -> Streamly.SerialT (P.Sem r) a
+ignoreCacheTimeStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
 ignoreCacheTimeStream = Streamly.concatM . ignoreCacheTime
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
@@ -295,9 +295,9 @@ retrieveStream
      , S.Serialize a)
   => T.Text
   -> Maybe Time.UTCTime
-  -> P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a))
+  -> P.Sem r (StreamWithCacheTime r a)
 retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> k <> ")")
-                            $ C.retrieveAndDecode knitSerializeStream newestM k
+                            $ C.retrieveAndDecode knitSerializeStream k newestM
 {-# INLINEABLE retrieveStream #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
@@ -312,9 +312,9 @@ retrieveOrMakeStream
   => T.Text
   -> Maybe Time.UTCTime
   -> Streamly.SerialT (P.Sem r) a
-  -> P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a))
+  -> P.Sem r (StreamWithCacheTime r a)
 retrieveOrMakeStream k newestM toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> k <> ")")
-                                        $ C.retrieveOrMake knitSerializeStream newestM k (return toMake)
+                                        $ C.retrieveOrMake knitSerializeStream k newestM (return toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
@@ -332,7 +332,7 @@ retrieveOrMakeTransformedStream
   -> T.Text
   -> Maybe Time.UTCTime
   -> Streamly.SerialT (P.Sem r) a
-  -> P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a))
+  -> P.Sem r (StreamWithCacheTime r a)
 retrieveOrMakeTransformedStream toSerializable fromSerializable k newestM toMake =
   K.wrapPrefix ("retrieveOrMakeTransformedStream (key=" <> k <> ")")
   $ fmap (fmap $ Streamly.map fromSerializable)

@@ -164,10 +164,10 @@ retrieveOrMakeAndUpdateCache
      )
   => Serialize r a ct -- serialization/deserialization
   -> P.Sem r (Maybe a) -- action to run to make @a@ if cache is empty or expired
+  -> k
   -> Maybe Time.UTCTime -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
-  -> k 
   -> P.Sem r (Maybe (WithCacheTime a))
-retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing newestM key =
+retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key newestM =
   K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
     let
       makeAndUpdate :: P.Sem r (Maybe (WithCacheTime a))
@@ -211,11 +211,11 @@ retrieveAndDecode
      , Show k
      )
   => Serialize r a ct
-  -> Maybe Time.UTCTime
   -> k
+  -> Maybe Time.UTCTime
   -> P.Sem r (WithCacheTime a)
-retrieveAndDecode s newestM k = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
-  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) newestM k
+retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
+  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) k newestM 
   case fromCache of
     Nothing -> P.throw $ ItemNotFoundError $ "No item found/item too old for key=" <> (T.pack $ show k) <> "."
     Just x -> return x
@@ -232,10 +232,10 @@ lookupAndDecode
      , Show k
      )
   => Serialize r a ct
-  -> Maybe Time.UTCTime
   -> k
+  -> Maybe Time.UTCTime
   -> P.Sem r (Maybe (WithCacheTime a))
-lookupAndDecode s newestM k = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) newestM k 
+lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) k newestM 
 {-# INLINEABLE lookupAndDecode #-}
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -248,15 +248,15 @@ retrieveOrMake
      , Show k
      )
   => Serialize r a ct
-  -> Maybe Time.UTCTime
   -> k
+  -> Maybe Time.UTCTime
   -> P.Sem r a
   -> P.Sem r (WithCacheTime a)
-retrieveOrMake s newestM key makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
+retrieveOrMake s key newestM makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
         fmap Just makeAction
-  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing newestM key
+  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key newestM 
   case fromCache of
     Just x -> return x
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."

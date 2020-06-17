@@ -86,6 +86,15 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
       Knit.logLE Knit.Diagnostic "List returned from async.  Logging async then sync."
       Knit.logLE Knit.Diagnostic $ "async:" <> (T.pack $ show l)
       Knit.logLE Knit.Diagnostic $ "sync:" <> (T.pack $ show testList)
+  Knit.logLE Knit.Info "Demonstrating cache dependencies"
+  Knit.logLE Knit.Info "streamLoader2 depends on streamLoader and should rebuild if streamLoader has been rebuilt since streamLoader2 was cached."
+  Knit.logLE Knit.Info "Calling streamLoader2 the first time"
+  sl2a <- streamLoader2 -- builds the first time
+  Knit.logLE Knit.Info "Calling streamLoader2 again. Should load from cache."
+  sl2b <- streamLoader2 -- loads from cache
+  Knit.logLE Knit.Info "Removing cached streamLoader1 result, then calling streamLoader 2 again. Should rebuild."
+  Knit.clear "cacheExample/test.sbin" -- remove sl1
+  sl2c <- streamLoader2 -- should rebuild 
   Knit.logLE Knit.Info "adding a visualization..."
   Knit.addMarkDown "## An example hvega visualization"
   _ <- Knit.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -103,15 +112,23 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.addMarkDown $ "## Caching: List=" <> (T.pack $ show testList)
   return ()
 
-streamLoader :: forall q. Knit.KnitEffects q => Knit.Sem q [Int]
-streamLoader = Streamly.toList $ Knit.retrieveOrMakeStream "cacheExample/test.sbin"
-               (do
-                   Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
-                   Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
-                   Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
-                   Knit.Streamly.streamlyToKnitS
-                     $ Streamly.fromList  [1,10,100]
-               )
+streamLoader :: Knit.KnitEffects q => Knit.Sem q [Int]
+streamLoader = Streamly.toList $ Knit.ignoreCacheTimeStream $ streamLoaderWC
+
+streamLoaderWC :: Knit.KnitEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
+streamLoaderWC = Knit.retrieveOrMakeStream "cacheExample/test.sbin" Nothing $ do               
+  Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
+  Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
+  Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
+  Knit.Streamly.streamlyToKnitS
+    $ Streamly.fromList  [1,10,100]
+               
+
+streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]
+streamLoader2 = Streamly.toList $ Knit.ignoreCacheTimeStream $ do
+  (Knit.WithCacheTime cTime sInt) <- streamLoaderWC
+  Knit.retrieveOrMakeStream "cacheExample/test2.sbin" (Just cTime) $ do
+    Streamly.map (*2) sInt
                
 -- example using HVega  
 exampleVis :: V.VegaLite

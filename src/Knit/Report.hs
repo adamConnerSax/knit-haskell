@@ -3,7 +3,7 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
-{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -55,6 +55,7 @@ module Knit.Report
 
     -- * Effects
   , module Polysemy
+  , module Knit.Effect.AtomicCache
   , module Knit.Effect.Pandoc
   , module Knit.Effect.Docs
   , module Knit.Effect.PandocMonad
@@ -82,6 +83,7 @@ import           Polysemy.Async                 ( async
                                                 , await
                                                 , sequenceConcurrently
                                                 )
+import           Knit.Effect.AtomicCache (WithCacheTime(..))                 
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
                                                 , PandocReadFormat(..)
