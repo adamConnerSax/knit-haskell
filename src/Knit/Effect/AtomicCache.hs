@@ -191,12 +191,12 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing new
             return $ Just (WithCacheTime curTime a')
     fromCache <- cacheLookup key
     case fromCache of
-      Just (WithCacheTime cacheTime ct) -> do
-        if maybe True (\newest -> cacheTime > newest) newestM
+      Just (WithCacheTime cTime ct) -> do
+        if maybe True (\newest -> cTime > newest) newestM
           then do
             let nBytes = encBytes ct
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
-            fmap (Just . WithCacheTime cacheTime) $ decode ct
+            fmap (Just . WithCacheTime cTime) $ decode ct
           else makeAndUpdate
       Nothing -> makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
@@ -599,8 +599,8 @@ getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
   K.logLE K.Diagnostic $ "Reading serialization from disk."
   rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
     ct <- f fp
-    cacheTime <- System.getModificationTime fp
-    return $ WithCacheTime cacheTime ct
+    cTime <- System.getModificationTime fp
+    return $ WithCacheTime cTime ct
 
 fileNotFoundToEither :: IO a -> IO (Either () a)
 fileNotFoundToEither x = (fmap Right x) `Exception.catch` f where

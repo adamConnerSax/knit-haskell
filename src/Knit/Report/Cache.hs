@@ -61,9 +61,9 @@ import qualified Data.Word                     as Word
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
-import qualified Polysemy.State                as P
+--import qualified Polysemy.State                as P
 
-import qualified System.Directory              as System
+--import qualified System.Directory              as System
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
@@ -211,62 +211,24 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
+
+-- | Wrapper for AtomicCache.unWithCacheTime so it's very clear what we're up to
+ignoreCacheTime :: P.Sem r (C.WithCacheTime a) -> P.Sem r a
+ignoreCacheTime = fmap C.unWithCacheTime
+
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
--- assumes no issues with expiry time.
 retrieve
   :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , S.Serialize a)
   => T.Text
-  -> P.Sem r a
+  -> P.Sem r (C.WithCacheTime a)
 retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> k <> ")")
-              $ fmap C.unWithCacheTime $ C.retrieveAndDecode knitSerialize Nothing k
+              $ C.retrieveAndDecode knitSerialize Nothing k
 {-# INLINEABLE retrieve #-}
-
---type NewestDepS = State.State (Maybe Time.UTCTime)
---type WithNewestDep r a = NewestDepS (P.Sem r a)
-
-type NewestDepEff = P.State (Maybe Time.UTCTime)
-type WithNewestDep r = P.Sem (NewestDepEff ': r) 
-
-updateNewestTime :: Time.UTCTime -> WithNewestDep r ()
-updateNewestTime t = P.modify f where
-  f newestDepM = case newestDepM of
-    Nothing -> Just t
-    Just t' -> Just $ max t t'
-    --(maybe (Just t) (max t)) 
-
-data WithExpiryAction g a where
-  WithExpiryAction :: Maybe Time.UTCTime -> g a -> WithExpiryAction g a
---  deriving (Functor)
-
-mapExpiryAction :: (g a -> h b) -> WithExpiryAction g a -> WithExpiryAction h b
-mapExpiryAction f (WithExpiryAction t ga) = WithExpiryAction t (f ga)
-
-fmapExpiryAction :: Functor g => (a -> b) -> WithExpiryAction g a -> WithExpiryAction g b
-fmapExpiryAction f (WithExpiryAction t ga) = WithExpiryAction t (fmap f ga)
-
-packageDepCheck :: WithNewestDep r a -> (a -> g b) -> P.Sem r (WithExpiryAction g b)
-packageDepCheck getDeps computeFromDeps = do
-  (newestM, deps) <- P.runState Nothing getDeps 
-  return $ WithExpiryAction newestM (computeFromDeps deps)
-
--- |
-retrieveWD
-  :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
-     ,  K.LogWithPrefixesLE r
-     , S.Serialize a)
-  => T.Text
-  -> WithNewestDep r a
-retrieveWD k =  K.wrapPrefix ("Cache.retrieveWD (key=" <> k <> ")") $ do
-  C.WithCacheTime ct a <- P.raise $ C.retrieveAndDecode knitSerialize Nothing k
-  updateNewestTime ct
-  return a
-{-# INLINEABLE retrieveWD #-} 
 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k.
--- ignores expiry
 retrieveOrMake
   :: forall a r
    . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
@@ -274,42 +236,18 @@ retrieveOrMake
      , S.Serialize a
      )
   => T.Text
+  -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r a
-retrieveOrMake k toMake =
+  -> P.Sem r (C.WithCacheTime a)
+retrieveOrMake k newestM toMake =
   K.wrapPrefix ("Cache.retrieveOrMake (key=" <> k <> ")")
-  $ fmap C.unWithCacheTime
-  $ C.retrieveOrMake knitSerialize Nothing k toMake
+  $ C.retrieveOrMake knitSerialize newestM k toMake
 {-# INLINEABLE retrieveOrMake #-}
-
--- | Retrieve an a from the store at key k.
--- If retrieve fails then perform the action and store the resulting a at key k.
--- remake if cached item is older than newest dependency
--- To use this we need the make-if-needed action to be one that
--- checks dependency times.
-retrieveOrMakeWD
-  :: forall a r
-   . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , S.Serialize a
-     )
-  => T.Text
-  -> P.Sem r (WithExpiryAction (P.Sem r) a)
-  -> WithNewestDep r a
-retrieveOrMakeWD k toMakeWD =  K.wrapPrefix ("Cache.retrieveOrMakeWD (key=" <> k <> ")") $ do
-  (C.WithCacheTime cacheTime a) <- P.raise $ do
-    WithExpiryAction newestM toMake <- toMakeWD -- don't run action.  Just get dependency info.
-    C.retrieveOrMake knitSerialize newestM k toMake
-  updateNewestTime cacheTime
-  return a
-{-# INLINEABLE retrieveOrMakeWD #-}
-
 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k.
 -- Also has functions for mapping the input and output, often useful for
 -- transforming something without a 'Serialize' instance into something with one.
--- ignore expiry
 retrieveOrMakeTransformed
   :: forall a b r
    . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
@@ -319,33 +257,14 @@ retrieveOrMakeTransformed
   => (a -> b)
   -> (b -> a)
   -> T.Text
+  -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r a
-retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
-  K.wrapPrefix "retrieveOrMakeTransformed" $ 
-  fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
+  -> P.Sem r (C.WithCacheTime a)
+retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
+  K.wrapPrefix "retrieveOrMakeTransformed"
+  $ fmap (fmap fromSerializable)
+  $ retrieveOrMake k newestM (fmap toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformed #-}
-
--- | Retrieve an a from the store at key k.
--- If retrieve fails then perform the action and store the resulting a at key k.
--- Also has functions for mapping the input and output, often useful for
--- transforming something without a 'Serialize' instance into something with one.
-retrieveOrMakeTransformedWD
-  :: forall a b r
-   . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , S.Serialize b
-     )
-  => (a -> b)
-  -> (b -> a)
-  -> T.Text
-  -> P.Sem r (WithExpiryAction (P.Sem r) a)
-  -> WithNewestDep r a
-retrieveOrMakeTransformedWD toSerializable fromSerializable k toMakeWD =
-  K.wrapPrefix "retrieveOrMakeTransformed" $ 
-  fmap fromSerializable $ retrieveOrMakeWD k (fmap (fmapExpiryAction toSerializable) toMakeWD)
-{-# INLINEABLE retrieveOrMakeTransformedWD #-}
-
 
 --
 -- | Store a Streamly stream of @a@ at key k. Throw @PandocIOError@ on 'IOError'.
@@ -363,6 +282,9 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
   C.encodeAndStore knitSerializeStream k aS
 {-# INLINEABLE storeStream #-}
 
+-- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
+ignoreCacheTimeStream :: P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a)) -> Streamly.SerialT (P.Sem r) a
+ignoreCacheTimeStream = Streamly.concatM . ignoreCacheTime
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
@@ -372,31 +294,11 @@ retrieveStream
      , P.MemberWithError (P.Error Exceptions.SomeException) r
      , S.Serialize a)
   => T.Text
-  -> Streamly.SerialT (P.Sem r) a
-retrieveStream k =  Streamly.concatM
-                    $ K.wrapPrefix ("Cache.retrieveStream (key=" <> k <> ")")
-                    $ fmap C.unWithCacheTime
-                    $ C.retrieveAndDecode knitSerializeStream Nothing k
+  -> Maybe Time.UTCTime
+  -> P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a))
+retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> k <> ")")
+                            $ C.retrieveAndDecode knitSerializeStream newestM k
 {-# INLINEABLE retrieveStream #-}
-
--- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
--- with dependency info
-retrieveStreamWD
-  :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , P.MemberWithError (P.Error Exceptions.SomeException) r
-     , S.Serialize a)
-  => T.Text
-  -> Streamly.SerialT (WithNewestDep r) a
-retrieveStreamWD k =  Streamly.concatM
-                    $ K.wrapPrefix ("Cache.retrieveStreamWD (key=" <> k <> ")")
-                    $ do
-  C.WithCacheTime ct a <- P.raise $ C.retrieveAndDecode knitSerializeStream Nothing k
-  updateNewestTime ct
-  return $ Streamly.hoist P.raise a
---  C.retrieveAndDecode knitSerializeStream k
-{-# INLINEABLE retrieveStreamWD #-}
-
 
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
 -- If retrieve fails then perform the action and store the resulting stream at key @k@. 
@@ -408,37 +310,12 @@ retrieveOrMakeStream
      , S.Serialize a
      )
   => T.Text
+  -> Maybe Time.UTCTime
   -> Streamly.SerialT (P.Sem r) a
-  -> Streamly.SerialT (P.Sem r) a
-retrieveOrMakeStream k toMake = Streamly.hoist (K.wrapPrefix $ "Cache.retrieveOrMakeStream (key=" <> k <> ")")
-                                $ Streamly.concatM
-                                $ fmap C.unWithCacheTime
-                                $ C.retrieveOrMake knitSerializeStream Nothing k (return toMake)
+  -> P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a))
+retrieveOrMakeStream k newestM toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> k <> ")")
+                                        $ C.retrieveOrMake knitSerializeStream newestM k (return toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
-
--- | Retrieve a Streamly stream of @a@ from the store at key @k@.
--- If retrieve fails then perform the action and store the resulting stream at key @k@. 
-retrieveOrMakeStreamWD
-  :: forall a r
-   . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , P.MemberWithError (P.Error Exceptions.SomeException) r
-     , S.Serialize a
-     )
-  => T.Text
-  -> P.Sem r (WithExpiryAction (Streamly.SerialT (P.Sem r)) a)
-  -> Streamly.SerialT (WithNewestDep r) a
-retrieveOrMakeStreamWD k toMakeWD = Streamly.concatM
-                                    $ (K.wrapPrefix $ "Cache.retrieveOrMakeStream (key=" <> k <> ")")
-                                    $ do
-  (C.WithCacheTime cacheTime a) <- P.raise $ do
-    WithExpiryAction newestM toMake <- toMakeWD -- don't run action.  Just get dependency info.
-    C.retrieveOrMake knitSerializeStream newestM k (return toMake)
-  updateNewestTime cacheTime
-  return $ Streamly.hoist P.raise a
-{-# INLINEABLE retrieveOrMakeStreamWD #-}
-
-
 
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
 -- If retrieve fails then perform the action and store the resulting stream at key @k@.
@@ -453,37 +330,14 @@ retrieveOrMakeTransformedStream
   => (a -> b)
   -> (b -> a)
   -> T.Text
+  -> Maybe Time.UTCTime
   -> Streamly.SerialT (P.Sem r) a
-  -> Streamly.SerialT (P.Sem r) a
-retrieveOrMakeTransformedStream toSerializable fromSerializable k toMake =
-  Streamly.hoist (K.wrapPrefix $ "retrieveOrMakeTransformedStream (key=" <> k <> ")")
-  $ Streamly.map fromSerializable
-  $ retrieveOrMakeStream k (Streamly.map toSerializable toMake)
+  -> P.Sem r (C.WithCacheTime (Streamly.SerialT (P.Sem r) a))
+retrieveOrMakeTransformedStream toSerializable fromSerializable k newestM toMake =
+  K.wrapPrefix ("retrieveOrMakeTransformedStream (key=" <> k <> ")")
+  $ fmap (fmap $ Streamly.map fromSerializable)
+  $ retrieveOrMakeStream k newestM (Streamly.map toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
-
-
--- | Retrieve a Streamly stream of @a@ from the store at key @k@.
--- If retrieve fails then perform the action and store the resulting stream at key @k@.
--- Includes functions to map the stream items before encoding and after decoding.
-retrieveOrMakeTransformedStreamWD
-  :: forall a b r
-   . ( P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , P.MemberWithError (P.Error Exceptions.SomeException) r
-     , S.Serialize b
-     )
-  => (a -> b)
-  -> (b -> a)
-  -> T.Text
-  -> P.Sem r (WithExpiryAction (Streamly.SerialT (P.Sem r)) a)
-  -> Streamly.SerialT (WithNewestDep r) a
-retrieveOrMakeTransformedStreamWD toSerializable fromSerializable k toMakeWD =
-  Streamly.hoist (K.wrapPrefix $ "retrieveOrMakeTransformedStream (key=" <> k <> ")")
-  $ Streamly.map fromSerializable
-  $ retrieveOrMakeStreamWD k (fmap (mapExpiryAction (Streamly.map toSerializable)) toMakeWD)
-{-# INLINEABLE retrieveOrMakeTransformedStreamWD #-}
-
-
 
 fixMonadCatch :: (P.MemberWithError (P.Error Exceptions.SomeException) r)
               => Streamly.SerialT (Exceptions.CatchT (K.Sem r)) a -> Streamly.SerialT (K.Sem r) a
