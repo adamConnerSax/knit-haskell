@@ -34,7 +34,8 @@ module Knit.Effect.AtomicCache
     -- * TimeStamps
   , WithCacheTime(..)
   , unWithCacheTime
-  , cacheTime 
+  , cacheTime
+  , sequenceCacheTimesM
     -- * Actions
   , encodeAndStore
   , retrieveAndDecode
@@ -74,6 +75,7 @@ import qualified Data.Word                     as Word
 
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
+import qualified Data.Foldable as           Fold
 import           Control.Monad                  ( join )
 
 import qualified Streamly                      as Streamly
@@ -124,6 +126,13 @@ unWithCacheTime (WithCacheTime _ a) = a
 
 cacheTime :: WithCacheTime a -> Time.UTCTime
 cacheTime (WithCacheTime t _) = t
+
+sequenceCacheTimesM :: (Functor f, Foldable f) => f (WithCacheTime a) -> Maybe (WithCacheTime (f a))
+sequenceCacheTimesM cts =
+  let latestM = Fold.foldl' (\lt wc -> max (Just $ cacheTime wc) lt) Nothing cts
+  in case latestM of
+    Nothing -> Nothing
+    Just latest -> Just $ WithCacheTime latest (fmap unWithCacheTime cts)
 
 -- | This is a Key/Value store
 -- | Tagged by @t@ so we can have more than one for the same k and v

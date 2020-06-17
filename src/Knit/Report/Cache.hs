@@ -42,11 +42,15 @@ module Knit.Report.Cache
   , retrieveOrMakeTransformedStream
   , clear
   , clearIfPresent
+  -- * Timestamp helpers
+  , sequenceCacheTimesM
+  -- * re-exports
+  , UTCTime
   )
 where
 
 import qualified Knit.Effect.AtomicCache       as C
-import           Knit.Effect.AtomicCache        (clear, clearIfPresent)
+import           Knit.Effect.AtomicCache        (clear, clearIfPresent, sequenceCacheTimesM)
 import qualified Knit.Effect.Logger            as K
 
 import           Control.Monad (join)
@@ -57,6 +61,7 @@ import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity(..))
 import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
+import           Data.Time.Clock                (UTCTime)
 import qualified Data.Serialize                as S
 import qualified Data.Word                     as Word
 
@@ -211,8 +216,8 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
 
 
 -- | Wrapper for AtomicCache.unWithCacheTime so it's very clear what we're up to
-ignoreCacheTime :: P.Sem r (C.WithCacheTime a) -> P.Sem r a
-ignoreCacheTime = fmap C.unWithCacheTime
+ignoreCacheTime :: C.WithCacheTime a -> a
+ignoreCacheTime = C.unWithCacheTime
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
@@ -284,7 +289,7 @@ type StreamWithCacheTime r a = C.WithCacheTime (Streamly.SerialT (P.Sem r) a)
 
 -- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
 ignoreCacheTimeStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
-ignoreCacheTimeStream = Streamly.concatM . ignoreCacheTime
+ignoreCacheTimeStream = Streamly.concatM . fmap ignoreCacheTime
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
