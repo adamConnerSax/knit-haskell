@@ -117,12 +117,14 @@ streamLoader :: Knit.KnitEffects q => Knit.Sem q [Int]
 streamLoader = Streamly.toList $ Knit.ignoreCacheTimeStream $ streamLoaderWC
 
 streamLoaderWC :: Knit.KnitEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
-streamLoaderWC = Knit.retrieveOrMakeStream "cacheExample/test.sbin" Nothing $ do               
-  Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
-  Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
-  Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
-  Knit.Streamly.streamlyToKnitS
-    $ Streamly.fromList  [1,10,100]
+streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
+  Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
+  Knit.retrieveOrMakeStream "cacheExample/test.sbin" Nothing $ do               
+    Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
+    Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
+    Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
+    Knit.Streamly.streamlyToKnitS
+      $ Streamly.fromList  [1,10,100]
                
 
 streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]

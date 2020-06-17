@@ -43,14 +43,14 @@ module Knit.Report.Cache
   , clear
   , clearIfPresent
   -- * Timestamp helpers
-  , sequenceCacheTimesM
+--  , sequenceCacheTimesM
   -- * re-exports
   , UTCTime
   )
 where
 
 import qualified Knit.Effect.AtomicCache       as C
-import           Knit.Effect.AtomicCache        (clear, clearIfPresent, sequenceCacheTimesM)
+import           Knit.Effect.AtomicCache        (clear, clearIfPresent{-, sequenceCacheTimesM-})
 import qualified Knit.Effect.Logger            as K
 
 import           Control.Monad (join)
@@ -219,13 +219,16 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
 ignoreCacheTime :: C.WithCacheTime a -> a
 ignoreCacheTime = C.unWithCacheTime
 
+getCachedData :: P.Sem r (C.WithCacheTime (P.Sem r a)) -> P.Sem r a
+getCachedData = join . fmap ignoreCacheTime 
+
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
   :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , S.Serialize a)
   => T.Text
-  -> P.Sem r (C.WithCacheTime a)
+  -> P.Sem r (C.WithCacheTime (P.Sem r a))
 retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> k <> ")")
               $ C.retrieveAndDecode knitSerialize k Nothing
 {-# INLINEABLE retrieve #-}
@@ -241,7 +244,7 @@ retrieveOrMake
   => T.Text
   -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r (C.WithCacheTime a)
+  -> P.Sem r (C.WithCacheTime (P.Sem r a))
 retrieveOrMake k newestM toMake =
   K.wrapPrefix ("Cache.retrieveOrMake (key=" <> k <> ")")
   $ C.retrieveOrMake knitSerialize k newestM toMake
@@ -262,10 +265,10 @@ retrieveOrMakeTransformed
   -> T.Text
   -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r (C.WithCacheTime a)
+  -> P.Sem r (C.WithCacheTime (P.Sem r a))
 retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
   K.wrapPrefix "retrieveOrMakeTransformed"
-  $ fmap (fmap fromSerializable)
+  $ fmap (fmap (fmap fromSerializable))
   $ retrieveOrMake k newestM (fmap toSerializable toMake)
 {-# INLINEABLE retrieveOrMakeTransformed #-}
 
@@ -302,6 +305,7 @@ retrieveStream
   -> Maybe Time.UTCTime
   -> P.Sem r (StreamWithCacheTime r a)
 retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> k <> ")")
+                            $ fmap (fmap Streamly.concatM)
                             $ C.retrieveAndDecode knitSerializeStream k newestM
 {-# INLINEABLE retrieveStream #-}
 
@@ -319,6 +323,7 @@ retrieveOrMakeStream
   -> Streamly.SerialT (P.Sem r) a
   -> P.Sem r (StreamWithCacheTime r a)
 retrieveOrMakeStream k newestM toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> k <> ")")
+                                        $ fmap (fmap Streamly.concatM)
                                         $ C.retrieveOrMake knitSerializeStream k newestM (return toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
 
