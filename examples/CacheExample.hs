@@ -94,7 +94,8 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   sl2b <- streamLoader2 -- loads from cache
   Knit.logLE Knit.Info "Removing cached streamLoader1 result, then calling streamLoader 2 again. Should rebuild."
   Knit.clear "cacheExample/test.sbin" -- remove sl1
-  sl2c <- streamLoader2 -- should rebuild 
+  sl2c <- streamLoader2 -- should rebuild
+  Knit.logLE Knit.Info $ "streamLoader2=" <> (T.pack $ show sl2c)
   Knit.logLE Knit.Info "adding a visualization..."
   Knit.addMarkDown "## An example hvega visualization"
   _ <- Knit.addHvega Nothing (Just "From the cars data-set") exampleVis

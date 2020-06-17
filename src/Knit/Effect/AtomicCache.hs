@@ -204,8 +204,15 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
         if maybe True (\newest -> cTime > newest) newestM
           then do
             let nBytes = encBytes ct
-            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache. Deserializing..."
-            fmap (Just . WithCacheTime cTime) $ decode ct
+            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
+            let decodeAction :: P.Sem r a
+                decodeAction = do
+                   K.logLE K.Diagnostic "decoding starts."
+                   a <- decode ct
+                   K.logLE K.Diagnostic "decoding complete."
+                   return a
+            fmap (Just . WithCacheTime cTime) decodeAction
+             
           else makeAndUpdate
       Nothing -> makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
