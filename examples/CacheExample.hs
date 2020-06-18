@@ -114,7 +114,7 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   return ()
 
 streamLoader :: Knit.KnitEffects q => Knit.Sem q [Int]
-streamLoader = Streamly.toList $ Knit.ignoreCacheTimeStream $ streamLoaderWC
+streamLoader = Streamly.toList $ Knit.getCachedStream $ streamLoaderWC
 
 streamLoaderWC :: Knit.KnitEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
 streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
@@ -128,7 +128,7 @@ streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
                
 
 streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]
-streamLoader2 = Streamly.toList $ Knit.ignoreCacheTimeStream $ do
+streamLoader2 = Streamly.toList $ Knit.getCachedStream $ do
   (Knit.WithCacheTime cTime sInt) <- streamLoaderWC
   Knit.retrieveOrMakeStream "cacheExample/test2.sbin" (Just cTime) $ do
     Streamly.map (*2) sInt

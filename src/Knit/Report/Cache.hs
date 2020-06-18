@@ -27,16 +27,19 @@ module Knit.Report.Cache
   (
     -- * Types
     KnitCache
+  , WithCacheTime(..)
+  , ActionWithCacheTime
   , StreamWithCacheTime
     -- * Cache Combinators
-  , store
+  , store  
+  , getCachedAction
+  , getCachedStream
   , ignoreCacheTime
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
   -- * Streamly based cache combinators
   , storeStream
-  , ignoreCacheTimeStream
   , retrieveStream
   , retrieveOrMakeStream
   , retrieveOrMakeTransformedStream
@@ -50,7 +53,11 @@ module Knit.Report.Cache
 where
 
 import qualified Knit.Effect.AtomicCache       as C
-import           Knit.Effect.AtomicCache        (clear, clearIfPresent{-, sequenceCacheTimesM-})
+import           Knit.Effect.AtomicCache        (clear
+                                                , clearIfPresent
+                                                , getCachedAction
+                                                , WithCacheTime(..)
+                                                , ActionWithCacheTime)
 import qualified Knit.Effect.Logger            as K
 
 import           Control.Monad (join)
@@ -214,13 +221,8 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
-
--- | Wrapper for AtomicCache.unWithCacheTime so it's very clear what we're up to
 ignoreCacheTime :: C.WithCacheTime a -> a
 ignoreCacheTime = C.unWithCacheTime
-
-getCachedData :: P.Sem r (C.WithCacheTime (P.Sem r a)) -> P.Sem r a
-getCachedData = join . fmap ignoreCacheTime 
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
@@ -228,7 +230,7 @@ retrieve
      ,  K.LogWithPrefixesLE r
      , S.Serialize a)
   => T.Text
-  -> P.Sem r (C.WithCacheTime (P.Sem r a))
+  -> P.Sem r (C.ActionWithCacheTime r a)
 retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> k <> ")")
               $ C.retrieveAndDecode knitSerialize k Nothing
 {-# INLINEABLE retrieve #-}
@@ -244,7 +246,7 @@ retrieveOrMake
   => T.Text
   -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r (C.WithCacheTime (P.Sem r a))
+  -> P.Sem r (C.ActionWithCacheTime r a)
 retrieveOrMake k newestM toMake =
   K.wrapPrefix ("Cache.retrieveOrMake (key=" <> k <> ")")
   $ C.retrieveOrMake knitSerialize k newestM toMake
@@ -265,7 +267,7 @@ retrieveOrMakeTransformed
   -> T.Text
   -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r (C.WithCacheTime (P.Sem r a))
+  -> P.Sem r (C.ActionWithCacheTime r a)
 retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
   K.wrapPrefix "retrieveOrMakeTransformed"
   $ fmap (fmap (fmap fromSerializable))
@@ -291,8 +293,8 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
 type StreamWithCacheTime r a = C.WithCacheTime (Streamly.SerialT (P.Sem r) a)
 
 -- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
-ignoreCacheTimeStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
-ignoreCacheTimeStream = Streamly.concatM . fmap ignoreCacheTime
+getCachedStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
+getCachedStream = Streamly.concatM . fmap C.unWithCacheTime 
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info

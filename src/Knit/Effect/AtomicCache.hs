@@ -33,8 +33,10 @@ module Knit.Effect.AtomicCache
     Cache
     -- * TimeStamps
   , WithCacheTime(..)
+  , ActionWithCacheTime
   , unWithCacheTime
   , cacheTime
+  , getCachedAction
 --  , sequenceCacheTimesM
     -- * Actions
   , encodeAndStore
@@ -127,6 +129,10 @@ unWithCacheTime (WithCacheTime _ a) = a
 cacheTime :: WithCacheTime a -> Time.UTCTime
 cacheTime (WithCacheTime t _) = t
 
+type ActionWithCacheTime r a = WithCacheTime (P.Sem r a)
+getCachedAction :: K.Sem r (ActionWithCacheTime r a) -> P.Sem r a
+getCachedAction = join . fmap unWithCacheTime
+
 {-
 sequenceCacheTimesM :: (Functor f, Foldable f) => f (WithCacheTime a) -> Maybe (WithCacheTime (f a))
 sequenceCacheTimesM cts =
@@ -178,7 +184,7 @@ retrieveOrMakeAndUpdateCache
   -> P.Sem r (Maybe a) -- action to run to make @a@ if cache is empty or expired
   -> k
   -> Maybe Time.UTCTime -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
-  -> P.Sem r (Maybe (WithCacheTime (P.Sem r a)))
+  -> P.Sem r (Maybe (ActionWithCacheTime r a))
 retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key newestM =
   K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
     let
@@ -231,7 +237,7 @@ retrieveAndDecode
   => Serialize r a ct
   -> k
   -> Maybe Time.UTCTime
-  -> P.Sem r (WithCacheTime (P.Sem r a))
+  -> P.Sem r (ActionWithCacheTime r a)
 retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
   fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) k newestM 
   case fromCache of
@@ -252,7 +258,7 @@ lookupAndDecode
   => Serialize r a ct
   -> k
   -> Maybe Time.UTCTime
-  -> P.Sem r (Maybe (WithCacheTime (P.Sem r a)))
+  -> P.Sem r (Maybe (ActionWithCacheTime r a))
 lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) k newestM 
 {-# INLINEABLE lookupAndDecode #-}
 
@@ -269,7 +275,7 @@ retrieveOrMake
   -> k
   -> Maybe Time.UTCTime
   -> P.Sem r a
-  -> P.Sem r (WithCacheTime(P.Sem r a))
+  -> P.Sem r (ActionWithCacheTime r a)
 retrieveOrMake s key newestM makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
