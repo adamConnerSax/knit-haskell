@@ -67,6 +67,7 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   Knit.logLE Knit.Info "Clearing cacheExample from cache..."
   Knit.clearIfPresent "cacheExample/test.sbin"
+  Knit.clearIfPresent "cacheExample/test2.sbin"
   Knit.logLE Knit.Info "asynchronously retrieving or making stream of data, then retrieving on this thread to test atomic cache."
   Knit.logLE Knit.Info $ "This should force the one on this thread to block until the async one,"
     <> " which will try the cache first"

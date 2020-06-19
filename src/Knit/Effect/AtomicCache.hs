@@ -218,7 +218,7 @@ retrieveOrMakeAndUpdateCache
   -> ActionWithCacheTime r b  -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
   -> P.Sem r (Maybe (ActionWithCacheTime r a))
 retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
-  K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
+  K.wrapPrefix ("AtomicCache.retrieveOrMakeAndUpdateCache (key=" <> (T.pack $ show key) <> ")") $ do
     let
       makeAndUpdate :: P.Sem r (Maybe (ActionWithCacheTime r a))
       makeAndUpdate = do
@@ -257,8 +257,12 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
                    K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
                    return a
             return (Just $ WithCacheTime cTimeM decodeAction)             
-          else makeAndUpdate
-      Nothing -> makeAndUpdate
+          else do
+            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Item in cache too old. Making new."
+            makeAndUpdate
+      Nothing -> do
+        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Item not found in cache. Making new."
+        makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
