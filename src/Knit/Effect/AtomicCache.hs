@@ -38,6 +38,7 @@ module Knit.Effect.AtomicCache
   , unWithCacheTime
   , cacheTimeM
   , getCachedAction
+  , onlyCacheTime
 --  , sequenceCacheTimesM
     -- * Actions
   , encodeAndStore

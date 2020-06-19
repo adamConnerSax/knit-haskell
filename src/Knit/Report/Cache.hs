@@ -37,7 +37,8 @@ module Knit.Report.Cache
   , getCachedAction
   , getCachedStream
   , streamToAction
---  , ignoreCacheTime
+  , ignoreCacheTime
+  , onlyCacheTime
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
@@ -57,7 +58,8 @@ import           Knit.Effect.AtomicCache        (clear
                                                 , clearIfPresent
                                                 , getCachedAction
                                                 , WithCacheTime
-                                                , ActionWithCacheTime)
+                                                , ActionWithCacheTime
+                                                , onlyCacheTime)
 import qualified Knit.Effect.Logger            as K
 
 import           Control.Monad (join)
@@ -221,8 +223,8 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
---ignoreCacheTime :: C.WithCacheTime a -> a
---ignoreCacheTime = C.unWithCacheTime
+ignoreCacheTime :: C.WithCacheTime m a -> m a
+ignoreCacheTime = C.unWithCacheTime
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
