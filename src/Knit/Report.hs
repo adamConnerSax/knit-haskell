@@ -55,7 +55,7 @@ module Knit.Report
 
     -- * Effects
   , module Polysemy
-  , module Knit.Effect.AtomicCache
+--  , module Knit.Effect.AtomicCache
   , module Knit.Effect.Pandoc
   , module Knit.Effect.Docs
   , module Knit.Effect.PandocMonad
@@ -83,7 +83,7 @@ import           Polysemy.Async                 ( async
                                                 , await
                                                 , sequenceConcurrently
                                                 )
-import           Knit.Effect.AtomicCache (WithCacheTime(..))                 
+--import           Knit.Effect.AtomicCache (WithCacheTime(..))                 
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
                                                 , PandocReadFormat(..)

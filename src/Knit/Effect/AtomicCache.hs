@@ -32,10 +32,11 @@ module Knit.Effect.AtomicCache
     -- * Effect
     Cache
     -- * TimeStamps
-  , WithCacheTime(..)
+  , WithCacheTime
   , ActionWithCacheTime
+  , wctMapAction
   , unWithCacheTime
-  , cacheTime
+  , cacheTimeM
   , getCachedAction
 --  , sequenceCacheTimesM
     -- * Actions
@@ -119,19 +120,50 @@ data Serialize r a ct where
 
 -- | Wrapper to hold content and a timestamp
 -- The stamp must be at or after the time the data was constructed
-data WithCacheTime a where
-  WithCacheTime :: Time.UTCTime -> a -> WithCacheTime a
-  deriving (Show, Functor)
+data WithCacheTime m a where
+  WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
+  deriving (Show)
 
-unWithCacheTime :: WithCacheTime a -> a
-unWithCacheTime (WithCacheTime _ a) = a
+instance Functor m => Functor (WithCacheTime m) where
+  fmap f (WithCacheTime tM ma) = WithCacheTime tM (fmap f ma)
 
-cacheTime :: WithCacheTime a -> Time.UTCTime
-cacheTime (WithCacheTime t _) = t
+instance Applicative m => Applicative (WithCacheTime m) where
+  pure x = WithCacheTime Nothing (pure x)
+  WithCacheTime t1M mf <*> WithCacheTime t2M ma = WithCacheTime (maxMaybeTime t1M t2M) (mf <*> ma)
 
-type ActionWithCacheTime r a = WithCacheTime (P.Sem r a)
+maxMaybeTime :: Maybe Time.UTCTime -> Maybe Time.UTCTime -> Maybe Time.UTCTime
+maxMaybeTime Nothing t2M = t2M
+maxMaybeTime t1M Nothing = t1M
+maxMaybeTime (Just t1) (Just t2) = Just $ max t1 t2
+
+onlyCacheTime :: Applicative m => Maybe Time.UTCTime -> WithCacheTime m ()
+onlyCacheTime tM = WithCacheTime tM (pure ())
+
+wctApplyNat :: (forall a. f a -> g a) -> WithCacheTime f b -> WithCacheTime g b
+wctApplyNat nat (WithCacheTime tM fb) = WithCacheTime tM (nat fb)
+
+wctMapAction :: (m a -> n b) -> WithCacheTime m a -> WithCacheTime n b
+wctMapAction f (WithCacheTime tM ma) = WithCacheTime tM (f ma)
+
+toSem :: Identity a -> P.Sem r a
+toSem = pure . runIdentity
+
+-- NB, this allows merging dependencies for passing to things which need them
+-- as in:
+-- let cachedDeps = (,,) <$> cached1 <*> cached2 <*> cached3
+
+unWithCacheTime :: WithCacheTime m a -> m a
+unWithCacheTime (WithCacheTime _ ma) = ma
+
+cacheTimeM :: WithCacheTime m a -> Maybe Time.UTCTime
+cacheTimeM (WithCacheTime tM _) = tM
+
+type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
 getCachedAction :: K.Sem r (ActionWithCacheTime r a) -> P.Sem r a
-getCachedAction = join . fmap unWithCacheTime
+getCachedAction = (>>= unWithCacheTime)
+
+--fmapActionWithCacheTime :: (a -> b) -> ActionWithCacheTime r a -> ActionWithCacheTime r b
+--fmapActionWithCacheTime f = fmap (fmap f)
 
 {-
 sequenceCacheTimesM :: (Functor f, Foldable f) => f (WithCacheTime a) -> Maybe (WithCacheTime (f a))
@@ -145,7 +177,7 @@ sequenceCacheTimesM cts =
 -- | Tagged by @t@ so we can have more than one for the same k and v
 -- | h is a type we use for holding a resource
 data Cache k v m a where
-  CacheLookup :: k -> Cache k v m (Maybe (WithCacheTime v))
+  CacheLookup :: k -> Cache k v m (Maybe (WithCacheTime Identity v))
   CacheUpdate :: k -> Maybe v -> Cache k v m () -- NB: this requires some way to attach a cache time during update
   
 P.makeSem ''Cache
@@ -176,22 +208,25 @@ encodeAndStore (Serialize encode _ encBytes) k x =
 -- NB: This returnss an action with the cache time and another action to get the data.  THis allows us
 -- to defer deserialization (and maybe loading??) until we actually want to use the data...
 retrieveOrMakeAndUpdateCache
-  :: forall k ct r a. ( P.Members [Cache k ct, P.Embed IO] r
+  :: forall k ct r b a. ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
      )
   => Serialize r a ct -- serialization/deserialization
-  -> P.Sem r (Maybe a) -- action to run to make @a@ if cache is empty or expired
+  -> (b -> P.Sem r (Maybe a)) -- action to run to make @a@ if cache is empty or expired, uses deps in b
   -> k
-  -> Maybe Time.UTCTime -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
+  -> ActionWithCacheTime r b  -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
   -> P.Sem r (Maybe (ActionWithCacheTime r a))
-retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key newestM =
+retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
   K.wrapPrefix ("AtomicCache.findOrFill (key=" <> (T.pack $ show key) <> ")") $ do
     let
-      makeAndUpdate :: P.Sem r (Maybe (WithCacheTime (P.Sem r a)))
+      makeAndUpdate :: P.Sem r (Maybe (ActionWithCacheTime r a))
       makeAndUpdate = do
-        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action." 
-        ma <- tryIfMissing
+        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action."
+        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": running actions for dependencies."
+        b <- bA
+        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": making new item."
+        ma <- tryIfMissing b
         case ma of
           Nothing -> do
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making failed."
@@ -206,21 +241,22 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
             cacheUpdate key (Just ct') 
             curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
             K.logLE K.Diagnostic $ "Finished making and updating."          
-            return $ Just (WithCacheTime curTime (return a'))
+            return $ Just (WithCacheTime (Just curTime) (return a'))
     fromCache <- cacheLookup key
     case fromCache of
-      Just (WithCacheTime cTime ct) -> do
-        if maybe True (\newest -> cTime > newest) newestM
+      Just (WithCacheTime cTimeM mct) -> do
+        if cTimeM >= newestM --maybe True (\newest -> cTimeM > newest) newestM
           then do
+            let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
             let nBytes = encBytes ct
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
             let decodeAction :: P.Sem r a
                 decodeAction = do
                    K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": deserializing."  
-                   a <- decode ct
+                   a <- decode ct -- a <- mct >>= decode
                    K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
                    return a
-            return (Just $ WithCacheTime cTime decodeAction)             
+            return (Just $ WithCacheTime cTimeM decodeAction)             
           else makeAndUpdate
       Nothing -> makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
@@ -239,7 +275,7 @@ retrieveAndDecode
   -> Maybe Time.UTCTime
   -> P.Sem r (ActionWithCacheTime r a)
 retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
-  fromCache <- retrieveOrMakeAndUpdateCache s (return Nothing) k newestM 
+  fromCache <- retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
   case fromCache of
     Nothing -> P.throw $ ItemNotFoundError $ "No item found/item too old for key=" <> (T.pack $ show k) <> "."
     Just x -> return x
@@ -259,7 +295,8 @@ lookupAndDecode
   -> k
   -> Maybe Time.UTCTime
   -> P.Sem r (Maybe (ActionWithCacheTime r a))
-lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")") $ retrieveOrMakeAndUpdateCache s (return Nothing) k newestM 
+lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")")
+                              $ retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
 {-# INLINEABLE lookupAndDecode #-}
 
 -- | Combinator to combine the action of retrieving from cache and deserializing
@@ -273,14 +310,14 @@ retrieveOrMake
      )
   => Serialize r a ct
   -> k
-  -> Maybe Time.UTCTime
-  -> P.Sem r a
+  -> ActionWithCacheTime r b
+  -> (b -> P.Sem r a)
   -> P.Sem r (ActionWithCacheTime r a)
-retrieveOrMake s key newestM makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
-  let makeIfMissing = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
+retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
+  let makeIfMissing x = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
-        fmap Just makeAction
-  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key newestM 
+        fmap Just $ makeAction x
+  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key cachedDeps 
   case fromCache of
     Just x -> return x
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
@@ -302,7 +339,7 @@ clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> return
 -- to fill the TMVar failed.
 
   
-type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe (WithCacheTime v))))
+type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe (WithCacheTime Identity v))))
 
 -- | lookup combinator for in-memory AtomicMemCache
 atomicMemLookup :: (Ord k
@@ -312,13 +349,13 @@ atomicMemLookup :: (Ord k
                    )
               => AtomicMemCache k ct
               -> k
-              -> P.Sem r (Maybe (WithCacheTime ct))
+              -> P.Sem r (Maybe (WithCacheTime Identity ct))
 atomicMemLookup cache key = K.wrapPrefix "atomicMemLookup" $ do
   K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Called."
   P.embed $ C.atomically $ do
     mv <- (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
     case mv of
-      Just v -> return $ Just v
+      Just wctv -> return $ Just wctv
       Nothing -> do
         newTMV <- C.newEmptyTMVar
         C.modifyTVar cache (M.insert key newTMV)
@@ -346,7 +383,7 @@ atomicMemUpdate cache key mct =
     Nothing -> (P.embed $ C.atomically $ C.modifyTVar cache (M.delete key)) >> return Deleted
     Just ct -> do
       curTime <- P.embed Time.getCurrentTime
-      let wct = WithCacheTime curTime ct
+      let wct = WithCacheTime (Just curTime) (Identity ct)
       P.embed $ C.atomically $ do
         m <- C.readTVar cache
         case M.lookup key m of
@@ -391,7 +428,7 @@ atomicMemLookupB :: (Ord k
                     )
                  =>  AtomicMemCache k ct
                  -> k
-                 -> P.Sem r (Maybe (WithCacheTime ct))
+                 -> P.Sem r (Maybe (WithCacheTime Identity ct))
 atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
   let keyText = "key=" <> (T.pack $ show key) <> ": "
   K.logLE K.Diagnostic $ keyText <> "checking in mem cache..."
@@ -416,11 +453,12 @@ atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
       inOtherM <- cacheLookup key      
       case inOtherM of
         Nothing -> K.logLE K.Diagnostic (keyText <> "not found in backup cache.") >> return Nothing
-        Just wct -> do
+        Just (WithCacheTime tM mct) -> do
           K.logLE K.Diagnostic (keyText <> "Found in backup cache.  Filling empty TMVar.")
-          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just wct)
+          let ct = runIdentity mct
+          P.embed $ C.atomically $ C.putTMVar emptyTMV (Just $ WithCacheTime tM (Identity ct)) 
           K.logLE K.Diagnostic (keyText <> "Returning")
-          return $ Just wct
+          return $ Just $ WithCacheTime tM (pure ct) 
 {-# INLINEABLE atomicMemLookupB #-}
 
 -- | update for an AtomicMemCache which is backed by some other cache, probably a persistence layer.
@@ -618,13 +656,13 @@ getContentsWithCacheTime :: (P.Members '[P.Embed IO] r
                             , K.LogWithPrefixesLE r)
                          => (FilePath -> IO a)
                          -> FilePath
-                         -> P.Sem r (Maybe (WithCacheTime a))
+                         -> P.Sem r (Maybe (WithCacheTime Identity a))
 getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
   K.logLE K.Diagnostic $ "Reading serialization from disk."
   rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
     ct <- f fp
     cTime <- System.getModificationTime fp
-    return $ WithCacheTime cTime ct
+    return $ WithCacheTime (Just cTime) (Identity ct)
 
 fileNotFoundToEither :: IO a -> IO (Either () a)
 fileNotFoundToEither x = (fmap Right x) `Exception.catch` f where

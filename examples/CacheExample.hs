@@ -119,7 +119,7 @@ streamLoader = Streamly.toList $ Knit.getCachedStream $ streamLoaderWC
 streamLoaderWC :: Knit.KnitEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
 streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
   Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
-  Knit.retrieveOrMakeStream "cacheExample/test.sbin" Nothing $ do               
+  Knit.retrieveOrMakeStream "cacheExample/test.sbin" (pure ()) $ const $ do               
     Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
     Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
     Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
@@ -129,8 +129,8 @@ streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
 
 streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]
 streamLoader2 = Streamly.toList $ Knit.getCachedStream $ do
-  (Knit.WithCacheTime cTime sInt) <- streamLoaderWC
-  Knit.retrieveOrMakeStream "cacheExample/test2.sbin" (Just cTime) $ do
+  cachedStream <- Knit.streamToAction <$> streamLoaderWC
+  Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do
     Streamly.map (*2) sInt
                
 -- example using HVega  
