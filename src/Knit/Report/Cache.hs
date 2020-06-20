@@ -36,7 +36,9 @@ module Knit.Report.Cache
   , clearIfPresent
   , getCachedAction
   , getCachedStream
+  , withCacheTime
   , streamToAction
+  , streamAsAction
   , ignoreCacheTime
   , onlyCacheTime
   , retrieve
@@ -56,8 +58,9 @@ where
 import qualified Knit.Effect.AtomicCache       as C
 import           Knit.Effect.AtomicCache        (clear
                                                 , clearIfPresent
+                                                , WithCacheTime                                                
+                                                , withCacheTime
                                                 , getCachedAction
-                                                , WithCacheTime
                                                 , ActionWithCacheTime
                                                 , onlyCacheTime)
 import qualified Knit.Effect.Logger            as K
@@ -294,8 +297,11 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
 
 type StreamWithCacheTime r a = C.WithCacheTime (Streamly.SerialT (P.Sem r)) a
 
-streamToAction :: StreamWithCacheTime r a -> C.ActionWithCacheTime r (Streamly.SerialT (P.Sem r) a)
-streamToAction = C.wctMapAction return
+streamToAction :: (Streamly.SerialT (P.Sem r) a -> P.Sem r b) -> StreamWithCacheTime r a -> C.ActionWithCacheTime r b
+streamToAction = C.wctMapAction
+
+streamAsAction :: StreamWithCacheTime r a -> C.ActionWithCacheTime r (Streamly.SerialT (P.Sem r) a)
+streamAsAction = streamToAction return
 
 -- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
 getCachedStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a

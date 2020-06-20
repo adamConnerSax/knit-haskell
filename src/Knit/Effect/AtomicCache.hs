@@ -33,6 +33,7 @@ module Knit.Effect.AtomicCache
     Cache
     -- * TimeStamps
   , WithCacheTime
+  , withCacheTime
   , ActionWithCacheTime
   , wctMapAction
   , unWithCacheTime
@@ -140,6 +141,9 @@ maxMaybeTime (Just t1) (Just t2) = Just $ max t1 t2
 onlyCacheTime :: Applicative m => Maybe Time.UTCTime -> WithCacheTime m ()
 onlyCacheTime tM = WithCacheTime tM (pure ())
 
+withCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
+withCacheTime = WithCacheTime
+
 wctApplyNat :: (forall a. f a -> g a) -> WithCacheTime f b -> WithCacheTime g b
 wctApplyNat nat (WithCacheTime tM fb) = WithCacheTime tM (nat fb)
 
@@ -208,6 +212,7 @@ encodeAndStore (Serialize encode _ encBytes) k x =
 -- the TMVar gets filled somehow and the key deleted from cache.
 -- NB: This returnss an action with the cache time and another action to get the data.  THis allows us
 -- to defer deserialization (and maybe loading??) until we actually want to use the data...
+-- IDEA: when too old, make new and load old and compare?  If same, use older date?
 retrieveOrMakeAndUpdateCache
   :: forall k ct r b a. ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
