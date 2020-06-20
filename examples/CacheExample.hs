@@ -130,7 +130,7 @@ streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
 
 streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]
 streamLoader2 = Streamly.toList $ Knit.getCachedStream $ do
-  cachedStream <- Knit.streamToAction <$> streamLoaderWC
+  cachedStream <- Knit.streamAsAction <$> streamLoaderWC
   Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do
     Streamly.map (*2) sInt
                

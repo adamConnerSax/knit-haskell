@@ -40,7 +40,6 @@ module Knit.Effect.AtomicCache
   , cacheTimeM
   , getCachedAction
   , onlyCacheTime
---  , sequenceCacheTimesM
     -- * Actions
   , encodeAndStore
   , retrieveAndDecode
@@ -95,7 +94,7 @@ import qualified System.IO.Error               as IO.Error
 
 
 {- TODO:
-1. Can this deisgn be simplified, part 1. The Maybe in the TMVar seems like it should be uneccessary.
+1. Can this design be simplified, part 1. The Maybe in the TMVar seems like it should be uneccessary.
 2. It'd be nice to make sure we can't leave the empty TVar. Can this be done in a way so that it must be filled?
 3. We should be able to factor out some things around handling the returned TMVar
 -}
@@ -110,7 +109,7 @@ data CacheError =
 -- | Type to carry encoding/decoding functions for Serializing data.  Allows for different Serializers as well as
 -- Serializing to different types of in memory store.
 -- @encode@ returns the encoded value *and* a (possibly buffered) copy of its input in the case where the imput is expensive to produce.
--- This is designed around serialization of streams, where the original stream may be expensive to run but once run,
+-- This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
 -- we can return a "buffered" stream which just unfolds from a memory buffer.
 -- In many cases, we will just return the input in that slot.
 data Serialize r a ct where
@@ -128,59 +127,70 @@ data WithCacheTime m a where
 
 instance Functor m => Functor (WithCacheTime m) where
   fmap f (WithCacheTime tM ma) = WithCacheTime tM (fmap f ma)
-
+  {-# INLINE fmap #-}
+  
 instance Applicative m => Applicative (WithCacheTime m) where
   pure x = WithCacheTime Nothing (pure x)
-  WithCacheTime t1M mf <*> WithCacheTime t2M ma = WithCacheTime (maxMaybeTime t1M t2M) (mf <*> ma)
+  {-# INLINE pure #-}
+  WithCacheTime t1M mf <*> WithCacheTime t2M ma = WithCacheTime (max t1M t2M) (mf <*> ma)
+  {-# INLINE (<*>) #-}
+{-
+NB, the applicative instance allows merging dependencies
+for passing to things which need them
+as in:
+let cachedDeps = (,,) <$> cached1 <*> cached2 <*> cached3
+-}
 
-maxMaybeTime :: Maybe Time.UTCTime -> Maybe Time.UTCTime -> Maybe Time.UTCTime
-maxMaybeTime Nothing t2M = t2M
-maxMaybeTime t1M Nothing = t1M
-maxMaybeTime (Just t1) (Just t2) = Just $ max t1 t2
+{-
+NB: There is no Monad instance for WithCacheTime.  We would need
+'join :: WithCacheTime t1M (m (WithCacheTime t2M (m b)) -> WithCacheTime (max t1M t2M) (m b)
+but we cannot get t2M "outside" m.
+-}
 
+-- | Construct a WithCacheTime with a time and no action.  
 onlyCacheTime :: Applicative m => Maybe Time.UTCTime -> WithCacheTime m ()
 onlyCacheTime tM = WithCacheTime tM (pure ())
+{-# INLINEABLE onlyCacheTime #-}
 
+-- | Construct a WithCacheTime from a @Maybe Time.UTCTime@ and an action.
 withCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
 withCacheTime = WithCacheTime
+{-# INLINEABLE withCacheTime #-}
 
+-- | Map one type of action to another via a natural transformation.
+-- Specifically useful for mapping from @WithCacheTime Identity a@
+-- to @WithCacheTime m a@
 wctApplyNat :: (forall a. f a -> g a) -> WithCacheTime f b -> WithCacheTime g b
 wctApplyNat nat (WithCacheTime tM fb) = WithCacheTime tM (nat fb)
+{-# INLINEABLE wctApplyNat #-}
 
+-- | Map one type of action to another 
 wctMapAction :: (m a -> n b) -> WithCacheTime m a -> WithCacheTime n b
 wctMapAction f (WithCacheTime tM ma) = WithCacheTime tM (f ma)
+{-# INLINEABLE wctMapAction #-}
 
+-- | natural transformation which is useful for interoperation between
+-- the cache storage and the values returned to the user.
 toSem :: Identity a -> P.Sem r a
 toSem = pure . runIdentity
+{-# INLINE toSem #-}
 
--- NB, this allows merging dependencies for passing to things which need them
--- as in:
--- let cachedDeps = (,,) <$> cached1 <*> cached2 <*> cached3
-
+-- | Access the action part of a @WithCacheTime@
 unWithCacheTime :: WithCacheTime m a -> m a
 unWithCacheTime (WithCacheTime _ ma) = ma
+{-# INLINEABLE unWithCacheTime #-}
 
+-- | Access the @Maybe Time.UTCTime@ part of a 'WithCacheTime'
 cacheTimeM :: WithCacheTime m a -> Maybe Time.UTCTime
 cacheTimeM (WithCacheTime tM _) = tM
+{-# INLINEABLE cacheTimeM #-}
 
 type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
 getCachedAction :: K.Sem r (ActionWithCacheTime r a) -> P.Sem r a
 getCachedAction = (>>= unWithCacheTime)
+{-# INLINEABLE getCachedAction #-}
 
---fmapActionWithCacheTime :: (a -> b) -> ActionWithCacheTime r a -> ActionWithCacheTime r b
---fmapActionWithCacheTime f = fmap (fmap f)
-
-{-
-sequenceCacheTimesM :: (Functor f, Foldable f) => f (WithCacheTime a) -> Maybe (WithCacheTime (f a))
-sequenceCacheTimesM cts =
-  let latestM = Fold.foldl' (\lt wc -> max (Just $ cacheTime wc) lt) Nothing cts
-  in case latestM of
-    Nothing -> Nothing
-    Just latest -> Just $ WithCacheTime latest (fmap unWithCacheTime cts)
--}
--- | This is a Key/Value store
--- | Tagged by @t@ so we can have more than one for the same k and v
--- | h is a type we use for holding a resource
+-- | Key/Value store effect requiring its implementation to return values with time-stamps.
 data Cache k v m a where
   CacheLookup :: k -> Cache k v m (Maybe (WithCacheTime Identity v))
   CacheUpdate :: k -> Maybe v -> Cache k v m () -- NB: this requires some way to attach a cache time during update
@@ -210,9 +220,10 @@ encodeAndStore (Serialize encode _ encBytes) k x =
 -- | Combinator to handle the frequent combination of lookup and, if that fails, running an action to update the cache. 
 -- TODO: We need some exception handling here to make sure, in the case of an Atomic cache,
 -- the TMVar gets filled somehow and the key deleted from cache.
--- NB: This returnss an action with the cache time and another action to get the data.  THis allows us
+-- NB: This returns an action with the cache time and another action to get the data.  This allows us
 -- to defer deserialization (and maybe loading??) until we actually want to use the data...
--- IDEA: when too old, make new and load old and compare?  If same, use older date?
+
+-- IDEA: when too old, make new, retrieve old and compare?  If same, use older date? Costs time, but saves downstream rebuilds.
 retrieveOrMakeAndUpdateCache
   :: forall k ct r b a. ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
@@ -331,6 +342,7 @@ retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=
   case fromCache of
     Just x -> return x
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
+{-# INLINEABLE retrieveOrMake #-}
 
 -- | Combinator for clearing the cache at a given key
 clear :: P.Member (Cache k ct) r => k -> P.Sem r ()
@@ -608,6 +620,7 @@ persistAsByteString keyToFilePath =
         _ <- createDirIfNecessary dirPath
         K.logLE K.Diagnostic $ "Writing serialization to disk."
         rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
+{-# INLINEABLE persistAsByteString #-}
 
 -- | Interpreter Cache via persistence to disk as a Streamly stream of Bytes (Word8)
 persistAsByteStreamly
@@ -673,6 +686,7 @@ getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
     ct <- f fp
     cTime <- System.getModificationTime fp
     return $ WithCacheTime (Just cTime) (Identity ct)
+{-# INLINE getContentsWithCacheTime #-}
 
 fileNotFoundToEither :: IO a -> IO (Either () a)
 fileNotFoundToEither x = (fmap Right x) `Exception.catch` f where
@@ -689,6 +703,6 @@ fileNotFoundToMaybe x = (fmap Just x) `Exception.catch` f where
 
 rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r) => IO a -> P.Sem r a
 rethrowIOErrorAsCacheError x = P.fromExceptionVia (\(e :: IO.Error.IOError) -> PersistError $ "IOError: " <> (T.pack $ show e)) x
-
+{-# INLINEABLE rethrowIOErrorAsCacheError #-}
 
 

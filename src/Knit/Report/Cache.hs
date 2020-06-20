@@ -151,20 +151,6 @@ cerealStreamly = C.Serialize
   (fromIntegral . runIdentity . Streamly.length)
 {-# INLINEABLE cerealStreamly #-}
 
-{-
-cerealStream :: (S.Serialize a
-                , P.Member (P.Embed IO) r                
-                , P.MemberWithError (P.Error Exceptions.SomeException) r
-                , P.MemberWithError (P.Error C.CacheError) r
-                )
-             => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.SerialT Identity Word.Word8)
-cerealStream = C.Serialize
-  (\a -> fmap Streamly.fromList . Streamly.toList . Streamly.Cereal.encodeStream)
-  (\x -> Polysemy.MonadCatch.absorbMonadCatch $ return $ Streamly.Cereal.decodeStream $ Streamly.generally x)
-  (fromIntegral . runIdentity . Streamly.length)
-{-# INLINEABLE cerealStream #-}
--}
-
 -- | Encode/Decode functions for serializing to Streamly Arrays
 cerealArray :: (S.Serialize a
                , P.Member (P.Embed IO) r
@@ -226,8 +212,11 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
+-- | Strip the time information from a 'C.WithCacheTime'.
+-- Needed to use the data.
 ignoreCacheTime :: C.WithCacheTime m a -> m a
 ignoreCacheTime = C.unWithCacheTime
+{-# INLINEABLE ignoreCacheTime #-}
 
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
@@ -295,17 +284,23 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
   C.encodeAndStore knitSerializeStream k aS
 {-# INLINEABLE storeStream #-}
 
+-- | Specify a Streamly Stream as the action in a 'C.WithCacheTime'
 type StreamWithCacheTime r a = C.WithCacheTime (Streamly.SerialT (P.Sem r)) a
 
+-- | Use a function from a @Stream (Sem r) a@  to @Sem r a@ to map from a stream action to a plain action over Sem. 
 streamToAction :: (Streamly.SerialT (P.Sem r) a -> P.Sem r b) -> StreamWithCacheTime r a -> C.ActionWithCacheTime r b
 streamToAction = C.wctMapAction
+{-# INLINEABLE streamToAction #-}
 
+-- | Wrap a stream action in @Sem r@ to make a stream action into a plain one holding the (still effectful) stream.
 streamAsAction :: StreamWithCacheTime r a -> C.ActionWithCacheTime r (Streamly.SerialT (P.Sem r) a)
 streamAsAction = streamToAction return
+{-# INLINEABLE streamAsAction #-}
 
 -- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
 getCachedStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
 getCachedStream = Streamly.concatM . fmap C.unWithCacheTime 
+{-# INLINEABLE getCachedStream #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
