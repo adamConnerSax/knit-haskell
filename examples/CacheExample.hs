@@ -65,14 +65,13 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.logLE Knit.Info "adding some latex..."
   Knit.addMarkDown "## Some example latex"
   Knit.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
-  Knit.logLE Knit.Info "Clearing cacheExample from cache..."
+  Knit.logLE Knit.Info "Clearing \"cacheExample/test.bin\" and \"cacheExample/test2.bin\" from cache..."
   Knit.clearIfPresent "cacheExample/test.sbin"
   Knit.clearIfPresent "cacheExample/test2.sbin"
-  Knit.logLE Knit.Info "asynchronously retrieving or making stream of data, then retrieving on this thread to test atomic cache."
-  Knit.logLE Knit.Info $ "This should force the one on this thread to block until the async one,"
-    <> " which will try the cache first"
-    <> ", tries memory, then disk, then makes the data."
-  Knit.logLE Knit.Info "At which point this one will unblock and see the data in the in-memory-cache."
+  Knit.logLE Knit.Info $ "asynchronously retrieveOrMake stream of data, then retrieveOrMake on this thread, after a small delay, to test atomic cache."
+    <> "the async retrieveOrMake will try the cache first"
+    <> ", in-memory, then disk, then makes the data if those come up empty."
+  Knit.logLE Knit.Info "At which point the main thread, blocked on the TMVar in the cache, will unblock and see the data in the in-memory-cache."
   testListA <- Knit.async $ Knit.wrapPrefix "ASYNC" $ do
     dat <- streamLoader
     Knit.logLE Knit.Diagnostic "Waiting to return from Async"
@@ -115,7 +114,7 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   return ()
 
 streamLoader :: Knit.KnitEffects q => Knit.Sem q [Int]
-streamLoader = Streamly.toList $ Knit.getCachedStream $ streamLoaderWC
+streamLoader = Streamly.toList $ Knit.ignoreCacheTimeStream $ streamLoaderWC
 
 streamLoaderWC :: Knit.KnitEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
 streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
@@ -129,7 +128,7 @@ streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
                
 
 streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]
-streamLoader2 = Streamly.toList $ Knit.getCachedStream $ do
+streamLoader2 = Streamly.toList $ Knit.ignoreCacheTimeStream $ do
   cachedStream <- Knit.streamAsAction <$> streamLoaderWC
   Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do
     Streamly.map (*2) sInt

@@ -34,12 +34,12 @@ module Knit.Report.Cache
   , store  
   , clear
   , clearIfPresent
-  , getCachedAction
-  , getCachedStream
   , withCacheTime
   , streamToAction
   , streamAsAction
   , ignoreCacheTime
+  , ignoreCacheTimeM
+  , ignoreCacheTimeStream
   , onlyCacheTime
   , retrieve
   , retrieveOrMake
@@ -60,7 +60,8 @@ import           Knit.Effect.AtomicCache        (clear
                                                 , clearIfPresent
                                                 , WithCacheTime                                                
                                                 , withCacheTime
-                                                , getCachedAction
+                                                , ignoreCacheTime
+                                                , ignoreCacheTimeM
                                                 , ActionWithCacheTime
                                                 , onlyCacheTime)
 import qualified Knit.Effect.Logger            as K
@@ -212,12 +213,6 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
--- | Strip the time information from a 'C.WithCacheTime'.
--- Needed to use the data.
-ignoreCacheTime :: C.WithCacheTime m a -> m a
-ignoreCacheTime = C.unWithCacheTime
-{-# INLINEABLE ignoreCacheTime #-}
-
 -- | Retrieve an a from the store at key k. Throw if not found or IOError.
 retrieve
   :: (P.Members '[KnitCache, P.Error C.CacheError, P.Embed IO] r
@@ -297,10 +292,10 @@ streamAsAction :: StreamWithCacheTime r a -> C.ActionWithCacheTime r (Streamly.S
 streamAsAction = streamToAction return
 {-# INLINEABLE streamAsAction #-}
 
--- | Wrapper for AtomicCache.unWithCacheTime plus the concatM bit
-getCachedStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
-getCachedStream = Streamly.concatM . fmap C.unWithCacheTime 
-{-# INLINEABLE getCachedStream #-}
+-- | Wrapper for AtomicCache.ignoreCacheTime, plus the concatM bit for streamly
+ignoreCacheTimeStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
+ignoreCacheTimeStream = Streamly.concatM . fmap C.ignoreCacheTime
+{-# INLINEABLE ignoreCacheTimeStream #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
@@ -364,62 +359,3 @@ fixMonadCatch = Streamly.hoist f where
   f = join . fmap P.fromEither . Exceptions.runCatchT
 {-# INLINEABLE fixMonadCatch #-}
 
-{-
--- | Retrieve an a from the store at key k. Throw if not found or IOError
-retrieveStream
-  :: (P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r, S.Serialize a)
-  => T.Text
-  -> Streamly.SerialT (P.Sem r) a
-retrieveStream k = P.mapError ioErrorToPandocError $ C.retrieve cerealStream k
-{-# INLINEABLE retrieve #-}
-
--- | Retrieve an a from the store at key k.
--- If retrieve fails then perform the action and store the resulting a at key k. 
-retrieveOrMake
-  :: forall a r
-   . ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , S.Serialize a
-     )
-  => T.Text
-  -> P.Sem r a
-  -> P.Sem r a
-retrieveOrMake k toMake = K.wrapPrefix "knitRetrieveOrMake" $ do
-  ma <- C.retrieveMaybe cerealStreamly k
-  case ma of
-    Nothing -> do
-      K.logLE K.Diagnostic $ k <> " not found in cache. Making..."
-      a <- toMake
-      store k a
-      K.logLE K.Diagnostic $ "Asset Stored."
-      return a
-    Just a -> do
-      K.logLE K.Diagnostic $ k <> " found in cache."
-      return a
-{-# INLINEABLE retrieveOrMake #-}
-
-retrieveOrMakeTransformed
-  :: forall a b r
-   . ( P.Members '[KnitCache, P.Error PandocError, P.Embed IO] r
-     , K.LogWithPrefixesLE r
-     , S.Serialize b
-     )
-  => (a -> b)
-  -> (b -> a)
-  -> T.Text
-  -> P.Sem r a
-  -> P.Sem r a
-retrieveOrMakeTransformed toSerializable fromSerializable k toMake =
-  fmap fromSerializable $ retrieveOrMake k (fmap toSerializable toMake)
-{-# INLINEABLE retrieveOrMakeTransformed #-}
--}
-{-
--- | Clear the @b@ stored at key k.
-clear :: K.KnitEffects r => T.Text -> P.Sem r ()
-clear k = P.mapError ioErrorToPandocError $ C.clear k
-{-# INLINEABLE clear #-}
-
-ioErrorToPandocError :: IE.IOError -> PandocError
-ioErrorToPandocError e = PandocIOError (K.textToPandocText $ ("IOError: " <> (T.pack $ show e)) e
-{-# INLINEABLE ioErrorToPandocError #-}
--}

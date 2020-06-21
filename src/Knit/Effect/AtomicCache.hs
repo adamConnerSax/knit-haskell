@@ -36,9 +36,9 @@ module Knit.Effect.AtomicCache
   , withCacheTime
   , ActionWithCacheTime
   , wctMapAction
-  , unWithCacheTime
-  , cacheTimeM
-  , getCachedAction
+  , ignoreCacheTime
+  , ignoreCacheTimeM
+  , cacheTime
   , onlyCacheTime
     -- * Actions
   , encodeAndStore
@@ -95,7 +95,7 @@ import qualified System.IO.Error               as IO.Error
 
 {- TODO:
 1. Can this design be simplified, part 1. The Maybe in the TMVar seems like it should be uneccessary.
-2. It'd be nice to make sure we can't leave the empty TVar. Can this be done in a way so that it must be filled?
+2. It'd be nice to make sure we can't leave the empty TMVar. Can this be done in a way so that it must be filled?
 3. We should be able to factor out some things around handling the returned TMVar
 -}
 -- | Error Type for Cache errors.  Simplifies catching them and reporting them.
@@ -119,7 +119,7 @@ data Serialize r a ct where
             -> (ct -> Int64) -- size (in Bytes)
             -> Serialize r a ct
 
--- | Wrapper to hold content and a timestamp
+-- | Wrapper to hold (deserializable, if necessary) content and a timestamp
 -- The stamp must be at or after the time the data was constructed
 data WithCacheTime m a where
   WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
@@ -135,17 +135,17 @@ instance Applicative m => Applicative (WithCacheTime m) where
   WithCacheTime t1M mf <*> WithCacheTime t2M ma = WithCacheTime (max t1M t2M) (mf <*> ma)
   {-# INLINE (<*>) #-}
 {-
-NB, the applicative instance allows merging dependencies
+NB: The applicative instance allows merging dependencies
 for passing to things which need them
 as in:
 let cachedDeps = (,,) <$> cached1 <*> cached2 <*> cached3
--}
 
-{-
 NB: There is no Monad instance for WithCacheTime.  We would need
 'join :: WithCacheTime t1M (m (WithCacheTime t2M (m b)) -> WithCacheTime (max t1M t2M) (m b)
 but we cannot get t2M "outside" m.
 -}
+
+type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
 
 -- | Construct a WithCacheTime with a time and no action.  
 onlyCacheTime :: Applicative m => Maybe Time.UTCTime -> WithCacheTime m ()
@@ -176,19 +176,19 @@ toSem = pure . runIdentity
 {-# INLINE toSem #-}
 
 -- | Access the action part of a @WithCacheTime@
-unWithCacheTime :: WithCacheTime m a -> m a
-unWithCacheTime (WithCacheTime _ ma) = ma
-{-# INLINEABLE unWithCacheTime #-}
+ignoreCacheTime :: WithCacheTime m a -> m a
+ignoreCacheTime (WithCacheTime _ ma) = ma
+{-# INLINEABLE ignoreCacheTime #-}
+
+-- | Access the action part of a @WithCacheTime@
+ignoreCacheTimeM :: Monad m => m (WithCacheTime m a) -> m a
+ignoreCacheTimeM = join . fmap ignoreCacheTime
+{-# INLINEABLE ignoreCacheTimeM #-}
 
 -- | Access the @Maybe Time.UTCTime@ part of a 'WithCacheTime'
-cacheTimeM :: WithCacheTime m a -> Maybe Time.UTCTime
-cacheTimeM (WithCacheTime tM _) = tM
-{-# INLINEABLE cacheTimeM #-}
-
-type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
-getCachedAction :: K.Sem r (ActionWithCacheTime r a) -> P.Sem r a
-getCachedAction = (>>= unWithCacheTime)
-{-# INLINEABLE getCachedAction #-}
+cacheTime :: WithCacheTime m a -> Maybe Time.UTCTime
+cacheTime (WithCacheTime tM _) = tM
+{-# INLINEABLE cacheTime #-}
 
 -- | Key/Value store effect requiring its implementation to return values with time-stamps.
 data Cache k v m a where

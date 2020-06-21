@@ -52,13 +52,22 @@ and a monadic computation which can produce the data:
 data WithCacheTime m a where
   WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
 ```
-To get the data from a ```WithCacheTime``` you ignore the time and bind the result, as in:
-```ignoreCacheTime myCachedData >>= doSomethingWithMyData```
+To get the data from a ```WithCacheTime``` you can use functions from the 
+library to "ignore" the time and bind the result:
+```ignoreCacheTime :: WithCacheData m a -> m a```
+or
+```haskell
+ignoreCacheTimeM :: m (WithCacheData m a) -> ma 
+ignoreCacheTimeM = join . ignoreCacheTime
+```
 
 Though direct storage and retrieval is useful, typically, one would use the cache to store 
 the result of a long-running computation so it need only be run once.  This pattern is 
 facilitated via 
-```retrieveOrMake :: T.Text -> WithCacheTime m b -> (b -> m a) -> m (WithCacheTime m a)```
+```
+retrieveOrMake :: T.Text -> WithCacheTime m b -> (b -> m a) -> m (WithCacheTime m a)
+```
+
 which takes a text key, a set of dependencies, of type ```b```, with a time-stamp,
 a (presumably expensive) function taking those dependencies and producing a 
 time-stamped monadic computation for the desired result. If the requested
@@ -69,32 +78,38 @@ data in the cache for that key or the data is too old, the action producing the 
 is "run" and those dependencies are fed to the computation given, producing the data and 
 caching the result.
 
+NB: The returned monadic computation is *not* simply the result of applying the dependencies to
+the given function.  That computation is run, if necessary, in order to produce the data, which
+is then serialized and cached.  The returned monadic computation is either the data produced
+by the given computation, put into the monad via ```pure``` or the result pulled from the 
+cache *before* it is deserialized.  Running the returned computation performs the deserialization
+so the data can be used.  This allows checking the time-stamp of data without deserializing
+in order to make the case where it's never actually used more efficient.
+
 ```WithCacheTime``` is an applicative functor, which facilitates its primary use, to store 
 a set of dependencies *and* the latest time at which something which depends on them could
 have been computed and still be valid. As an example, suppose you have three long-running
 computations, the last of which depends on the first two:
-```
+```haskell
 longTimeA :: AData
-
 longTimeB :: BData
-
 longTimeC :: AData -> BData -> CData
 ```
 
 You might approach caching this sequence thusly:
 ```
-cachedA = retrieveOrMake "A.bin" (pure ()) (const longTimeA)
-cachedB = retrieveOrMake "B.bin" (pure ()) (const longTimeB)
-
-cDeps = (,) <$> cachedA <*> cachedB
-
-cachedC = retrieveOrMake "C.bin" cDeps $ \(a, b) -> longTimeC a b
+cachedA <- retrieveOrMake "A.bin" (pure ()) (const longTimeA)
+cachedB <- retrieveOrMake "B.bin" (pure ()) (const longTimeB)
+let cDeps = (,) <$> cachedA <*> cachedB
+cachedC <- retrieveOrMake "C.bin" cDeps $ \(a, b) -> longTimeC a b
 ```
-and each piece of data will get cached as its made.  Now suppose you change the computation
-```longTimeA```.  You realize that the cached data is invalid so you delete "A.bin" from the
+and each piece of data will get cached when this is first run.  Now suppose you change the computation
+```longTimeA```.  You realize that the cached data is invalid, so you delete "A.bin" from the
 cache.  The next time this code runs, it will recompute and cache the result of longTimeA, 
-"load" B from cache, realize that
-the cached version of C is out of date, and recompute and re-cache that as well.  This doesn't obviate the 
+load the ```BData```  (serialized) from cache, realize that
+the cached version of ```CData``` is out of date, 
+and then deserialize ```BData````, and use it and the new ```AData``` 
+to recompute and re-cache ```CData```.  This doesn't eliminate the 
 need for user intervention: the user still had to manually delete the result of A, but it handles
 the downstream work of tracking the uses of that data and recomputing where required.  
 
