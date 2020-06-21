@@ -14,9 +14,9 @@ myConfig = defaultKnitConfig { outerLogPrefix = Just "MyReport", cacheDir = "myC
 ```
 
 Also note that a new major version of Pandoc has been released (2.9.x).  knit-haskell can be compiled against this as
-well as the older versions but there are some major changes which may affect you if you use any of the pandoc 
+well as the older versions but there are some major changes which may affect you should you use any of the pandoc 
 functions directly.  In particular, Pandoc has now switched to using ```Text``` instead of ```String``` for
-most things.
+most (all ?) things.
 
 ## Introduction
 knit-haskell is an attempt to emulate parts of the RMarkdown/knitR experience in haskell. 
@@ -39,15 +39,65 @@ the traditional interface returns an ```a```.
 From the docs "The Maybe returned by async is due to the fact that we can't be sure an Error effect didn't fail locally."
 * A persistent (using memory and disk) cache for "shelving" the results of computations between report runs.  Anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
-package can be cached. If you use the cache, and you are running in a version-controlled directory,
+package can be cached.
+If you use the cache, and you are running in a version-controlled directory,
 you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
 Once data has been loaded from disk/produced once, it remains available in memory via its key.
 
-Data can be put into the cache via ```store```, retrieved via ```retrieve``` and 
-retrieved or created via ```retrieveOrMake``` which will attempt to retrieve the data and run a given action 
-to produce the data if the retrieval fails.  This is often how you might introduce cached data into the report:
-it will get made the first time--and any time after that if the cached version is deleted-but otherwise it will be 
-loaded from disk. Entries can be cleared from the cache via ```clear```.
+Data can be put into the cache via ```store```, retrieved via ```retrieve```. Retrieval from cache
+does not actually retrieve the data, but a structure with a time-stamp 
+([```Maybe Time.Clock.UTCTime```](https://hackage.haskell.org/package/time-1.10/docs/Data-Time-Clock.html#t:UTCTime))
+and a monadic computation which can produce the data:
+```haskell
+data WithCacheTime m a where
+  WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
+```
+To get the data from a ```WithCacheTime``` you ignore the time and bind the result, as in:
+```ignoreCacheTime myCachedData >>= doSomethingWithMyData```
+
+Though direct storage and retrieval is useful, typically, one would use the cache to store 
+the result of a long-running computation so it need only be run once.  This pattern is 
+facilitated via 
+```retrieveOrMake :: T.Text -> WithCacheTime m b -> (b -> m a) -> m (WithCacheTime m a)```
+which takes a text key, a set of dependencies, of type ```b```, with a time-stamp,
+a (presumably expensive) function taking those dependencies and producing a 
+time-stamped monadic computation for the desired result. If the requested
+data is cached, the time stamp (modification time of the file in cache, more or less) 
+is compared to the time-stamp on the dependencies.  As long as the dependencies are older
+than the cached data, an action producing the cached result is returned.  If there is no
+data in the cache for that key or the data is too old, the action producing the dependencies
+is "run" and those dependencies are fed to the computation given, producing the data and 
+caching the result.
+
+```WithCacheTime``` is an applicative functor, which facilitates its primary use, to store 
+a set of dependencies *and* the latest time at which something which depends on them could
+have been computed and still be valid. As an example, suppose you have three long-running
+computations, the last of which depends on the first two:
+```
+longTimeA :: AData
+
+longTimeB :: BData
+
+longTimeC :: AData -> BData -> CData
+```
+
+You might approach caching this sequence thusly:
+```
+cachedA = retrieveOrMake "A.bin" (pure ()) (const longTimeA)
+cachedB = retrieveOrMake "B.bin" (pure ()) (const longTimeB)
+
+cDeps = (,) cachedA <*> cachedB
+
+cachedC = retrieveOrMake "C.bin" cDeps $ \(a, b) -> longTimeC a b
+```
+and each piece of data will get cached as its made.  Now suppose you change the computation
+```longTimeA```.  You realize that the cached data is invalid so you delete "A.bin" from the
+cache.  The next time this code runs, it will recompute longTimeA, load B from cache, realize that
+the cached version of C is out of date, and recompute that as well.  This doesn't obviate the 
+need for user intervention, the user still had to manually delete the result of A, but it handles
+the downstream work of tracking the uses of that data and recomputing where required.  
+
+Entries can be cleared from the cache via ```clear```.
 
 Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for more.
 
