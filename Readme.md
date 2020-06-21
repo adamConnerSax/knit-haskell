@@ -92,9 +92,10 @@ cachedC = retrieveOrMake "C.bin" cDeps $ \(a, b) -> longTimeC a b
 ```
 and each piece of data will get cached as its made.  Now suppose you change the computation
 ```longTimeA```.  You realize that the cached data is invalid so you delete "A.bin" from the
-cache.  The next time this code runs, it will recompute longTimeA, load B from cache, realize that
-the cached version of C is out of date, and recompute that as well.  This doesn't obviate the 
-need for user intervention, the user still had to manually delete the result of A, but it handles
+cache.  The next time this code runs, it will recompute and cache the result of longTimeA, 
+"load" B from cache, realize that
+the cached version of C is out of date, and recompute and re-cache that as well.  This doesn't obviate the 
+need for user intervention: the user still had to manually delete the result of A, but it handles
 the downstream work of tracking the uses of that data and recomputing where required.  
 
 Entries can be cleared from the cache via ```clear```.
