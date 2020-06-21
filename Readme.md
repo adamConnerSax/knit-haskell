@@ -1,4 +1,4 @@
-# knit-haskell v0.8.0.0
+# knit-haskell v0.8.1.0
 
 [![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
@@ -86,7 +86,7 @@ You might approach caching this sequence thusly:
 cachedA = retrieveOrMake "A.bin" (pure ()) (const longTimeA)
 cachedB = retrieveOrMake "B.bin" (pure ()) (const longTimeB)
 
-cDeps = (,) cachedA <*> cachedB
+cDeps = (,) <$> cachedA <*> cachedB
 
 cachedC = retrieveOrMake "C.bin" cDeps $ \(a, b) -> longTimeC a b
 ```
