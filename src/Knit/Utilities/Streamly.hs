@@ -38,26 +38,28 @@ import qualified Data.Text as Text
 -- ReaderT over IO wrapper for Streamly
 data StreamlyEffects = StreamlyEffects { logIO :: Knit.Logger.LogSeverity -> Text.Text -> IO () }
 
+-- | Use the logging function in the Reader to log in a StreamlyM context.
 logStreamly :: Knit.Logger.LogSeverity -> Text.Text -> StreamlyM ()
 logStreamly ls t = do
   logFunction <- Reader.asks logIO
   Reader.liftIO $ logFunction ls t
+{-# INLINEABLE logStreamly #-}
 
-newtype StreamlyM a =
-  StreamlyM {
-  unStreamlyM :: Reader.ReaderT StreamlyEffects IO a
-  }
+-- | IO with a ReaderTlayer we can use to expose effects we need.  For now just logging.
+newtype StreamlyM a = StreamlyM { unStreamlyM :: Reader.ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, Reader.MonadReader StreamlyEffects)
   deriving (MonadThrow, MonadCatch, Reader.MonadIO, MonadBase IO, MonadBaseControl IO) via (Reader.ReaderT StreamlyEffects IO)
 
-
+-- | lift a 'StreamlyM' computation into a 'Knit.Sem' computation
 streamlyToKnit :: Knit.KnitEffects r => StreamlyM a -> Knit.Sem r a
 streamlyToKnit sa = do
   curPrefix <- Knit.Logger.getPrefix
   logFunction <- Knit.Logger.monadIOLogger curPrefix
   let se = StreamlyEffects logFunction
   Polysemy.embed $ Reader.runReaderT (unStreamlyM sa) se
+{-# INLINEABLE streamlyToKnit #-}
 
-
+-- | Serial streams work fine over Sem, so we can lift the effectful serial stream into @Sem r@ without running.
 streamlyToKnitS :: Knit.KnitEffects r => Streamly.SerialT StreamlyM a -> Streamly.SerialT (Knit.Sem r) a
 streamlyToKnitS = Streamly.hoist streamlyToKnit
+{-# INLINEABLE streamlyToKnitS #-}

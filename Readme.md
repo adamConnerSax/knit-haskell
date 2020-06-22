@@ -30,21 +30,27 @@ has logging facilities and support for inserting [hvega](http://hackage.haskell.
 visualizations.  
 All of that is handled via writer-like effects, so additions to the documents can be interspersed with regular haskell code. 
 
-As of version 0.8.0.0, the effect stack includes:
-* An "Async" effect ([Polysemy.Async](https://hackage.haskell.org/package/polysemy-1.2.3.0/docs/Polysemy-Async.html)) 
+As of version 0.8.0.0, the effect stack includes a couple of new features. 
+Firstly, an "Async" effect ([Polysemy.Async](https://hackage.haskell.org/package/polysemy-1.2.3.0/docs/Polysemy-Async.html)) 
 for running computations concurrently. Combinators for launching a concurrent action (```async```), 
 awaiting (```await```) it's result and running some traversable structure of concurrent actions
 (```sequenceConcurrently```) are re-exported via ```Knit.Report```.  NB: Polysemy returns a ```Maybe a``` where
 the traditional interface returns an ```a```. 
 From the docs "The Maybe returned by async is due to the fact that we can't be sure an Error effect didn't fail locally."
-* A persistent (using memory and disk) cache for "shelving" the results of computations between report runs.  Anything which has
+
+A persistent (using memory and disk) cache for "shelving" the results of computations between report runs.  Anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
 package can be cached.
 If you use the cache, and you are running in a version-controlled directory,
 you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
-Once data has been loaded from disk/produced once, it remains available in memory via its key.
+Once data has been loaded from disk/produced once, it remains available in memory via its key. The cache handles 
+multi-threading gracefully.  The in-memory cache is stored in a TVar so only one thread may make requests at a time.
+If multiple threads request the same item, one not currently in-memory--a 
+relatively common pattern if multiple analyses of the same data are 
+run asynchronously--the first request will fetch or create the data and the rest will block until the first one
+gets a result, at which point the blocked threads will received the now in-memory data and proceed.
 
-Data can be put into the cache via ```store```, retrieved via ```retrieve```. Retrieval from cache
+Data can be put into the cache via ```store```, and retrieved via ```retrieve```. Retrieval from cache
 does not actually retrieve the data, but a structure with a time-stamp 
 ([```Maybe Time.Clock.UTCTime```](https://hackage.haskell.org/package/time-1.10/docs/Data-Time-Clock.html#t:UTCTime))
 and a monadic computation which can produce the data:
@@ -52,6 +58,7 @@ and a monadic computation which can produce the data:
 data WithCacheTime m a where
   WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
 ```
+
 To get the data from a ```WithCacheTime``` you can use functions from the 
 library to "ignore" the time and bind the result:
 ```ignoreCacheTime :: WithCacheData m a -> m a```
@@ -84,7 +91,7 @@ is then serialized and cached.  The returned monadic computation is either the d
 by the given computation, put into the monad via ```pure``` or the result pulled from the 
 cache *before* it is deserialized.  Running the returned computation performs the deserialization
 so the data can be used.  This allows checking the time-stamp of data without deserializing
-in order to make the case where it's never actually used more efficient.
+in order to make the case where it's never actually used more efficient.  
 
 ```WithCacheTime``` is an applicative functor, which facilitates its primary use, to store 
 a set of dependencies *and* the latest time at which something which depends on them could
@@ -116,6 +123,24 @@ the downstream work of tracking the uses of that data and recomputing where requ
 Entries can be cleared from the cache via ```clear```.
 
 Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for more.
+
+Notes:
+1. The addition of caching required me to choose some particular libraries: 
+([Cereal](https://hackage.haskell.org/package/cereal)) for binary serialization and
+streaming ([Streamly](https://hackage.haskell.org/package/streamly)) for streaming. 
+These are not configurable, though they could perhaps be made so in a future version.
+
+2. Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
+for Cereal are in ```Streamly.External.Cereal```. The Polysemy issue is more complex.
+Since concurrent streamly streams can only be run over a monad with instances of ```MonadCatch``` and 
+```MonadBaseControl```. The former is 
+[complex](https://hackage.haskell.org/package/polysemy-zoo-0.7.0.0/docs/Polysemy-ConstraintAbsorber-MonadCatch.html) 
+in Polysemy and the latter impossible, [for good reason](https://github.com/polysemy-research/polysemy/issues/73). 
+So knit-haskell contains some helpers for Streamly streams: basically a wrapper over IO which allows use of
+knit-haskell logging.  Concurrent streaming operations can be done over this monad and then, once the stream
+is serial or the result computed, that monad can be lifted into the regular knit-haskell Polysemy stack.  
+See ```Knit.Utilities.Streamly``` for more details.
+
 
 ## Supported Inputs
 * [markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
