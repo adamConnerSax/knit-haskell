@@ -97,6 +97,8 @@ import           Knit.Effect.PandocMonad
 import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , logAll
                                                 , nonDiagnostic
+                                                , logDebug
+                                                , logDiagnostic
                                                 , logLE
                                                 , wrapPrefix
                                                 , filteredLogEntriesToIO
