@@ -209,7 +209,7 @@ store
   -> a
   -> P.Sem r ()
 store k a = K.wrapPrefix ("Knit.store (key=" <> k <> ")") $ do
-  K.logLE K.Diagnostic $ "Called with k=" <> k 
+  K.logLE (K.Debug 3) $ "Called with k=" <> k 
   C.encodeAndStore knitSerialize k a
 {-# INLINEABLE store #-}
 
@@ -275,7 +275,7 @@ storeStream
   -> Streamly.SerialT (P.Sem r) a
   -> P.Sem r ()
 storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> k <> ")") $ do
-  K.logLE K.Diagnostic $ "Called with k=" <> k
+  K.logLE(K.Debug 3) $ "Called with k=" <> k
   C.encodeAndStore knitSerializeStream k aS
 {-# INLINEABLE storeStream #-}
 

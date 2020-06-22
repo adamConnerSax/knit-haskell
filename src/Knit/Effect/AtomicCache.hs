@@ -197,6 +197,9 @@ data Cache k v m a where
   
 P.makeSem ''Cache
 
+debugLogSeverity :: K.LogSeverity
+debugLogSeverity = K.Debug 3
+
 -- | Combinator to combine the action of serializing and caching
 encodeAndStore
   :: forall ct k a r.
@@ -239,25 +242,25 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
     let
       makeAndUpdate :: P.Sem r (Maybe (ActionWithCacheTime r a))
       makeAndUpdate = do
-        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action."
-        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": running actions for dependencies."
+        K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action."
+        K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": running actions for dependencies."
         b <- bA
-        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": making new item."
+        K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": making new item."
         ma <- tryIfMissing b
         case ma of
           Nothing -> do
-            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making failed."
+            K.logLE K.Error $ "key=" <> (T.pack $ show key) <> ": Making failed."
             cacheUpdate key Nothing
             return Nothing
           Just a -> do
-            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
+            K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
             (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
             let nBytes = encBytes ct'
-            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
-            K.logLE K.Diagnostic $ "Updating cache..."          
+            K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
+            K.logLE debugLogSeverity $ "Updating cache..."          
             cacheUpdate key (Just ct') 
             curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
-            K.logLE K.Diagnostic $ "Finished making and updating."          
+            K.logLE debugLogSeverity $ "Finished making and updating."          
             return $ Just (WithCacheTime (Just curTime) (return a'))
     fromCache <- cacheLookup key
     case fromCache of
@@ -269,9 +272,9 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
             let decodeAction :: P.Sem r a
                 decodeAction = do
-                   K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": deserializing."  
+                   K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing."  
                    a <- decode ct -- a <- mct >>= decode
-                   K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
+                   K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
                    return a
             return (Just $ WithCacheTime cTimeM decodeAction)             
           else do
@@ -336,7 +339,7 @@ retrieveOrMake
   -> P.Sem r (ActionWithCacheTime r a)
 retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing x = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
-        K.logLE K.Diagnostic $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
+        K.logLE debugLogSeverity $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
         fmap Just $ makeAction x
   fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key cachedDeps 
   case fromCache of
@@ -373,7 +376,7 @@ atomicMemLookup :: (Ord k
               -> k
               -> P.Sem r (Maybe (WithCacheTime Identity ct))
 atomicMemLookup cache key = K.wrapPrefix "atomicMemLookup" $ do
-  K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Called."
+  K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Called."
   P.embed $ C.atomically $ do
     mv <- (C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key)
     case mv of
@@ -400,7 +403,7 @@ atomicMemUpdate :: (Ord k
 atomicMemUpdate cache key mct =
   K.wrapPrefix "atomicMemUpdate" $ do
   let keyText = "key=" <> (T.pack $ show key) <> ": "
-  K.logLE K.Diagnostic $ keyText <> "called."
+  K.logLE debugLogSeverity $ keyText <> "called."
   updateAction <- case mct of
     Nothing -> (P.embed $ C.atomically $ C.modifyTVar cache (M.delete key)) >> return Deleted
     Just ct -> do
@@ -419,9 +422,9 @@ atomicMemUpdate cache key mct =
               then return Filled
               else (C.swapTMVar tmvM (Just wct)) >> return Replaced
   case updateAction of
-    Deleted -> K.logLE K.Diagnostic $ keyText <> "deleted"
-    Replaced -> K.logLE K.Diagnostic $ keyText <> "replaced"
-    Filled -> K.logLE K.Diagnostic $ keyText <> "filled"
+    Deleted -> K.logLE debugLogSeverity $ keyText <> "deleted"
+    Replaced -> K.logLE debugLogSeverity $ keyText <> "replaced"
+    Filled -> K.logLE debugLogSeverity $ keyText <> "filled"
 {-# INLINEABLE atomicMemUpdate #-}
 
 -- | Interpreter for in-memory only AtomicMemCache
@@ -453,7 +456,7 @@ atomicMemLookupB :: (Ord k
                  -> P.Sem r (Maybe (WithCacheTime Identity ct))
 atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
   let keyText = "key=" <> (T.pack $ show key) <> ": "
-  K.logLE K.Diagnostic $ keyText <> "checking in mem cache..."
+  K.logLE debugLogSeverity $ keyText <> "checking in mem cache..."
   x <- P.embed $ C.atomically $ do
     mTMV <- M.lookup key <$> C.readTVar cache
     case mTMV of
@@ -469,17 +472,17 @@ atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
         C.modifyTVar cache (M.insert key newTMV)
         return $ Left newTMV
   case x of
-    Right wct -> K.logLE K.Diagnostic (keyText <> "found.") >> return (Just wct)
+    Right wct -> K.logLE debugLogSeverity (keyText <> "found.") >> return (Just wct)
     Left emptyTMV -> do
-      K.logLE K.Diagnostic (keyText <> "not found.  Holding empty TMVar. Checking backup cache...")
+      K.logLE debugLogSeverity (keyText <> "not found.  Holding empty TMVar. Checking backup cache...")
       inOtherM <- cacheLookup key      
       case inOtherM of
-        Nothing -> K.logLE K.Diagnostic (keyText <> "not found in backup cache.") >> return Nothing
+        Nothing -> K.logLE debugLogSeverity (keyText <> "not found in backup cache.") >> return Nothing
         Just (WithCacheTime tM mct) -> do
-          K.logLE K.Diagnostic (keyText <> "Found in backup cache.  Filling empty TMVar.")
+          K.logLE debugLogSeverity (keyText <> "Found in backup cache.  Filling empty TMVar.")
           let ct = runIdentity mct
           P.embed $ C.atomically $ C.putTMVar emptyTMV (Just $ WithCacheTime tM (Identity ct)) 
-          K.logLE K.Diagnostic (keyText <> "Returning")
+          K.logLE debugLogSeverity (keyText <> "Returning")
           return $ Just $ WithCacheTime tM (pure ct) 
 {-# INLINEABLE atomicMemLookupB #-}
 
@@ -495,9 +498,9 @@ atomicMemUpdateB ::  (Ord k
                  -> P.Sem r ()
 atomicMemUpdateB cache key mct = K.wrapPrefix "atomicMemUpdateB" $ do
   let keyText = "key=" <> (T.pack $ show key) <> ": "
-  K.logLE K.Diagnostic $ keyText <> "Calling atomicMemUpdate"
+  K.logLE debugLogSeverity $ keyText <> "Calling atomicMemUpdate"
   atomicMemUpdate cache key mct
-  K.logLE K.Diagnostic $ keyText <> "Calling cacheUpdate in backup cache."
+  K.logLE debugLogSeverity $ keyText <> "Calling cacheUpdate in backup cache."
   cacheUpdate key mct
 {-# INLINEABLE atomicMemUpdateB #-}
 
@@ -574,15 +577,15 @@ persistAsByteArray keyToFilePath =
       let keyText = "key=" <> (T.pack $ show k) <> ": "
       case mct of
         Nothing -> do
-           K.logLE K.Diagnostic $ keyText <> "called with Nothing. Deleting file."
+           K.logLE debugLogSeverity $ keyText <> "called with Nothing. Deleting file."
            rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
         Just ct -> do
-          K.logLE K.Diagnostic $ keyText <> "called with content. Writing file."
+          K.logLE debugLogSeverity $ keyText <> "called with content. Writing file."
           let filePath     = (keyToFilePath k)
               (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
           _ <- createDirIfNecessary dirPath
-          K.logLE K.Diagnostic $ "Writing serialization to disk."
-          K.logLE K.Diagnostic $ keyText <> "Writing " <> (T.pack $ show $ Streamly.Array.length ct) <> " bytes to disk." 
+          K.logLE debugLogSeverity  "Writing serialization to disk."
+          K.logLE debugLogSeverity $ keyText <> "Writing " <> (T.pack $ show $ Streamly.Array.length ct) <> " bytes to disk." 
           rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
 {-# INLINEABLE persistAsByteArray #-}
 
@@ -600,7 +603,7 @@ persistAsStrictByteString keyToFilePath =
         let filePath     = (keyToFilePath k)
             (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
         _ <- createDirIfNecessary dirPath
-        K.logLE K.Diagnostic $ "Writing serialization to disk."
+        K.logLE debugLogSeverity $ "Writing serialization to disk."
         rethrowIOErrorAsCacheError $ BS.writeFile filePath ct  -- maybe we should do this in another thread?
 {-# INLINEABLE persistAsStrictByteString #-}
 
@@ -618,7 +621,7 @@ persistAsByteString keyToFilePath =
         let filePath     = (keyToFilePath k)
             (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
         _ <- createDirIfNecessary dirPath
-        K.logLE K.Diagnostic $ "Writing serialization to disk."
+        K.logLE debugLogSeverity  "Writing serialization to disk."
         rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
 {-# INLINEABLE persistAsByteString #-}
 
@@ -634,16 +637,16 @@ persistAsByteStreamly keyToFilePath =
       let keyText = "key=" <> (T.pack $ show k) <> ": "
       case mct of
         Nothing -> do
-          K.logLE K.Diagnostic $ keyText <> "called with Nothing. Deleting file."
+          K.logLE debugLogSeverity $ keyText <> "called with Nothing. Deleting file."
           rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
         Just ct -> do
-          K.logLE K.Diagnostic $ keyText <> "called with content. Writing file."
+          K.logLE debugLogSeverity $ keyText <> "called with content. Writing file."
           let filePath     = (keyToFilePath k)
               (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
           _ <- createDirIfNecessary dirPath
-          K.logLE K.Diagnostic $ keyText <> "Writing serialization to disk."
+          K.logLE debugLogSeverity $ keyText <> "Writing serialization to disk."
           let sLength = runIdentity $ Streamly.length ct
-          K.logLE K.Diagnostic $ keyText <> "Writing " <> (T.pack $ show sLength) <> " bytes to disk." 
+          K.logLE debugLogSeverity $ keyText <> "Writing " <> (T.pack $ show sLength) <> " bytes to disk." 
           rethrowIOErrorAsCacheError $ (System.withBinaryFile filePath System.WriteMode $ writeToHandle ct) -- maybe we should do this in another thread?
   where
     sequenceStreamly :: Monad m => Streamly.SerialT m Word.Word8 -> m (Streamly.SerialT Identity Word.Word8)
@@ -658,7 +661,7 @@ createDirIfNecessary
   => T.Text
   -> K.Sem r ()
 createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
-  K.logLE K.Diagnostic $ "Checking if cache path (\"" <> dir <> "\") exists."
+  K.logLE debugLogSeverity $ "Checking if cache path (\"" <> dir <> "\") exists."
   existsB <- P.embed $ (System.doesDirectoryExist (T.unpack dir))
   case existsB of
     True -> do
@@ -681,7 +684,7 @@ getContentsWithCacheTime :: (P.Members '[P.Embed IO] r
                          -> FilePath
                          -> P.Sem r (Maybe (WithCacheTime Identity a))
 getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
-  K.logLE K.Diagnostic $ "Reading serialization from disk."
+  K.logLE debugLogSeverity $ "Reading serialization from disk."
   rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
     ct <- f fp
     cTime <- System.getModificationTime fp

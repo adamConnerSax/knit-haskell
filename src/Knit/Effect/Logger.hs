@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -87,6 +88,7 @@ import qualified Data.Text                     as T
 import qualified Data.Text.Prettyprint.Doc     as PP
 import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP
+import           Data.Data (Data, Typeable)                                               
 import           Prelude                 hiding ( log )
 
 import           System.IO                      ( hFlush
@@ -106,8 +108,8 @@ import qualified Say                           as S
 -- conversion is uneccessary if we throw a message away?  But still, the interpreters could take the pretty-printers as arguments?
 -- Parking this for now, since it has absorbed outsize time for no benefit except some understanding.
 
--- | Severity of message.  Based on monad-logger.
-data LogSeverity = Debug Int | Diagnostic | Info | Warning | Error deriving (Show, Eq, Ord)
+-- | Severity of message.  Based on monad-logger.  Instance of Data to make command-line parsing easier.
+data LogSeverity = Debug Int | Diagnostic | Info | Warning | Error deriving (Show, Eq, Ord, Typeable, Data)
 
 -- | Map between @LogSeverity@ and monad-logger severity.
 logSeverityToSeverity :: LogSeverity -> ML.Severity
