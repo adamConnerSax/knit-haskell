@@ -93,9 +93,10 @@ import qualified Streamly.External.Cereal      as Streamly.Cereal
 import qualified Streamly.External.ByteString as Streamly.ByteString
 
 
-
+-- | type used by the AtomicCache for in-memory storage.
 type CacheData = Streamly.Array.Array Word.Word8
 
+-- | AtomicCache with 'T.Text' keys and using 'Streamly.Array.Array Word.Word8' to store serialized data in memory.
 type KnitCache = C.Cache T.Text CacheData
 
 
@@ -114,7 +115,7 @@ knitSerializeStream :: (S.Serialize a
                        , P.MemberWithError (P.Error Exceptions.SomeException) r
                        , P.MemberWithError (P.Error C.CacheError) r
                        )
-                       => C.Serialize r (Streamly.SerialT (K.Sem r) a) CacheData
+                       => C.Serialize r (Streamly.SerialT (P.Sem r) a) CacheData
 knitSerializeStream = cerealStreamViaListArray
 {-# INLINEABLE knitSerializeStream #-}
 
@@ -353,9 +354,9 @@ retrieveOrMakeTransformedStream toSerializable fromSerializable k cachedDeps toM
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
 
 fixMonadCatch :: (P.MemberWithError (P.Error Exceptions.SomeException) r)
-              => Streamly.SerialT (Exceptions.CatchT (K.Sem r)) a -> Streamly.SerialT (K.Sem r) a
+              => Streamly.SerialT (Exceptions.CatchT (P.Sem r)) a -> Streamly.SerialT (P.Sem r) a
 fixMonadCatch = Streamly.hoist f where
-  f :: forall r a. (P.MemberWithError (P.Error Exceptions.SomeException) r) =>  Exceptions.CatchT (K.Sem r) a -> K.Sem r a
+  f :: forall r a. (P.MemberWithError (P.Error Exceptions.SomeException) r) =>  Exceptions.CatchT (P.Sem r) a -> P.Sem r a
   f = join . fmap P.fromEither . Exceptions.runCatchT
 {-# INLINEABLE fixMonadCatch #-}
 

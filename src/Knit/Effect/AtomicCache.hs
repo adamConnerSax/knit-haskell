@@ -21,9 +21,56 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-This module implementes the `DataCache` polysemy effect for managing a keyed cache of serialized
-things.  It allows simple maintaining of disk-backed storage of computational results as long as
-they are serializable.
+This module defines a key/value store effect in Polysemy. Rather than return the usual @Maybe v@ from a lookup,
+the cache returns a @Maybe (WithCacheTime v)@, where @WithCacheTime a@ wraps a value of type a along with a
+time-stamp (of type @UTCTime@). This module provides a thread-safe in-memory implementation as well as
+a disk-based persistent implementation and a combination of the two, where the disk-based layer sits behind the
+in-memory layer.  In our use case, the stored values will be arrays of bytes, the result of serializing
+whatever data we wish to cache.
+
+@WithCacheTime@ is intended to simplify tracking dependencies among cached computations.  For example, imagine
+you have two long running computations which you wish to cache so you need only run those computations once:
+@
+computeA :: m a
+computeA = ...
+
+computeB :: m b
+computeB = ...
+
+cachedA :: WithCacheTime m a 
+cachedA :: retrieveOrMake serialize "a.bin" (pure ()) (const computeA)
+
+cachedB :: WithCacheTime m b
+cachedB = retrieveOrMake serialize "b.bin" (pure ()) (const computeB)
+@
+and you have a computation which depends on @a@ and @b@ and should also be cached, but we
+want to make sure it gets recomputed if either @a@ or @b@ do. We use the applicative instance of
+@WithCacheTime@ to combine cached results and inject them into later computations:
+@
+computeC :: a -> b -> m c
+computeC ...
+
+cDeps :: WithCachedTime m (a, b)
+cDeps = (,) <$> cachedA <*> cachedB
+
+cachedC :: WithCacheTime m c
+cachedC = retrieveOrMake serialize "c.bin" cDeps $ \(a, b) -> computeC a b
+@
+
+As with @cachedA@ and @cachedB@, @cachedC@ will run the computation if the value is absent from the cache.
+In addition, @cachedC@ will be recomputed even if it's in the cache, if the time-stamp of the cached value
+is older than either the time stamp of @cachedA@ or @cachedB@.
+
+@WithCacheTime m a@ holds the time-stamp and a monadic computation which will produce an @a@. This allows
+deferral of the deserialization of cached data until we know that we need to use it.  In the example above,
+suppose @a@ is retrieved from cache, and @b@ is computed fresh.  @cachedA@ holds a timestamp
+(the modification time of the file in cache or the time a was cached in memory) and a monadic
+computation which will deserialize the cached byte array retrieved for a.  @cachedB@ holds a time-stamp
+(the time the computation of b completes) and the trivial monadic action @return b@.  Since @b@ was
+just computed, the cached @c@ is outdated and will be recomputed.  At that point @a@ is deserialized, @b@
+is unwrapped and @c@ is computed, time-stamped and stored in cache as well as returned in the
+@WithCacheTime m c@.
+
 
 <https://github.com/adamConnerSax/knit-haskell/tree/master/examples Examples> are available, and might be useful for seeing how all this works.
 -}
@@ -145,6 +192,7 @@ NB: There is no Monad instance for WithCacheTime.  We would need
 but we cannot get t2M "outside" m.
 -}
 
+-- | Specialize `WithCacheTime` for use with a Polysemy effects stack.
 type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
 
 -- | Construct a WithCacheTime with a time and no action.  
@@ -198,7 +246,7 @@ data Cache k v m a where
 P.makeSem ''Cache
 
 debugLogSeverity :: K.LogSeverity
-debugLogSeverity = K.Debug 3
+debugLogSeverity  = K.Debug 3
 
 -- | Combinator to combine the action of serializing and caching
 encodeAndStore
@@ -659,7 +707,7 @@ persistAsByteStreamly keyToFilePath =
 createDirIfNecessary
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
   => T.Text
-  -> K.Sem r ()
+  -> P.Sem r ()
 createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
   K.logLE debugLogSeverity $ "Checking if cache path (\"" <> dir <> "\") exists."
   existsB <- P.embed $ (System.doesDirectoryExist (T.unpack dir))

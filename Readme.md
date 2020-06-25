@@ -127,7 +127,7 @@ Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/ma
 Notes:
 1. The addition of caching required me to choose some particular libraries: 
 ([Cereal](https://hackage.haskell.org/package/cereal)) for binary serialization and
-streaming ([Streamly](https://hackage.haskell.org/package/streamly)) for streaming. 
+([Streamly](https://hackage.haskell.org/package/streamly)) for streaming. 
 These are not configurable, though they could perhaps be made so in a future version.
 
 2. Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 

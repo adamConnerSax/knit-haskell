@@ -47,7 +47,6 @@ module Knit.Effect.Logger
   
   -- * Interpreters
   , filteredLogEntriesToIO
-  , filteredAsyncLogEntriesToIO
 
   -- * Subsets for filtering
   , logAll
@@ -61,24 +60,15 @@ module Knit.Effect.Logger
   , LogWithPrefixes
   , LogWithPrefixesLE
   , LogWithPrefixIO
-  
-  -- * Re-Exports
-  , Sem
-  , Member
-  , Handler
   )
 where
 
 import qualified Polysemy                      as P
-import           Polysemy                       ( Member
-                                                , Sem
-                                                )
-import qualified Polysemy.Async                as P
+                 
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 import qualified Polysemy.Reader                as P
 
-import qualified Control.Concurrent.STM        as C
 import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
 import           Control.Monad.Log              ( Handler )
@@ -108,8 +98,19 @@ import qualified Say                           as S
 -- conversion is uneccessary if we throw a message away?  But still, the interpreters could take the pretty-printers as arguments?
 -- Parking this for now, since it has absorbed outsize time for no benefit except some understanding.
 
--- | Severity of message.  Based on monad-logger.  Instance of Data to make command-line parsing easier.
-data LogSeverity = Debug Int | Diagnostic | Info | Warning | Error deriving (Show, Eq, Ord, Typeable, Data)
+-- | Severity/importance of message.
+data LogSeverity =
+  -- | Most detailed levels of logging.  Int argument can be used adding fine distinctions between debug levels
+  Debug Int
+  -- | Minimal details about effects and what is being called. 
+  | Diagnostic
+  -- | Informational messages about progress of compuation or document knitting.
+  | Info
+  -- | Messages intended to alert the user to an issue in the computation or document production.
+  | Warning
+  -- | Likely fatal issue in computaiton or document production.
+  | Error
+  deriving (Show, Eq, Ord, Typeable, Data)
 
 -- | Map between @LogSeverity@ and monad-logger severity.
 logSeverityToSeverity :: LogSeverity -> ML.Severity
@@ -126,25 +127,29 @@ data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
 logEntryToWithSeverity :: LogEntry -> ML.WithSeverity T.Text
 logEntryToWithSeverity (LogEntry s t) =
   ML.WithSeverity (logSeverityToSeverity s) t
-
+{-# INLINEABLE logEntryToWithSeverity #-}
 
 -- | log everything.
 logAll :: LogSeverity -> Bool
 logAll = const True
+{-# INLINEABLE logAll #-}
 
 -- | log all but 'Debug' messages
 logDiagnostic :: LogSeverity -> Bool
 logDiagnostic (Debug _) = False
 logDiagnostic _         = True
+{-# INLINEABLE logDiagnostic #-}
 
--- | log everything above 'Diagnostic'
+-- | log everything above 'Diagnostic' 
 nonDiagnostic :: LogSeverity -> Bool
 nonDiagnostic ls = ls `elem` [Info, Warning, Error]
+{-# INLINEABLE nonDiagnostic #-}
 
 -- | log debug messages with level lower than or equal to l
 logDebug :: Int -> LogSeverity -> Bool
 logDebug l (Debug n) = n <= l
 logDebug _ _         = True
+{-# INLINEABLE logDebug #-}
 
 -- | The Logger effect
 data Logger a m r where
@@ -153,16 +158,19 @@ data Logger a m r where
 -- | Add one log entry of arbitrary type.  If you want to log with another type besides @LogEntry.
 log :: P.Member (Logger a) effs => a -> P.Sem effs ()
 log = send . Log
+{-# INLINEABLE log #-}
 
 -- | Add one log-entry of the @LogEntry@ type.
 logLE
   :: P.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> P.Sem effs ()
 logLE ls lm = log (LogEntry ls lm)
+{-# INLINEABLE logLE #-}
 
 -- | Helper function for logging with monad-logger handler.
 logWithHandler
   :: Handler (P.Sem effs) a -> P.Sem (Logger a ': effs) x -> P.Sem effs x
 logWithHandler handler = P.interpret (\(Log a) -> handler a)
+{-# INLINEABLE logWithHandler #-}
 
 -- | Prefix Effect
 data PrefixLog m r where
@@ -173,14 +181,17 @@ data PrefixLog m r where
 -- | Add one level of prefix.
 addPrefix :: P.Member PrefixLog effs => T.Text -> P.Sem effs ()
 addPrefix = send . AddPrefix
+{-# INLINEABLE addPrefix #-}
 
 -- | Remove last prefix.
 removePrefix :: P.Member PrefixLog effs => P.Sem effs ()
 removePrefix = send RemovePrefix
+{-# INLINEABLE removePrefix #-}
 
 -- | Get current prefix 
 getPrefix :: P.Member PrefixLog effs => P.Sem effs T.Text
 getPrefix = send $ GetPrefix
+{-# INLINEABLE getPrefix #-}
 
 -- | Add a prefix for the block of code.
 wrapPrefix :: P.Member PrefixLog effs => T.Text -> P.Sem effs a -> P.Sem effs a
@@ -189,8 +200,9 @@ wrapPrefix p l = do
   res <- l
   removePrefix
   return res
+{-# INLINEABLE wrapPrefix #-}
 
--- | Interpret LogPrefix in @Polysemy.State [T.Text]@.
+-- | Interpret PrefixLog in @Polysemy.State [T.Text]@.
 prefixInState
   :: forall effs a
    . P.Sem (PrefixLog ': effs) a
@@ -199,10 +211,12 @@ prefixInState = P.reinterpret $ \case
   AddPrefix t  -> P.modify (t :)
   RemovePrefix -> P.modify @[T.Text] tail -- type application required here since tail is polymorphic
   GetPrefix    -> fmap (T.intercalate "." . List.reverse) P.get
+{-# INLINEABLE prefixInState #-}
 
--- | Interpret the 'LogPrefix' effect in State and run that.
+-- | Interpret the 'PrefixLog' effect in State and run that.
 runPrefix :: P.Sem (PrefixLog ': effs) a -> P.Sem effs a
 runPrefix = fmap snd . P.runState [] . prefixInState
+{-# INLINEABLE runPrefix #-}
 
 -- | Monad-logger style wrapper to add prefixes to log messages.
 data WithPrefix a = WithPrefix { msgPrefix :: T.Text, discardPrefix :: a }
@@ -210,6 +224,7 @@ data WithPrefix a = WithPrefix { msgPrefix :: T.Text, discardPrefix :: a }
 -- | Render a prefixed log message with the pretty-printer.
 renderWithPrefix :: (a -> PP.Doc ann) -> WithPrefix a -> PP.Doc ann
 renderWithPrefix k (WithPrefix pr a) = PP.pretty pr PP.<+> PP.align (k a)
+{-# INLINEABLE renderWithPrefix #-}
 
 -- | Use @PrefixLog@ Effect to re-interpret all the logged messages to WithPrefix form.
 logPrefixed
@@ -218,6 +233,7 @@ logPrefixed
   -> P.Sem (Logger (WithPrefix a) ': effs) x
 logPrefixed =
   P.reinterpret (\(Log a) -> getPrefix >>= (\p -> log (WithPrefix p a)))
+{-# INLINEABLE logPrefixed #-}
 
 -- the use of "raise" below is there since we are running the handler in the stack that still has the LogPrefix effect.
 -- I couldn't figure out how to write this the other way.
@@ -232,10 +248,12 @@ logAndHandlePrefixed handler =
   runPrefix
     . logWithHandler (P.raise . handler)
     . logPrefixed @(PrefixLog ': effs)
+{-# INLINEABLE logAndHandlePrefixed #-}
 
 -- | Add a severity filter to a handler.
 filterLog :: Monad m => (a -> Bool) -> Handler m a -> Handler m a
 filterLog filterF h a = when (filterF a) $ h a
+{-# INLINEABLE filterLog #-}
 
 -- | Simple handler, uses a function from message to Text and then outputs all messages in IO.
 -- Can be used as base for any other handler that gives @Text@.
@@ -243,13 +261,7 @@ logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
 logToIO toText a = liftIO $ do
   S.say $ toText a
   hFlush stdout
-
-data NextOrDone = Next T.Text | Done -- isomorphic to (Maybe T.Text)
-
--- | log to an STM TChan.  This allows logging from different threads to log each message atomically
-logToTChan :: MonadIO m => C.TChan NextOrDone -> (a -> T.Text) -> Handler m a
-logToTChan ch toText =
-  liftIO . C.atomically . C.writeTChan ch . (Next . toText)
+{-# INLINEABLE logToIO #-}
 
 -- | '(a -> Text)' function for prefixedLogEntries
 prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
@@ -257,19 +269,19 @@ prefixedLogEntryToText =
   (PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
     (ML.renderWithSeverity PP.pretty . logEntryToWithSeverity)
   )
+{-# INLINEABLE prefixedLogEntryToText #-}
 
 -- | log prefixed entries directly to IO
 prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
 prefixedLogEntryToIO = logToIO prefixedLogEntryToText
+{-# INLINEABLE prefixedLogEntryToIO #-}
 
--- | log prefixed entries to given TChan
-prefixedLogEntryToTChan
-  :: MonadIO m => C.TChan NextOrDone -> Handler m (WithPrefix LogEntry)
-prefixedLogEntryToTChan ch = logToTChan ch prefixedLogEntryToText
-
--- | A synonym for a function to handle direct logging from IO.  Allows the Sem stack to handoff logging to any stack with IO.
+-- | A synonym for a function to handle direct logging from IO.  Used to allow logging from any stack with IO.
 type LogWithPrefixIO = T.Text -> LogEntry -> IO ()
 
+-- | Helper function to retrieve a logging function which can be handed off to any monad with a 'MonadIO' instance.
+-- This allows acccess to the logger from functions which must be run in stacks other than the main @knit-haskell@
+-- stack.
 monadIOLogger :: (MonadIO m
                  , P.Member (P.Reader LogWithPrefixIO) r
                  )
@@ -278,8 +290,9 @@ monadIOLogger :: (MonadIO m
 monadIOLogger p = do
   f <- P.ask
   return $ \ls t -> liftIO $ f p (LogEntry ls t)
+{-# INLINEABLE monadIOLogger #-}
 
--- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the union.
+-- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the stack.
 filteredLogEntriesToIO
   :: MonadIO (P.Sem r)
   => (LogSeverity -> Bool)
@@ -290,43 +303,7 @@ filteredLogEntriesToIO lsF mx = do
       g :: LogWithPrefixIO
       g prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToIO wp
   logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) $ P.runReader g mx
-
-
-
-filteredAsyncLogEntriesToIO
-  :: (MonadIO (P.Sem r), P.Member P.Async r)
-  => (LogSeverity -> Bool)
-  -> P.Sem (P.Reader LogWithPrefixIO ': (Logger LogEntry ': (PrefixLog ': r))) x
-  -> P.Sem r x
-filteredAsyncLogEntriesToIO lsF mx = do
-  ch             <- liftIO $ C.atomically C.newTChan -- create a TChan for logging messages
-  loggingThread <- P.async $ liftIO $ printNextUntilDone ch -- launch a thread for printing them
-  let g prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToTChan ch wp
-  res           <- logAndHandlePrefixed
-    (filterLog (lsF . severity . discardPrefix) $ prefixedLogEntryToTChan ch)
-    (P.runReader g mx)
-  liftIO $ C.atomically $ C.writeTChan ch Done -- tell the printing thread to finish
-  _ <- P.await loggingThread -- wait until it finishes printing any remaining messages
-  return res
-
--- | Printing loop. Wait for the next message on the channel
--- If it's a 'Next Text' print the text and loop.
--- If it's a 'Done' then exit
-printNextUntilDone :: C.TChan NextOrDone -> IO ()
-printNextUntilDone ch = do
-  nOrd <- C.atomically $ C.readTChan ch
-  case nOrd of
-    Next t -> S.say t >> hFlush stdout >> printNextUntilDone ch
-    Done   -> return ()
-
-{-
-withAsyncLogging :: P.Members '[PrefixLog, P.Async] r => P.Sem r a -> P.Sem r a
-withAsyncLogging = P.interceptH $ \case
-  P.Async x ->
-    P.Async
-      $   (liftIO C.myThreadId)
-      >>= (\ti -> wrapPrefix ("(ThreadID=" <> (T.pack $ show ti)) x)
--}
+{-# INLINEABLE filteredLogEntriesToIO #-}
 
 -- | List of Logger effects for a prefixed log of type @a@
 type PrefixedLogEffects a = [PrefixLog, Logger a]

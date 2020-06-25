@@ -29,9 +29,10 @@ module Knit.Report.EffectStack
     -- * Configuraiton
     KnitConfig(..)
   , defaultKnitConfig
-    -- * Knit
+    -- * Knit documents
   , knitHtml
   , knitHtmls
+    -- * helpers
   , liftKnit
   -- * Constraints for knit-haskell actions (see examples)
   , KnitEffects
@@ -88,7 +89,7 @@ defaultKnitConfig = KnitConfig (Just "knit-haskell")
                                (KO.PandocWriterConfig Nothing M.empty id)
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
--- In use, you may need a type-application to specify m.
+-- In use, you may need a type-application to specify @m@.
 -- This allows use of any underlying monad to handle the Pandoc effects.
 -- NB: Resulting documents are *Lazy* Text, as produced by the Blaze render function.
 knitHtmls
@@ -105,8 +106,8 @@ knitHtmls config =
             $ a
         )
 
--- | Create HTML Text from pandoc fragments
--- In use, you may need a type-application to specify m.
+-- | Create HTML Text from pandoc fragments.
+-- In use, you may need a type-application to specify @m@.
 -- This allows use of any underlying monad to handle the Pandoc effects.
 -- NB: Resulting document is *Lazy* Text, as produced by the Blaze render function.
 knitHtml
@@ -121,16 +122,16 @@ knitHtml config =
 -- | Constraints required to knit a document using effects from a base monad m.
 type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 
--- | lift an action in a base monad into a Polysemy monad.  This is just a renaming for convenience.
+-- | lift an action in a base monad into a Polysemy monad.  This is just a renaming of `P.embed` for convenience.
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 
 --type KnitCache =  KC.AtomicCache T.Text (Streamly.Array.Array Word.Word8)
 
 -- | Constraint alias for the effects we need (and run)
--- when calling Knit.
+-- when calling 'knitHtml' or 'knitHtmls'.
 -- Anything inside a call to Knit can use any of these effects.
--- Any other effects will need to be run before @knitHtml(s)@
+-- Any other effects added to this stack will need to be run before @knitHtml(s)@
 type KnitEffects r = (KPM.PandocEffects r
                      , P.Members [ KUI.UnusedId
                                  , PR.Reader KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
