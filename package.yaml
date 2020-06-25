@@ -47,7 +47,6 @@ library:
   exposed-modules:
   - Knit.Effect.Logger
   - Knit.Effect.Docs
-  - Knit.Effect.Html
   - Knit.Effect.PandocMonad
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId

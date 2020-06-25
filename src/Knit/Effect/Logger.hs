@@ -100,7 +100,7 @@ import qualified Say                           as S
 
 -- | Severity/importance of message.
 data LogSeverity =
-  -- | Most detailed levels of logging.  Int argument can be used adding fine distinctions between debug levels
+  -- | Most detailed levels of logging.  Int argument can be used adding fine distinctions between debug levels.
   Debug Int
   -- | Minimal details about effects and what is being called. 
   | Diagnostic
@@ -108,7 +108,7 @@ data LogSeverity =
   | Info
   -- | Messages intended to alert the user to an issue in the computation or document production.
   | Warning
-  -- | Likely fatal issue in computaiton or document production.
+  -- | Likely unrecoverable issue in computation or document production.
   | Error
   deriving (Show, Eq, Ord, Typeable, Data)
 
@@ -120,10 +120,10 @@ logSeverityToSeverity Info       = ML.Informational
 logSeverityToSeverity Warning    = ML.Warning
 logSeverityToSeverity Error      = ML.Error
 
--- | A basic LogEntry with a severity and a (Text) message
+-- | A basic log entry with a severity and a ('Text') message
 data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
 
--- | Convert @LogEntry@ to monad-logger style.
+-- | Convert 'LogEntry' to monad-logger style.
 logEntryToWithSeverity :: LogEntry -> ML.WithSeverity T.Text
 logEntryToWithSeverity (LogEntry s t) =
   ML.WithSeverity (logSeverityToSeverity s) t
@@ -134,24 +134,24 @@ logAll :: LogSeverity -> Bool
 logAll = const True
 {-# INLINEABLE logAll #-}
 
--- | log all but 'Debug' messages
+-- | log all but 'Debug' messages.
 logDiagnostic :: LogSeverity -> Bool
 logDiagnostic (Debug _) = False
 logDiagnostic _         = True
 {-# INLINEABLE logDiagnostic #-}
 
--- | log everything above 'Diagnostic' 
+-- | log everything above 'Diagnostic'.
 nonDiagnostic :: LogSeverity -> Bool
 nonDiagnostic ls = ls `elem` [Info, Warning, Error]
 {-# INLINEABLE nonDiagnostic #-}
 
--- | log debug messages with level lower than or equal to l
+-- | log debug messages with level lower than or equal to l.
 logDebug :: Int -> LogSeverity -> Bool
 logDebug l (Debug n) = n <= l
 logDebug _ _         = True
 {-# INLINEABLE logDebug #-}
 
--- | The Logger effect
+-- | The Logger effect (the same as the 'Polysemy.Output' effect). 
 data Logger a m r where
   Log :: a -> Logger a m ()
 
@@ -279,7 +279,7 @@ prefixedLogEntryToIO = logToIO prefixedLogEntryToText
 -- | A synonym for a function to handle direct logging from IO.  Used to allow logging from any stack with IO.
 type LogWithPrefixIO = T.Text -> LogEntry -> IO ()
 
--- | Helper function to retrieve a logging function which can be handed off to any monad with a 'MonadIO' instance.
+-- | Helper function to retrieve a logging function which can be used in any monad with a 'MonadIO' instance.
 -- This allows acccess to the logger from functions which must be run in stacks other than the main @knit-haskell@
 -- stack.
 monadIOLogger :: (MonadIO m
@@ -292,10 +292,10 @@ monadIOLogger p = do
   return $ \ls t -> liftIO $ f p (LogEntry ls t)
 {-# INLINEABLE monadIOLogger #-}
 
--- | Run the Logger and PrefixLog effects using the preferred handler and filter output in any Polysemy monad with IO in the stack.
+-- | Run the 'Logger' and 'PrefixLog' effects in 'IO': filtered via the severity of the message and formatted using "prettyprinter".
 filteredLogEntriesToIO
-  :: MonadIO (P.Sem r)
-  => (LogSeverity -> Bool)
+  :: MonadIO (P.Sem r) 
+  => (LogSeverity -> Bool) 
   -> P.Sem (P.Reader LogWithPrefixIO ': (Logger LogEntry ': (PrefixLog ': r))) x
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do

@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
+
 {-|
 Module      : Knit.Effect.AtomicCache
 Description : Effect for managing a persistent cache of serializable things to avoid redoing computations
@@ -21,7 +22,7 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
-This module defines a key/value store effect in Polysemy. Rather than return the usual @Maybe v@ from a lookup,
+This module defines a key/value store (Polysemy) effect. Rather than return the usual @Maybe v@ from a lookup,
 the cache returns a @Maybe (WithCacheTime v)@, where @WithCacheTime a@ wraps a value of type a along with a
 time-stamp (of type @UTCTime@). This module provides a thread-safe in-memory implementation as well as
 a disk-based persistent implementation and a combination of the two, where the disk-based layer sits behind the
@@ -78,16 +79,20 @@ module Knit.Effect.AtomicCache
   (
     -- * Effect
     Cache
-    -- * TimeStamps
+    -- * Time Stamps
+    -- ** Types
   , WithCacheTime
-  , withCacheTime
   , ActionWithCacheTime
-  , wctMapAction
+    -- ** Constructors
+  , withCacheTime
+  , onlyCacheTime
+    -- ** Combinators
   , ignoreCacheTime
   , ignoreCacheTimeM
   , cacheTime
-  , onlyCacheTime
-    -- * Actions
+    -- ** Utilities
+  , wctMapAction  
+    -- ** Cache Actions
   , encodeAndStore
   , retrieveAndDecode
   , lookupAndDecode
@@ -96,12 +101,12 @@ module Knit.Effect.AtomicCache
   , clearIfPresent
     -- * Serialization
   , Serialize(..)
-    -- * Persistance
+    -- * Persistence Layers
   , persistAsByteString
   , persistAsStrictByteString
   , persistAsByteStreamly
   , persistAsByteArray
-    -- * Interpretations
+    -- * Effect Interpretations
   , runAtomicInMemoryCache
   , runBackedAtomicInMemoryCache
   , runPersistenceBackedAtomicInMemoryCache
@@ -117,7 +122,6 @@ import qualified Knit.Effect.Logger            as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
---import qualified Data.Foldable as           Fold
 import           Data.Functor.Identity          (Identity(..))
 import           Data.Int (Int64)
 import qualified Data.Map                      as M
@@ -145,7 +149,7 @@ import qualified System.IO.Error               as IO.Error
 2. It'd be nice to make sure we can't leave the empty TMVar. Can this be done in a way so that it must be filled?
 3. We should be able to factor out some things around handling the returned TMVar
 -}
--- | Error Type for Cache errors.  Simplifies catching them and reporting them.
+-- | Error Type for Cache errors.  Simplifies catching and reporting them.
 data CacheError =
   ItemNotFoundError T.Text
   | ItemTooOldError T.Text
@@ -153,9 +157,10 @@ data CacheError =
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
 
--- | Type to carry encoding/decoding functions for Serializing data.  Allows for different Serializers as well as
+-- | Record-of-functions type to carry encoding/decoding functions for Serializing data.
+-- Allows for different Serializers as well as
 -- Serializing to different types of in memory store.
--- @encode@ returns the encoded value *and* a (possibly buffered) copy of its input in the case where the imput is expensive to produce.
+-- @encode@ returns the encoded value *and* a (possibly buffered) copy of its input, useful in the case where the imput is expensive to produce.
 -- This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
 -- we can return a "buffered" stream which just unfolds from a memory buffer.
 -- In many cases, we will just return the input in that slot.
@@ -609,7 +614,7 @@ runPersistenceBackedAtomicInMemoryCache' :: (Ord k
 runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
   cache <- P.embed $ C.atomically $ C.newTVar mempty
   runPersistenceBackedAtomicInMemoryCache runPersistentCache cache x 
-
+{-# INLINEABLE runPersistenceBackedAtomicInMemoryCache' #-}
 
 -- | Interpreter for Cache via persistence to disk as a Streamly Memory.Array (Contiguous storage of Storables) of Bytes (Word8)
 persistAsByteArray

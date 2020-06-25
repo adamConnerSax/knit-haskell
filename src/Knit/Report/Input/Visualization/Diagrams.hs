@@ -19,7 +19,7 @@ module Knit.Report.Input.Visualization.Diagrams
   (
     -- * Add Diagrams Inputs
     addDiagramAsSVG
-    -- * re-exports
+    -- * Diagrams Re-Exports
   , module Diagrams.Prelude
   , module Diagrams.Backend.SVG
   )
@@ -36,7 +36,7 @@ import qualified Data.Text                     as T
 --import           Data.Maybe                     ( fromMaybe )
 
 import qualified Diagrams.Prelude              as D
-import           Diagrams.Prelude        hiding ( trace ) -- this conflicts with Pandoc trace.  TO get it, you'll need to import it directly
+import           Diagrams.Prelude         hiding ( trace ) -- this conflicts with Pandoc trace.  TO get it, you'll need to import it directly
 --import qualified Diagrams.TwoD.Size            as D
 import qualified Diagrams.Backend.SVG          as DSVG
 import           Diagrams.Backend.SVG
@@ -47,7 +47,7 @@ import qualified Knit.Effect.Pandoc            as PE
 import qualified Knit.Effect.PandocMonad       as PM
 import qualified Knit.Effect.UnusedId          as KUI
 
--- | Add diagram (via svg inserted as html).
+-- | Add diagram (via SVG inserted as HTML) with user supplied width and height.
 addDiagramAsSVG
   :: ( PM.PandocEffects effs
      , P.Member PE.ToPandoc effs
@@ -65,6 +65,7 @@ addDiagramAsSVG idTextM captionTextM wPixels hPixels diagram = do
         DSVG.SVGOptions (D.dims2D wPixels hPixels) Nothing idText [] False
   addDiagramAsSVGWithOptions (Just idText) captionTextM svgOptions diagram
 
+-- | Add diagram (via SVG inserted as HTML) with user-supplied options.
 addDiagramAsSVGWithOptions
   :: ( PM.PandocEffects effs
      , P.Member PE.ToPandoc effs

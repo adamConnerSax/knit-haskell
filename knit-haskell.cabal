@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 393282b33411a712e4f13613ed32ff8ad76e1362ed9e49bba544e9e9051d4992
+-- hash: 6bee698dd41039e3c73198f10979deca161f075f2cbe1061c1c0e378f965434f
 
 name:           knit-haskell
 version:        0.8.1.0
@@ -44,7 +44,6 @@ library
   exposed-modules:
       Knit.Effect.Logger
       Knit.Effect.Docs
-      Knit.Effect.Html
       Knit.Effect.PandocMonad
       Knit.Effect.Pandoc
       Knit.Effect.UnusedId
@@ -66,6 +65,7 @@ library
       Knit.Utilities.Streamly
   other-modules:
       Knit.Effect.AtomicCache
+      Knit.Effect.Html
       Knit.Report.Error
       Streamly.External.Cereal
       Paths_knit_haskell
