@@ -116,21 +116,9 @@ data LogSeverity =
 instance PP.Pretty LogSeverity where
   pretty = PP.pretty . LT.pack . show
 
-{-
--- | Map between @LogSeverity@ and monad-logger severity.
-logSeverityToSeverity :: LogSeverity -> ML.Severity
-logSeverityToSeverity (Debug _)  = ML.Debug
-logSeverityToSeverity Diagnostic = ML.Debug
-logSeverityToSeverity Info       = ML.Informational
-logSeverityToSeverity Warning    = ML.Warning
-logSeverityToSeverity Error      = ML.Error
--}
-
 -- | A basic log entry with a severity and a ('Text') message
 data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
-{-
 
--}
 -- | log everything.
 logAll :: LogSeverity -> Bool
 logAll = const True

@@ -37,7 +37,6 @@ module Knit.Report
     -- * Report Building
     module Knit.Report.EffectStack
   , module Knit.Report.Error
-  , module Knit.Report.Cache
 
     -- * Inputs
   , module Knit.Report.Input.Table.Colonnade
@@ -55,13 +54,13 @@ module Knit.Report
 
     -- * Effects
   , module Polysemy
---  , module Knit.Effect.AtomicCache
   , module Knit.Effect.Pandoc
   , module Knit.Effect.Docs
   , module Knit.Effect.PandocMonad
   , module Knit.Effect.Logger
   , module Knit.Effect.UnusedId
   , module Polysemy.Async
+  , module Knit.Report.Cache
   )
 where
 
@@ -83,7 +82,7 @@ import           Polysemy.Async                 ( async
                                                 , await
                                                 , sequenceConcurrently
                                                 )
---import           Knit.Effect.AtomicCache (WithCacheTime(..))                 
+
 import           Knit.Effect.Pandoc             ( ToPandoc
                                                 , Requirement(..)
                                                 , PandocReadFormat(..)

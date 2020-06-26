@@ -31,6 +31,7 @@ whatever data we wish to cache.
 
 @WithCacheTime@ is intended to simplify tracking dependencies among cached computations.  For example, imagine
 you have two long running computations which you wish to cache so you need only run those computations once:
+
 @
 computeA :: m a
 computeA = ...
@@ -44,9 +45,11 @@ cachedA :: retrieveOrMake serialize "a.bin" (pure ()) (const computeA)
 cachedB :: WithCacheTime m b
 cachedB = retrieveOrMake serialize "b.bin" (pure ()) (const computeB)
 @
+
 and you have a computation which depends on @a@ and @b@ and should also be cached, but we
 want to make sure it gets recomputed if either @a@ or @b@ do. We use the applicative instance of
 @WithCacheTime@ to combine cached results and inject them into later computations:
+
 @
 computeC :: a -> b -> m c
 computeC ...
@@ -217,7 +220,9 @@ wctApplyNat :: (forall a. f a -> g a) -> WithCacheTime f b -> WithCacheTime g b
 wctApplyNat nat (WithCacheTime tM fb) = WithCacheTime tM (nat fb)
 {-# INLINEABLE wctApplyNat #-}
 
--- | Map one type of action to another 
+-- | Map one type of action to another.  NB: 'WithCacheTime m' is a functor
+-- (as long as @m@ is), so if @m@ is not changing, you should prefer 'fmap'
+-- to this function.  
 wctMapAction :: (m a -> n b) -> WithCacheTime m a -> WithCacheTime n b
 wctMapAction f (WithCacheTime tM ma) = WithCacheTime tM (f ma)
 {-# INLINEABLE wctMapAction #-}
@@ -228,12 +233,16 @@ toSem :: Identity a -> P.Sem r a
 toSem = pure . runIdentity
 {-# INLINE toSem #-}
 
--- | Access the action part of a @WithCacheTime@
+-- | Access the computation part of a @WithCacheTime a@. This or
+-- 'ignoreCacheTimeM' is required to use the cached value as anything but input
+-- to another cached computation.
 ignoreCacheTime :: WithCacheTime m a -> m a
 ignoreCacheTime (WithCacheTime _ ma) = ma
 {-# INLINEABLE ignoreCacheTime #-}
 
--- | Access the action part of a @WithCacheTime@
+-- | Access the computation part of an @m (WithCacheTime a)@. This or
+-- 'ignoreCacheTime' is required to use the cached value as anything but input
+-- to another cached computation.
 ignoreCacheTimeM :: Monad m => m (WithCacheTime m a) -> m a
 ignoreCacheTimeM = join . fmap ignoreCacheTime
 {-# INLINEABLE ignoreCacheTimeM #-}
@@ -253,7 +262,7 @@ P.makeSem ''Cache
 debugLogSeverity :: K.LogSeverity
 debugLogSeverity  = K.Debug 3
 
--- | Combinator to combine the action of serializing and caching
+-- | Combine the action of serializing and caching
 encodeAndStore
   :: forall ct k a r.
      ( Show k
@@ -273,7 +282,12 @@ encodeAndStore (Serialize encode _ encBytes) k x =
     cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
 
--- | Combinator to handle the frequent combination of lookup and, if that fails, running an action to update the cache. 
+-- | Lookup key and, if that fails, run an action to update the cache.
+-- Further, if the item is in cache, but older than time-stamp of the
+-- supplied 'ActionWithCacheTime r b', this function calls the given
+-- @b -> P.Sem r (Maybe a)@ with the cached value from the supplied
+-- 'ActionWithCacheTime m b'.
+
 -- TODO: We need some exception handling here to make sure, in the case of an Atomic cache,
 -- the TMVar gets filled somehow and the key deleted from cache.
 -- NB: This returns an action with the cache time and another action to get the data.  This allows us
@@ -338,8 +352,8 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
         makeAndUpdate
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
 
--- | Combinator to combine the action of retrieving from cache and deserializing
--- | throws if item not found or any other error during retrieval
+-- | Combine the action of retrieving from cache and deserializing.
+-- | Throws if item not found or any other error during retrieval
 retrieveAndDecode
   :: (P.Member (Cache k ct) r
      , P.Member (P.Embed IO) r
@@ -358,8 +372,8 @@ retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (ke
     Just x -> return x
 {-# INLINEABLE retrieveAndDecode #-}
 
--- | Combinator to combine the action of retrieving from cache and deserializing
--- | Returns @Nothing@ if item not found and throws on any other error.
+-- | Combine the action of retrieving from cache and deserializing.
+-- | Returns @Nothing@ if item not found, and throws on any other error.
 lookupAndDecode
   :: forall k a ct r
    . ( P.Member (Cache k ct) r
@@ -376,8 +390,12 @@ lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" 
                               $ retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
 {-# INLINEABLE lookupAndDecode #-}
 
--- | Combinator to combine the action of retrieving from cache and deserializing
--- | Throws if item not found and making fails.
+-- | Lookup key and, if that fails, run an action to update the cache.
+-- Further, if the item is in cache, but older than time-stamp of the
+-- supplied 'ActionWithCacheTime r b', this function calls the given
+-- @b -> P.Sem r (Maybe a)@ with the cached value from the supplied
+-- 'ActionWithCacheTime m b'.
+--  Throws if item not found *and* making fails.
 retrieveOrMake
   :: ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
@@ -400,12 +418,12 @@ retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
 {-# INLINEABLE retrieveOrMake #-}
 
--- | Combinator for clearing the cache at a given key
+-- | Clear the cache at a given key.  Throws an exception if item is not present.
 clear :: P.Member (Cache k ct) r => k -> P.Sem r ()
 clear k = cacheUpdate k Nothing
 {-# INLINEABLE clear #-}
 
--- | Combinator for clearing the cache at a given key, dosn't throw on IOError
+-- | Clear the cache at a given key.  Doesn't throw if item is missing.
 clearIfPresent :: (P.Member (Cache k ct) r, P.MemberWithError (P.Error CacheError) r) => k -> P.Sem r ()
 clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> return ())
 {-# INLINEABLE clearIfPresent #-}
@@ -416,7 +434,7 @@ clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> return
 -- Maybe inside so we can notify waiting threads that whatever they were waiting on
 -- to fill the TMVar failed.
 
-  
+-- | Specific type of in-memory cache.  
 type AtomicMemCache k v = C.TVar (M.Map k (C.TMVar (Maybe (WithCacheTime Identity v))))
 
 -- | lookup combinator for in-memory AtomicMemCache
