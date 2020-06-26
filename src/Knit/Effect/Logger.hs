@@ -71,10 +71,9 @@ import qualified Polysemy.Reader                as P
 
 import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
-import           Control.Monad.Log              ( Handler )
-import qualified Control.Monad.Log             as ML
 import qualified Data.List                     as List
 import qualified Data.Text                     as T
+import qualified Data.Text.Lazy                as LT
 import qualified Data.Text.Prettyprint.Doc     as PP
 import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP
@@ -112,6 +111,12 @@ data LogSeverity =
   | Error
   deriving (Show, Eq, Ord, Typeable, Data)
 
+-- NB: Cribbed from monad-logger.  Thanks ocharles!
+-- TODO: add colors for ansi-terminal output
+instance PP.Pretty LogSeverity where
+  pretty = PP.pretty . LT.pack . show
+
+{-
 -- | Map between @LogSeverity@ and monad-logger severity.
 logSeverityToSeverity :: LogSeverity -> ML.Severity
 logSeverityToSeverity (Debug _)  = ML.Debug
@@ -119,16 +124,13 @@ logSeverityToSeverity Diagnostic = ML.Debug
 logSeverityToSeverity Info       = ML.Informational
 logSeverityToSeverity Warning    = ML.Warning
 logSeverityToSeverity Error      = ML.Error
+-}
 
 -- | A basic log entry with a severity and a ('Text') message
 data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
+{-
 
--- | Convert 'LogEntry' to monad-logger style.
-logEntryToWithSeverity :: LogEntry -> ML.WithSeverity T.Text
-logEntryToWithSeverity (LogEntry s t) =
-  ML.WithSeverity (logSeverityToSeverity s) t
-{-# INLINEABLE logEntryToWithSeverity #-}
-
+-}
 -- | log everything.
 logAll :: LogSeverity -> Bool
 logAll = const True
@@ -165,6 +167,9 @@ logLE
   :: P.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> P.Sem effs ()
 logLE ls lm = log (LogEntry ls lm)
 {-# INLINEABLE logLE #-}
+
+-- | Type-alias for handler functions (unexported).
+type Handler m msg = msg -> m ()
 
 -- | Helper function for logging with monad-logger handler.
 logWithHandler
@@ -220,11 +225,27 @@ runPrefix = fmap snd . P.runState [] . prefixInState
 
 -- | Monad-logger style wrapper to add prefixes to log messages.
 data WithPrefix a = WithPrefix { msgPrefix :: T.Text, discardPrefix :: a }
+data WithSeverity a = WithSeverity { msgSeverity :: LogSeverity, discardSeverity :: a }
 
 -- | Render a prefixed log message with the pretty-printer.
 renderWithPrefix :: (a -> PP.Doc ann) -> WithPrefix a -> PP.Doc ann
 renderWithPrefix k (WithPrefix pr a) = PP.pretty pr PP.<+> PP.align (k a)
 {-# INLINEABLE renderWithPrefix #-}
+
+{-
+-- | Convert 'LogEntry' to monad-logger style.
+logEntryToWithSeverity :: LogEntry -> WithSeverity T.Text
+logEntryToWithSeverity (LogEntry s t) =
+  WithSeverity s t
+{-# INLINEABLE logEntryToWithSeverity #-}
+-}
+
+-- | Render a prefixed log message with the pretty-printer.
+renderLogEntry
+  :: (T.Text -> PP.Doc ann) -> (LogEntry -> PP.Doc ann)
+renderLogEntry k (LogEntry s t) =
+  PP.brackets (PP.pretty s) PP.<+> PP.align (k t)
+
 
 -- | Use @PrefixLog@ Effect to re-interpret all the logged messages to WithPrefix form.
 logPrefixed
@@ -255,7 +276,8 @@ filterLog :: Monad m => (a -> Bool) -> Handler m a -> Handler m a
 filterLog filterF h a = when (filterF a) $ h a
 {-# INLINEABLE filterLog #-}
 
--- | Simple handler, uses a function from message to Text and then outputs all messages in IO.
+-- | Simple handler, uses a function from message to Text and then outputs all messages in 'IO'.
+-- Uses "Say" to insure messages issued from each thread are output coherently.
 -- Can be used as base for any other handler that gives @Text@.
 logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
 logToIO toText a = liftIO $ do
@@ -263,11 +285,12 @@ logToIO toText a = liftIO $ do
   hFlush stdout
 {-# INLINEABLE logToIO #-}
 
+
 -- | '(a -> Text)' function for prefixedLogEntries
 prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
 prefixedLogEntryToText =
   (PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
-    (ML.renderWithSeverity PP.pretty . logEntryToWithSeverity)
+    (renderLogEntry PP.pretty)
   )
 {-# INLINEABLE prefixedLogEntryToText #-}
 
