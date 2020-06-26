@@ -1,7 +1,7 @@
 language: haskell
 dist: xenial
 
-cabal: "3.0"
+cabal: "3.2"
 
 cache:
   timeout: 600
