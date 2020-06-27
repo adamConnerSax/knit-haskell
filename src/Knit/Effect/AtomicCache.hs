@@ -98,8 +98,6 @@ module Knit.Effect.AtomicCache
   (
     -- * Effect
     Cache
-    -- * Serialization
-  , Serialize(..)    
     -- * Time Stamps
     -- ** Types
   , WithCacheTime
@@ -141,6 +139,7 @@ where
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Knit.Effect.Logger            as K
+import qualified Knit.Effect.Serialize         as K
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
@@ -179,21 +178,7 @@ data CacheError =
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
 
-{- |
-Record-of-functions type to carry encoding/decoding functions for Serializing data.
-Allows for different Serializers as well as
-Serializing to different types of in memory store.
-@encode@ returns the encoded value *and* a (possibly buffered) copy of its input. 
-This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
-we can return a "buffered" stream which just unfolds from a memory buffer.
-In many cases, we will just return the input in that slot.
--}
-data Serialize r a ct where
-  Serialize :: (P.MemberWithError (P.Error CacheError) r)
-            => (a -> P.Sem r (ct, a)) -- ^ Encode
-            -> (ct -> P.Sem r a)      -- ^ Decode
-            -> (ct -> Int64)          -- ^ Size (in Bytes)
-            -> Serialize r a ct
+
 
 -- | Wrapper to hold (deserializable, if necessary) content and a timestamp
 -- The stamp must be at or after the time the data was constructed
@@ -287,17 +272,19 @@ debugLogSeverity  = K.Debug 3
 encodeAndStore
   :: ( Show k
      , P.Member (Cache k ct) r
+     , P.Member (K.Serialize ct) r
      , K.LogWithPrefixesLE r
+     , c a
      )
-  => Serialize r a ct -- ^ Record-Of-Functions for serialization/deserialization
-  -> k                -- ^ Key
+--  => K.Serialize r a ct -- ^ Record-Of-Functions for serialization/deserialization
+  => k                -- ^ Key
   -> a                -- ^ Data to encode and cache
   -> P.Sem r ()
-encodeAndStore (Serialize encode _ encBytes) k x =
+encodeAndStore k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> (T.pack $ show k) <> ")") $ do
     K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
-    encoded <- fst <$> encode x
-    let nBytes = encBytes encoded
+    encoded <- fst <$> K.encode x
+    nBytes <- K.encBytes encoded
     K.logLE K.Diagnostic $ "Storing " <> (T.pack $ show nBytes) <> " bytes of encoded data in cache for key=" <> (T.pack $ show k) 
     cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
@@ -315,17 +302,17 @@ encodeAndStore (Serialize encode _ encBytes) k x =
 
 -- IDEA: when too old, make new, retrieve old and compare?  If same, use older date? Costs time, but saves downstream rebuilds.
 retrieveOrMakeAndUpdateCache
-  :: forall k ct r b a.
-     ( P.Members [Cache k ct, P.Embed IO] r
+  :: forall k ct c r b a.
+     ( P.Members [Cache k ct, K.Serialize ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
+     , c a
      )
-  => Serialize r a ct                          -- ^ Record-Of-Functions for serialization/deserialization
-  -> (b -> P.Sem r (Maybe a))                  -- ^ Computation to run to make @a@ if cache is empty or expired.
+  => (b -> P.Sem r (Maybe a))                  -- ^ Computation to run to make @a@ if cache is empty or expired.
   -> k                                         -- ^ Key
   -> ActionWithCacheTime r b                   -- ^ Cached dependencies of the computation.
   -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
-retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
+retrieveOrMakeAndUpdateCache tryIfMissing key (WithCacheTime newestM bA) =
   K.wrapPrefix ("AtomicCache.retrieveOrMakeAndUpdateCache (key=" <> (T.pack $ show key) <> ")") $ do
     let
       makeAndUpdate :: P.Sem r (Maybe (ActionWithCacheTime r a))
@@ -342,8 +329,8 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
             return Nothing
           Just a -> do
             K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
-            (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
-            let nBytes = encBytes ct'
+            (ct', a') <- K.encode a -- a' is the buffered version of a (if necessary)
+            nBytes <- K.encBytes ct'
             K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
             K.logLE debugLogSeverity $ "Updating cache..."          
             cacheUpdate key (Just ct') 
@@ -356,12 +343,12 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
         if cTimeM >= newestM --maybe True (\newest -> cTimeM > newest) newestM
           then do
             let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
-            let nBytes = encBytes ct
+            nBytes <- K.encBytes ct
             K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
             let decodeAction :: P.Sem r a
                 decodeAction = do
                    K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing."  
-                   a <- decode ct -- a <- mct >>= decode
+                   a <- K.decode ct -- a <- mct >>= K.decode
                    K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
                    return a
             return (Just $ WithCacheTime cTimeM decodeAction)             
@@ -376,18 +363,17 @@ retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key
 -- | Combine the action of retrieving from cache and deserializing.
 -- | Throws if item not found or any other error during retrieval
 retrieveAndDecode
-  :: (P.Member (Cache k ct) r
-     , P.Member (P.Embed IO) r
+  :: (P.Members [Cache k ct, K.Serialize ct, P.Embed IO] r
      , P.MemberWithError (P.Error CacheError) r
      , K.LogWithPrefixesLE r
+     , c a
      , Show k
      )
-  => Serialize r a ct                  -- ^ Record-Of-Functions for serialization/deserialization
-  -> k                                 -- ^ Key
+  => k                                 -- ^ Key
   -> Maybe Time.UTCTime                -- ^ 'Time.UTCTime' which cached data must be newer than.  Use 'Nothing' if any cached data is acceptable.
   -> P.Sem r (ActionWithCacheTime r a) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Throws 'CacheError' if lookup fails.
-retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
-  fromCache <- retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
+retrieveAndDecode k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
+  fromCache <- retrieveOrMakeAndUpdateCache (const $ return Nothing) k (onlyCacheTime newestM)
   case fromCache of
     Nothing -> P.throw $ ItemNotFoundError $ "No item found/item too old for key=" <> (T.pack $ show k) <> "."
     Just x -> return x
@@ -396,19 +382,17 @@ retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (ke
 -- | Combine the action of retrieving from cache and deserializing.
 -- | Returns @Nothing@ if item not found, and throws on any other error.
 lookupAndDecode
-  :: forall k a ct r
-   . ( P.Member (Cache k ct) r
+  :: ( P.Members [Cache k ct, K.Serialize ct, P.Embed IO] r
      , K.LogWithPrefixesLE r
-     , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r
+     , c a
      , Show k
      )
-  => Serialize r a ct                          -- ^ Record-Of-Functions for serialization/deserialization
-  -> k                                         -- ^ Key
+  => k                                         -- ^ Key
   -> Maybe Time.UTCTime                        -- ^ 'Time.UTCTime' which cached data must be newer than.  Use 'Nothing' if any cached data is acceptable.
   -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
-lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")")
-                              $ retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
+lookupAndDecode k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")")
+                            $ retrieveOrMakeAndUpdateCache (const $ return Nothing) k (onlyCacheTime newestM)
 {-# INLINEABLE lookupAndDecode #-}
 
 -- | Lookup key and, if that fails, run an action to update the cache.
@@ -418,22 +402,21 @@ lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" 
 -- 'ActionWithCacheTime m b'.
 --  Throws if item not found *and* making fails.
 retrieveOrMake
-  :: ( P.Member (Cache k ct) r
+  :: ( P.Members [Cache k ct, K.Serialize ct, P.Embed IO] r
      , K.LogWithPrefixesLE r
-     , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r
+     , c a
      , Show k
      )
-  => Serialize r a ct                    -- ^ Record-Of-Functions for serialization/deserialization
-  -> k                                   -- ^ Key 
+  => k                                   -- ^ Key 
   -> ActionWithCacheTime r b             -- ^ Cached Dependencies
   -> (b -> P.Sem r a)                    -- ^ Computation to produce @a@ if lookup fails.
   -> P.Sem r (ActionWithCacheTime r a)   -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'
-retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
+retrieveOrMake key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing x = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE debugLogSeverity $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
         fmap Just $ makeAction x
-  fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key cachedDeps 
+  fromCache <- retrieveOrMakeAndUpdateCache makeIfMissing key cachedDeps 
   case fromCache of
     Just x -> return x
     Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
