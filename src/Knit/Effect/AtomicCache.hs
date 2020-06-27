@@ -48,21 +48,23 @@ cachedB = retrieveOrMake serialize "b.bin" (pure ()) (const computeB)
 
 and you have a computation which depends on @a@ and @b@ and should also be cached, but we
 want to make sure it gets recomputed if either @a@ or @b@ do. We use the applicative instance of
-@WithCacheTime@ to combine cached results and inject them into later computations:
+@WithCacheTime@ to combine cached results into and inject them into later computations while
+taking into account the newest time-stamp among the dependencies:
 
 @
 computeC :: a -> b -> m c
 computeC ...
 
 cDeps :: WithCachedTime m (a, b)
-cDeps = (,) <$> cachedA <*> cachedB
+cDeps = (,) <$> cachedA \<*\> cachedB
 
 cachedC :: WithCacheTime m c
 cachedC = retrieveOrMake serialize "c.bin" cDeps $ \(a, b) -> computeC a b
 @
 
-As with @cachedA@ and @cachedB@, @cachedC@ will run the computation if the value is absent from the cache.
-In addition, @cachedC@ will be recomputed even if it's in the cache, if the time-stamp of the cached value
+As with @cachedA@ and @cachedB@, @cachedC@ will run the computation if the key, "c.bin" in this case,
+is absent from the cache.
+In addition, @cachedC@ will be recomputed even if it is in the cache, if the time-stamp of the cached value
 is older than either the time stamp of @cachedA@ or @cachedB@.
 
 @WithCacheTime m a@ holds the time-stamp and a monadic computation which will produce an @a@. This allows
@@ -72,9 +74,23 @@ suppose @a@ is retrieved from cache, and @b@ is computed fresh.  @cachedA@ holds
 computation which will deserialize the cached byte array retrieved for a.  @cachedB@ holds a time-stamp
 (the time the computation of b completes) and the trivial monadic action @return b@.  Since @b@ was
 just computed, the cached @c@ is outdated and will be recomputed.  At that point @a@ is deserialized, @b@
-is unwrapped and @c@ is computed, time-stamped and stored in cache as well as returned in the
-@WithCacheTime m c@.
+is unwrapped and thse are given to the function to compute @c@, which is then 
+stored in cache as well as returned in the @WithCacheTime m c@, holding a new time-stamp.
 
+If multiple threads attempt to lookup or 'retrieveOrMake' at the same key
+at close to the same time, the first request will proceed,
+loading from cache if possible, and the other threads will block until
+the in-memory cache is populated or the first thread fails to fill in data.
+
+This is intended to save CPU in the relatively common case that, e.g., several threads
+are launched to analyze the same data.  The functions which load that data
+from on-disk-cache or produce it from other analyses need only be run once.  Using the cache
+to facilitate this sharing still requires each thread to deserialize the data.  If that cost is
+significant, you may want to compute the data before launching the threads.
+
+NB: Should the action given to create the data, the @(b -> m a)@ argument of 'retrieveOrMake' somehow
+fail, this may lead to a situation where it runs on the first thread, fails, then runs on all the other threads
+simultaneously, presumably failing all those times as well.  
 
 <https://github.com/adamConnerSax/knit-haskell/tree/master/examples Examples> are available, and might be useful for seeing how all this works.
 -}
@@ -82,6 +98,8 @@ module Knit.Effect.AtomicCache
   (
     -- * Effect
     Cache
+    -- * Serialization
+  , Serialize(..)    
     -- * Time Stamps
     -- ** Types
   , WithCacheTime
@@ -102,15 +120,16 @@ module Knit.Effect.AtomicCache
   , retrieveOrMake
   , clear
   , clearIfPresent
-    -- * Serialization
-  , Serialize(..)
-    -- * Persistence Layers
+    -- * Effect Interpretations
+    -- ** Persist To Disk
+  , persistAsByteArray
   , persistAsByteString
   , persistAsStrictByteString
   , persistAsByteStreamly
-  , persistAsByteArray
-    -- * Effect Interpretations
+    -- ** Thread-safe Map
+  , AtomicMemCache
   , runAtomicInMemoryCache
+    -- ** Combined Map/Disk
   , runBackedAtomicInMemoryCache
   , runPersistenceBackedAtomicInMemoryCache
   , runPersistenceBackedAtomicInMemoryCache'
@@ -136,10 +155,10 @@ import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 import           Control.Monad                  ( join )
 
-import qualified Streamly                      as Streamly
-import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Internal.Memory.Array         as Streamly.Array
-import qualified Streamly.FileSystem.Handle    as Streamly.Handle
+import qualified Streamly                          as Streamly
+import qualified Streamly.Prelude                  as Streamly
+import qualified Streamly.Internal.Memory.Array    as Streamly.Array
+import qualified Streamly.FileSystem.Handle        as Streamly.Handle
 import qualified Streamly.Internal.FileSystem.File as Streamly.File
 
 import qualified System.IO                     as System
@@ -160,18 +179,20 @@ data CacheError =
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
 
--- | Record-of-functions type to carry encoding/decoding functions for Serializing data.
--- Allows for different Serializers as well as
--- Serializing to different types of in memory store.
--- @encode@ returns the encoded value *and* a (possibly buffered) copy of its input, useful in the case where the imput is expensive to produce.
--- This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
--- we can return a "buffered" stream which just unfolds from a memory buffer.
--- In many cases, we will just return the input in that slot.
+{- |
+Record-of-functions type to carry encoding/decoding functions for Serializing data.
+Allows for different Serializers as well as
+Serializing to different types of in memory store.
+@encode@ returns the encoded value *and* a (possibly buffered) copy of its input. 
+This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
+we can return a "buffered" stream which just unfolds from a memory buffer.
+In many cases, we will just return the input in that slot.
+-}
 data Serialize r a ct where
   Serialize :: (P.MemberWithError (P.Error CacheError) r)
-            => (a -> P.Sem r (ct, a)) -- encode
-            -> (ct -> P.Sem r a) -- decode
-            -> (ct -> Int64) -- size (in Bytes)
+            => (a -> P.Sem r (ct, a)) -- ^ Encode
+            -> (ct -> P.Sem r a)      -- ^ Decode
+            -> (ct -> Int64)          -- ^ Size (in Bytes)
             -> Serialize r a ct
 
 -- | Wrapper to hold (deserializable, if necessary) content and a timestamp
@@ -264,14 +285,13 @@ debugLogSeverity  = K.Debug 3
 
 -- | Combine the action of serializing and caching
 encodeAndStore
-  :: forall ct k a r.
-     ( Show k
+  :: ( Show k
      , P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      )
-  => Serialize r a ct
-  -> k
-  -> a
+  => Serialize r a ct -- ^ Record-Of-Functions for serialization/deserialization
+  -> k                -- ^ Key
+  -> a                -- ^ Data to encode and cache
   -> P.Sem r ()
 encodeAndStore (Serialize encode _ encBytes) k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> (T.pack $ show k) <> ")") $ do
@@ -295,15 +315,16 @@ encodeAndStore (Serialize encode _ encBytes) k x =
 
 -- IDEA: when too old, make new, retrieve old and compare?  If same, use older date? Costs time, but saves downstream rebuilds.
 retrieveOrMakeAndUpdateCache
-  :: forall k ct r b a. ( P.Members [Cache k ct, P.Embed IO] r
+  :: forall k ct r b a.
+     ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
      )
-  => Serialize r a ct -- serialization/deserialization
-  -> (b -> P.Sem r (Maybe a)) -- action to run to make @a@ if cache is empty or expired, uses deps in b
-  -> k
-  -> ActionWithCacheTime r b  -- oldest data we will accept.  E.g., cache has data but it's older than its newest dependency, we rebuild.
-  -> P.Sem r (Maybe (ActionWithCacheTime r a))
+  => Serialize r a ct                          -- ^ Record-Of-Functions for serialization/deserialization
+  -> (b -> P.Sem r (Maybe a))                  -- ^ Computation to run to make @a@ if cache is empty or expired.
+  -> k                                         -- ^ Key
+  -> ActionWithCacheTime r b                   -- ^ Cached dependencies of the computation.
+  -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
 retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
   K.wrapPrefix ("AtomicCache.retrieveOrMakeAndUpdateCache (key=" <> (T.pack $ show key) <> ")") $ do
     let
@@ -361,10 +382,10 @@ retrieveAndDecode
      , K.LogWithPrefixesLE r
      , Show k
      )
-  => Serialize r a ct
-  -> k
-  -> Maybe Time.UTCTime
-  -> P.Sem r (ActionWithCacheTime r a)
+  => Serialize r a ct                  -- ^ Record-Of-Functions for serialization/deserialization
+  -> k                                 -- ^ Key
+  -> Maybe Time.UTCTime                -- ^ 'Time.UTCTime' which cached data must be newer than.  Use 'Nothing' if any cached data is acceptable.
+  -> P.Sem r (ActionWithCacheTime r a) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Throws 'CacheError' if lookup fails.
 retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (key=" <> (T.pack $ show k) <> ")") $ do
   fromCache <- retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
   case fromCache of
@@ -382,10 +403,10 @@ lookupAndDecode
      , P.MemberWithError (P.Error CacheError) r
      , Show k
      )
-  => Serialize r a ct
-  -> k
-  -> Maybe Time.UTCTime
-  -> P.Sem r (Maybe (ActionWithCacheTime r a))
+  => Serialize r a ct                          -- ^ Record-Of-Functions for serialization/deserialization
+  -> k                                         -- ^ Key
+  -> Maybe Time.UTCTime                        -- ^ 'Time.UTCTime' which cached data must be newer than.  Use 'Nothing' if any cached data is acceptable.
+  -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
 lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" <> (T.pack $ show k) <> ")")
                               $ retrieveOrMakeAndUpdateCache s (const $ return Nothing) k (onlyCacheTime newestM)
 {-# INLINEABLE lookupAndDecode #-}
@@ -403,11 +424,11 @@ retrieveOrMake
      , P.MemberWithError (P.Error CacheError) r
      , Show k
      )
-  => Serialize r a ct
-  -> k
-  -> ActionWithCacheTime r b
-  -> (b -> P.Sem r a)
-  -> P.Sem r (ActionWithCacheTime r a)
+  => Serialize r a ct                    -- ^ Record-Of-Functions for serialization/deserialization
+  -> k                                   -- ^ Key 
+  -> ActionWithCacheTime r b             -- ^ Cached Dependencies
+  -> (b -> P.Sem r a)                    -- ^ Computation to produce @a@ if lookup fails.
+  -> P.Sem r (ActionWithCacheTime r a)   -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'
 retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> (T.pack $ show key) <> ")") $ do
   let makeIfMissing x = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
         K.logLE debugLogSeverity $ "Item (at key=" <> (T.pack $ show key) <> ") not found/too old. Making..."
