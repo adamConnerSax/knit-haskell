@@ -69,24 +69,28 @@ import qualified Knit.Effect.PandocMonad       as KPM
 import qualified Knit.Effect.Logger            as KLog
 import qualified Knit.Effect.UnusedId          as KUI
 import qualified Knit.Effect.AtomicCache       as KC
+import qualified Knit.Effect.Serialize         as KS
+import qualified Knit.Effect.Environment       as KE
 
 -- | Parameters for knitting. If possible, use this via, e.g., 
 -- @
 -- myConfig = defaultKnitConfig { cacheDir = "myCacheDir", pandocWriterConfig = myConfig }
 -- @
 -- so that your code will still compile if parameters are added to this structure.
-data KnitConfig = KnitConfig { outerLogPrefix :: Maybe T.Text
-                             , logIf :: KLog.LogSeverity -> Bool
-                             , cacheDir :: T.Text
-                             , pandocWriterConfig :: KO.PandocWriterConfig
-                             }
+data KnitConfig c ct = KnitConfig { outerLogPrefix :: Maybe T.Text
+                                  , logIf :: KLog.LogSeverity -> Bool
+                                  , cacheDir :: T.Text
+                                  , pandocWriterConfig :: KO.PandocWriterConfig
+                                  , serializeDict :: KS.SerializeDict c ct
+                                  }
 
 -- | Sensible defaults for a knit configuration.
-defaultKnitConfig :: KnitConfig
+defaultKnitConfig :: KnitConfig S.Serialize KS.CacheData
 defaultKnitConfig = KnitConfig (Just "knit-haskell")
                                KLog.nonDiagnostic
                                ".knit-haskell-cache"
                                (KO.PandocWriterConfig Nothing M.empty id)
+                               KS.cerealStreamlyDict
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify @m@.
@@ -94,8 +98,8 @@ defaultKnitConfig = KnitConfig (Just "knit-haskell")
 -- NB: Resulting documents are *Lazy* Text, as produced by the Blaze render function.
 knitHtmls
   :: MonadIO m
-  => KnitConfig
-  -> P.Sem (KnitEffectDocsStack m) ()
+  => KnitConfig c ct
+  -> P.Sem (KnitEffectDocsStack c ct m) ()
   -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
 knitHtmls config =
   let KO.PandocWriterConfig mFP tv oF = pandocWriterConfig config
@@ -112,8 +116,8 @@ knitHtmls config =
 -- NB: Resulting document is *Lazy* Text, as produced by the Blaze render function.
 knitHtml
   :: MonadIO m
-  => KnitConfig
-  -> P.Sem (KnitEffectDocStack m) ()
+  => KnitConfig c ct
+  -> P.Sem (KnitEffectDocStack c ct m) ()
   -> m (Either PA.PandocError TL.Text)
 knitHtml config =
   fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack config)
@@ -134,7 +138,7 @@ liftKnit = P.embed
 -- Any other effects added to this stack will need to be run before @knitHtml(s)@
 type KnitEffects r = (KPM.PandocEffects r
                      , P.Members [ KUI.UnusedId
-                                 , PR.Reader KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
+                                 , PR.Reader (KnitEnvironment c ct) -- KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
                                  , P.Async
