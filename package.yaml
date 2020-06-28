@@ -45,12 +45,13 @@ library:
 #  - -fdefer-type-errors
 #  - -fno-warn-deferred-type-errors
   exposed-modules:
+  - Knit.Effect.AtomicCache
+  - Knit.Effect.Serialize
   - Knit.Effect.Logger
   - Knit.Effect.Docs
   - Knit.Effect.PandocMonad
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId
-  - Knit.Effect.AtomicCache
   - Knit.Report
   - Knit.Report.Cache
   - Knit.Report.EffectStack

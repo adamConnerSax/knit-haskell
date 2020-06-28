@@ -98,8 +98,6 @@ module Knit.Effect.AtomicCache
   (
     -- * Effect
     Cache
-    -- * Serialization
-  , Serialize(..)    
     -- * Time Stamps
     -- ** Types
   , WithCacheTime
@@ -141,11 +139,11 @@ where
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Knit.Effect.Logger            as K
+import qualified Knit.Effect.Serialize         as KS
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity(..))
-import           Data.Int (Int64)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
@@ -178,22 +176,6 @@ data CacheError =
   | DeSerializationError T.Text
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
-
-{- |
-Record-of-functions type to carry encoding/decoding functions for Serializing data.
-Allows for different Serializers as well as
-Serializing to different types of in memory store.
-@encode@ returns the encoded value *and* a (possibly buffered) copy of its input. 
-This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
-we can return a "buffered" stream which just unfolds from a memory buffer.
-In many cases, we will just return the input in that slot.
--}
-data Serialize r a ct where
-  Serialize :: (P.MemberWithError (P.Error CacheError) r)
-            => (a -> P.Sem r (ct, a)) -- ^ Encode
-            -> (ct -> P.Sem r a)      -- ^ Decode
-            -> (ct -> Int64)          -- ^ Size (in Bytes)
-            -> Serialize r a ct
 
 -- | Wrapper to hold (deserializable, if necessary) content and a timestamp
 -- The stamp must be at or after the time the data was constructed
@@ -289,11 +271,11 @@ encodeAndStore
      , P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      )
-  => Serialize r a ct -- ^ Record-Of-Functions for serialization/deserialization
-  -> k                -- ^ Key
-  -> a                -- ^ Data to encode and cache
+  => KS.Serialize CacheError r a ct -- ^ Record-Of-Functions for serialization/deserialization
+  -> k                              -- ^ Key
+  -> a                              -- ^ Data to encode and cache
   -> P.Sem r ()
-encodeAndStore (Serialize encode _ encBytes) k x =
+encodeAndStore (KS.Serialize encode _ encBytes) k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> (T.pack $ show k) <> ")") $ do
     K.logLE K.Diagnostic $ "encoding (serializing) data for key=" <> (T.pack $ show k) 
     encoded <- fst <$> encode x
@@ -320,12 +302,12 @@ retrieveOrMakeAndUpdateCache
      ,  K.LogWithPrefixesLE r
      , Show k
      )
-  => Serialize r a ct                          -- ^ Record-Of-Functions for serialization/deserialization
+  => KS.Serialize CacheError r a ct            -- ^ Record-Of-Functions for serialization/deserialization
   -> (b -> P.Sem r (Maybe a))                  -- ^ Computation to run to make @a@ if cache is empty or expired.
   -> k                                         -- ^ Key
   -> ActionWithCacheTime r b                   -- ^ Cached dependencies of the computation.
   -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
-retrieveOrMakeAndUpdateCache (Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
+retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
   K.wrapPrefix ("AtomicCache.retrieveOrMakeAndUpdateCache (key=" <> (T.pack $ show key) <> ")") $ do
     let
       makeAndUpdate :: P.Sem r (Maybe (ActionWithCacheTime r a))
@@ -382,7 +364,7 @@ retrieveAndDecode
      , K.LogWithPrefixesLE r
      , Show k
      )
-  => Serialize r a ct                  -- ^ Record-Of-Functions for serialization/deserialization
+  => KS.Serialize CacheError r a ct    -- ^ Record-Of-Functions for serialization/deserialization
   -> k                                 -- ^ Key
   -> Maybe Time.UTCTime                -- ^ 'Time.UTCTime' which cached data must be newer than.  Use 'Nothing' if any cached data is acceptable.
   -> P.Sem r (ActionWithCacheTime r a) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Throws 'CacheError' if lookup fails.
@@ -403,7 +385,7 @@ lookupAndDecode
      , P.MemberWithError (P.Error CacheError) r
      , Show k
      )
-  => Serialize r a ct                          -- ^ Record-Of-Functions for serialization/deserialization
+  => KS.Serialize CacheError r a ct            -- ^ Record-Of-Functions for serialization/deserialization
   -> k                                         -- ^ Key
   -> Maybe Time.UTCTime                        -- ^ 'Time.UTCTime' which cached data must be newer than.  Use 'Nothing' if any cached data is acceptable.
   -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
@@ -424,7 +406,7 @@ retrieveOrMake
      , P.MemberWithError (P.Error CacheError) r
      , Show k
      )
-  => Serialize r a ct                    -- ^ Record-Of-Functions for serialization/deserialization
+  => KS.Serialize CacheError r a ct      -- ^ Record-Of-Functions for serialization/deserialization
   -> k                                   -- ^ Key 
   -> ActionWithCacheTime r b             -- ^ Cached Dependencies
   -> (b -> P.Sem r a)                    -- ^ Computation to produce @a@ if lookup fails.

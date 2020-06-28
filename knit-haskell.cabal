@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8317dd13de7b8c326d8f655336b276d6b1eaa82d943ca7f08038adffc994d917
+-- hash: 08ce406642d57571077c12ea062444257ef374ea2c470769ce7f9d43b0119b16
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -42,12 +42,13 @@ source-repository head
 library
   ghc-options: -Wall -O2 -fdicts-strict -fspec-constr-recursive=16 -fmax-worker-args=16 -fno-warn-unused-top-binds -funbox-strict-fields -fplugin=Polysemy.Plugin
   exposed-modules:
+      Knit.Effect.AtomicCache
+      Knit.Effect.Serialize
       Knit.Effect.Logger
       Knit.Effect.Docs
       Knit.Effect.PandocMonad
       Knit.Effect.Pandoc
       Knit.Effect.UnusedId
-      Knit.Effect.AtomicCache
       Knit.Report
       Knit.Report.Cache
       Knit.Report.EffectStack
