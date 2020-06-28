@@ -26,12 +26,11 @@ Stability   : experimental
 -}
 module Knit.Effect.Serialize
   (
-    -- * Effect
-    Serialize(..)
-  , encode
-  , decode
-  , encBytes
-    -- * Interpretations
+    -- * Types
+    SerializeDict(..)
+  , Serialize(..)
+    -- * Implementations
+  , cerealStreamlyDict
     -- * Errors
   , SerializationError(..)
   )
@@ -83,25 +82,88 @@ data SerializationError = SerializationError T.Text deriving (Show)
 
 
 {- |
-Encoding/decoding functions for Serializing data.
+Encoding/decoding functions for Serializing data, made explicit
+here so we can pass them around as part of a configuration.
+Allows for different Serializers as well as
+Serializing to different types of in memory store.
+@encodeOne@ returns the encoded value 
+
+NB: First parameter is a an exception type for propagating upward.
+The second is a constraint which muct be satisfied by anything serializable by
+the implementation.
+-}
+
+data SerializeDict c ct =
+  SerializeDict
+  { encodeOne :: forall a. c a => a -> ct
+  , decodeOne :: forall a. c a => ct -> Either SerializationError a
+  , encBytes :: ct -> Int64
+  }
+
+
+{- |
+Record-of-functions type to carry encoding/decoding functions for Serializing data.
 Allows for different Serializers as well as
 Serializing to different types of in memory store.
 @encode@ returns the encoded value *and* a (possibly buffered) copy of its input. 
 This is designed around serialization of streams, where the original (effectful) stream may be expensive to run. But once run,
 we can return a "buffered" stream which just unfolds from a memory buffer.
 In many cases, we will just return the input in that slot.
-
-NB: First parameter is a constraint which muct be satisfied by anything serializable by
-the implementation.
 -}
+data Serialize r a ct where
+  Serialize :: (P.MemberWithError (P.Error SerializationError) r)
+            => (a -> P.Sem r (ct, a)) -- ^ Encode
+            -> (ct -> P.Sem r a)      -- ^ Decode
+            -> (ct -> Int64)          -- ^ Size (in Bytes)
+            -> Serialize r a ct
 
-data SerializeOne c e ct =
-  SerializeOne
-  { encodeOne :: c a => a -> ct
-  , decodeOne :: c a => ct -> Either e a
-  , encBytes :: ct -> Int64
-  }
 
+serializeOne :: (c a, P.MemberWithError (P.Error SerializationError) r)
+             => SerializeDict c ct
+             -> Serialize r a ct
+serializeOne (SerializeDict encodeOne decodeOne encBytes) =
+  let enc a = return (encodeOne a, a)
+      {-# INLINEABLE enc #-}
+      dec = P.fromEither @SerializationError . decodeOne
+      {-# INLINEABLE dec #-}
+      bytes = encBytes
+      {-# INLINEABLE bytes #-}
+  in Serialize enc dec bytes
+{-# INLINEABLE serializeOne #-}
+
+serializeStreamlyViaList ::
+  (P.MemberWithError (P.Error SerializationError) r, P.Member (P.Embed IO) r, c [a])
+  => SerializeDict c ct
+  -> Serialize r (Streamly.SerialT (P.Sem r) a) ct 
+serializeStreamlyViaList (SerializeDict encodeOne decodeOne encBytes) =
+  let enc = Streamly.fold (Streamly.Fold.tee
+                           (fmap encodeOne $ Streamly.Fold.toList) 
+                           (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
+                          )
+      {-# INLINEABLE enc #-}
+      dec = P.fromEither . fmap Streamly.fromList . decodeOne
+      {-# INLINEABLE dec #-}
+      bytes = encBytes
+      {-# INLINEABLE bytes #-}
+  in Serialize enc dec bytes
+{-# INLINEABLE serializeStreamlyViaList #-}
+
+
+cerealStreamlyDict :: SerializeDict S.Serialize (Streamly.Array.Array Word.Word8)
+cerealStreamlyDict =
+  SerializeDict
+  Streamly.Cereal.encodeStreamlyArray
+  (mapLeft SerializationError .  Streamly.Cereal.decodeStreamlyArray)
+  (fromIntegral . Streamly.Array.length)
+
+
+-- | Map the left side of an Either
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f = either (Left . f) Right
+{-# INLINEABLE mapLeft #-}
+
+
+{-
 data SerializeStreamly c e r ct =
   SerializeStreamly
   {
@@ -131,10 +193,6 @@ fixMonadCatch = Streamly.hoist f where
   f = join . fmap P.fromEither . Exceptions.runCatchT
 {-# INLINEABLE fixMonadCatch #-}
 
--- | Map the left side of an Either
-mapLeft :: (a -> b) -> Either a c -> Either b c
-mapLeft f = either (Left . f) Right
-{-# INLINEABLE mapLeft #-}
 
 -- | Encode/Decode functions for serializing to strict ByteStrings
 runCerealStrictBS :: (P.MemberWithError (P.Error SerializationError) r
@@ -220,3 +278,4 @@ cerealStreamViaListArray = C.Serialize
   (P.fromEither . mapLeft (C.DeSerializationError . T.pack) . S.runGet (Streamly.Cereal.getStreamOf S.get) . Streamly.ByteString.fromArray)
   (fromIntegral . Streamly.Array.length)
 {-# INLINEABLE cerealStreamViaListArray #-}
+-}
