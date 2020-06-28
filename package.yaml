@@ -1,5 +1,5 @@
 name: knit-haskell
-version: '0.8.1.0'
+version: '0.8.0.0'
 synopsis: a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description: ! 'knit-haskell is a beginning attempt at bringing some of the benefits
   of
@@ -50,6 +50,7 @@ library:
   - Knit.Effect.PandocMonad
   - Knit.Effect.Pandoc
   - Knit.Effect.UnusedId
+  - Knit.Effect.AtomicCache
   - Knit.Report
   - Knit.Report.Cache
   - Knit.Report.EffectStack

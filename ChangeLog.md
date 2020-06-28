@@ -1,15 +1,18 @@
-v0.8.1.0
+v0.8.0.0
 * BREAKING: moved config arguments to ```knit-html``` and ```knit-htmls``` into a data structure ```KnitConfig```.  This breaks
 all existing uses of those functions but is designed to future-proof against additions to the knit configuration.  A breaking
 change was more-or-less necessitated by the addition of a cache directory parameter for the persistent caching effect. See below.
+
 * New persistent caching effect.  Anything which has an instance of ```Serialize``` (from the cereal package) may be cached,
 in memory and backed by a disk-based cache (cache effect will attempt to create 
 directories as required).  When knit-html(s) is next run, the cached version can be used in 
 place of running an expensive computation. This comes with some built-in dependency management, via modification times of the
 files in cache or user-provided time for dependencies on non-cached assets. For more information, 
 see the [Readme](https://github.com/adamConnerSax/knit-haskell/blob/master/Readme.md).
-For an example, see examples/CacheExample.hs. 
+For an example, see examples/CacheExample.hs.
+
 * Added Async into knit-haskell effects.  For an example, see examples/AsyncExample.hs.
+
 * Logging changes:
 
 1. Added a ```Debug Int``` level below ```Diagnostic``` with an integer argument to allow various and unlimited debug levels
