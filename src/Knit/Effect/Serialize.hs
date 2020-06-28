@@ -29,6 +29,9 @@ module Knit.Effect.Serialize
     -- * Types
     SerializeDict(..)
   , Serialize(..)
+    -- * Deploy Implementations
+  , serializeOne
+  , serializeStreamlyViaList
     -- * Implementations
   , cerealStreamlyDict
     -- * Errors
@@ -38,45 +41,19 @@ where
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
-import qualified Knit.Effect.Logger            as K
-
-import qualified Data.ByteString               as BS
-import qualified Data.ByteString.Lazy          as BL
-import           Data.Functor.Identity          (Identity(..))
 import           Data.Int (Int64)
-import qualified Data.Map                      as M
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
-import qualified Data.Time.Clock               as Time
 import qualified Data.Word                     as Word
-
-import qualified Control.Exception             as Exception
-import           Control.Monad                  ( join )
-import qualified Control.Monad.Catch.Pure      as Exceptions
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Internal.Prelude              as Streamly
 import qualified Streamly.Data.Fold                 as Streamly.Fold
-import qualified Streamly.Internal.Data.Fold                 as Streamly.Fold
 import qualified Streamly.Memory.Array         as Streamly.Array
-import qualified Streamly.Internal.Memory.Array         as Streamly.Array
 import qualified Streamly.Internal.Data.Array           as Streamly.Data.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
-import qualified Streamly.External.ByteString as Streamly.ByteString
 
 
-
-import qualified System.IO                     as System
-import qualified System.Directory              as System
-import qualified System.IO.Error               as IO.Error
-
-
-{- TODO:
-1. Can this design be simplified, part 1. The Maybe in the TMVar seems like it should be uneccessary.
-2. It'd be nice to make sure we can't leave the empty TMVar. Can this be done in a way so that it must be filled?
-3. We should be able to factor out some things around handling the returned TMVar
--}
 -- | Error Type for Serialization errors.  Simplifies catching and reporting them.
 data SerializationError = SerializationError T.Text deriving (Show)
 
@@ -86,13 +63,11 @@ Encoding/decoding functions for Serializing data, made explicit
 here so we can pass them around as part of a configuration.
 Allows for different Serializers as well as
 Serializing to different types of in memory store.
-@encodeOne@ returns the encoded value 
 
-NB: First parameter is a an exception type for propagating upward.
-The second is a constraint which muct be satisfied by anything serializable by
+
+NB: The first parameter is a constraint which must be satisfied by anything serializable by
 the implementation.
 -}
-
 data SerializeDict c ct =
   SerializeDict
   { encodeOne :: forall a. c a => a -> ct
@@ -110,41 +85,43 @@ This is designed around serialization of streams, where the original (effectful)
 we can return a "buffered" stream which just unfolds from a memory buffer.
 In many cases, we will just return the input in that slot.
 -}
-data Serialize r a ct where
-  Serialize :: (P.MemberWithError (P.Error SerializationError) r)
+data Serialize e r a ct where
+  Serialize :: (P.MemberWithError (P.Error e) r)
             => (a -> P.Sem r (ct, a)) -- ^ Encode
             -> (ct -> P.Sem r a)      -- ^ Decode
             -> (ct -> Int64)          -- ^ Size (in Bytes)
-            -> Serialize r a ct
+            -> Serialize e r a ct
 
-
+-- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c a@,
+-- produce the (trivial) 'Serialize' record-of-functions to encode/decode a single @a@.
 serializeOne :: (c a, P.MemberWithError (P.Error SerializationError) r)
              => SerializeDict c ct
-             -> Serialize r a ct
-serializeOne (SerializeDict encodeOne decodeOne encBytes) =
-  let enc a = return (encodeOne a, a)
-      {-# INLINEABLE enc #-}
-      dec = P.fromEither @SerializationError . decodeOne
+             -> Serialize SerializationError r a ct
+serializeOne (SerializeDict encOne decOne bytes) =
+  let enc a = return (encOne a, a)
+      {-# INLINEABLE enc #-}      
+      dec = P.fromEither @SerializationError . decOne
       {-# INLINEABLE dec #-}
-      bytes = encBytes
-      {-# INLINEABLE bytes #-}
   in Serialize enc dec bytes
 {-# INLINEABLE serializeOne #-}
 
+-- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c [a]@--usually
+-- true as long as @a@ satisfies @c a@--produce
+-- the 'Serialize' record-of-functions to encode/decode @Streamly.SerialT (P.Sem r) a@,
+-- by mapping the stream to a (lazy) list, and encoding that and
+-- decoding as a list and creating the stream from that.
 serializeStreamlyViaList ::
   (P.MemberWithError (P.Error SerializationError) r, P.Member (P.Embed IO) r, c [a])
   => SerializeDict c ct
-  -> Serialize r (Streamly.SerialT (P.Sem r) a) ct 
-serializeStreamlyViaList (SerializeDict encodeOne decodeOne encBytes) =
+  -> Serialize SerializationError r (Streamly.SerialT (P.Sem r) a) ct 
+serializeStreamlyViaList (SerializeDict encOne decOne bytes) =
   let enc = Streamly.fold (Streamly.Fold.tee
-                           (fmap encodeOne $ Streamly.Fold.toList) 
+                           (fmap encOne $ Streamly.Fold.toList) 
                            (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
                           )
       {-# INLINEABLE enc #-}
-      dec = P.fromEither . fmap Streamly.fromList . decodeOne
+      dec = P.fromEither . fmap Streamly.fromList . decOne
       {-# INLINEABLE dec #-}
-      bytes = encBytes
-      {-# INLINEABLE bytes #-}
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamlyViaList #-}
 
@@ -161,121 +138,3 @@ cerealStreamlyDict =
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 {-# INLINEABLE mapLeft #-}
-
-
-{-
-data SerializeStreamly c e r ct =
-  SerializeStreamly
-  {
-    encodeStream :: c a => Streamly.SerialT (P.Sem r) a -> P.Sem r (ct, Streamly.SerialT (P.Sem r) a)
-  , decodeStream :: c a => ct -> Streamly.SerialT (P.Sem r) a
-  }
-
-streamlyFromOneViaList :: SerializeOne c e ct -> SerializeStreamly c e r ct
-streamlyFromOneViaList (SerializeOne encOne decOne _) =
-  SerializeStreamly
-  (Streamly.map encOne 
-
-data SerializeStream ct m a where
-  Encode :: a -> Serialize f ct m ct
-  Decode :: ct -> Serialize f ct m a
-  EncBytes :: ct -> Serialize f ct m Int64
-
-P.makeSem ''Serialize
-
-
-
--- | Use Pure CatchT to handle MonadCatch constraint
-fixMonadCatch :: (P.MemberWithError (P.Error Exceptions.SomeException) r)
-              => Streamly.SerialT (Exceptions.CatchT (P.Sem r)) a -> Streamly.SerialT (P.Sem r) a
-fixMonadCatch = Streamly.hoist f where
-  f :: forall r a. (P.MemberWithError (P.Error Exceptions.SomeException) r) =>  Exceptions.CatchT (P.Sem r) a -> P.Sem r a
-  f = join . fmap P.fromEither . Exceptions.runCatchT
-{-# INLINEABLE fixMonadCatch #-}
-
-
--- | Encode/Decode functions for serializing to strict ByteStrings
-runCerealStrictBS :: (P.MemberWithError (P.Error SerializationError) r
-                     , S.Serialize a
-                     )
-  => P.InterpreterFor (Serialize BS.ByteString)
-runCerealStrictBS =
-  P.interpret $ \case
-    Encode a    -> return (S.encode a, a)
-    Decode ct   -> Identity <$> (P.fromEither @SerializationError . mapLeft (SerializationError . T.pack) $ S.decode ct)
-    EncBytes ct -> fromIntegral . BS.length
-{-# INLINEABLE runCerealStrictBS #-}
-
--- | Encode/Decode functions for serializing to lazy ByteStrings
-runCerealLazyBS :: (P.MemberWithError (P.Error SerializationError) r
-                   , S.Serialize a
-                   )
-  => P.InterpreterFor (Serialize Identity BL.ByteString)
-runCerealLazyBS =
-  P.interpret $ \case
-    Encode ia    -> return (S.encodeLazy (runIdentity ia), ia)
-    Decode ct   -> Identity <$> (P.fromEither @SerializationError . mapLeft (SerializationError . T.pack) $ S.decodeLazy ct)
-    EncBytes ct -> BL.length
-{-# INLINEABLE runCerealLazyBS #-}
-
--- | Encode/Decode functions for serializing to Streamly Streams
-runCerealStreamly :: (S.Serialize a
-                     , P.Member (P.Embed IO) r
-                     , P.MemberWithError (P.Error SerializationError) r
-                     )
-                  => P.InterpreterFor (Serialize Identity (Streamly.SerialT Identity Word.Word8))
-runCerealStreamly =
-  P.interpret $ \case
-    Encode ia -> return (Streamly.Cereal.encodeStreamly (runIdentity ia), ia)
-    Decode ct -> Identity <$> (P.fromEither . mapLeft SerializationError . runIdentity $ Streamly.Cereal.decodeStreamly ct)
-    EncBytes ct -> fromIntegral . runIdentity . Streamly.length ct
-{-# INLINEABLE runCerealStreamly #-}
-
--- | Encode/Decode functions for serializing to Streamly Arrays
-runCerealArray :: (S.Serialize a
-                  , P.Member (P.Embed IO) r
-                  , P.MemberWithError (P.Error SerializationError) r
-               ) => P.InterpreterFor (Serialize Identity Streamly.Array.Array Word.Word8)
-runCerealArray =
-  P.interpret $ \case
-    Encode ia -> return $ (Streamly.Cereal.encodeStreamlyArray (runIdenity ia), ia)
-    Decode ct -> Identity <$> P.fromEither . mapLeft SerializationError $ Streamly.Cereal.decodeStreamlyArray ct
-    EncBytes ct -> fromIntegral $ Streamly.Array.length ct
-{-# INLINEABLE runCerealArray #-}
-
--- | Encode/Decode functions for serializing Streamly streams to Streamly Arrays
--- When encoding, we also return a "buffered" stream so that the input stream is only "run" once.
-runCerealStreamArray :: forall r a.(S.Serialize a                                
-                                   , P.Member (P.Embed IO) r                
-                                   , P.MemberWithError (P.Error Exceptions.SomeException) r
-                                   , P.MemberWithError (P.Error SerializationError) r
-                     )
-                  => P.InterpreterFor (Serialize (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
-cerealStreamArray = C.Serialize
-  (Streamly.fold (Streamly.Fold.tee
-                 (Streamly.Fold.lmapM (Streamly.Array.fromStream . Streamly.Cereal.encodeStreamly) $ Streamly.Fold.mconcat)
-                 (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
-                 )
-  )
-  (return . fixMonadCatch . Streamly.Cereal.decodeStreamArray)
-  (fromIntegral . Streamly.Array.length)
-{-# INLINEABLE cerealStreamArray #-}
-
--- | Encode/Decode functions for serializing Streamly streams to Streamly Arrays, using the Cereal functions to encode/decode lists.
--- When encoding, we also return a "buffered" stream so that the input stream is only "run" once.
-cerealStreamViaListArray :: (S.Serialize a
-                            , P.Member (P.Embed IO) r                
-                            , P.MemberWithError (P.Error Exceptions.SomeException) r
-                            , P.MemberWithError (P.Error C.CacheError) r
-                            )
-                         => C.Serialize r (Streamly.SerialT (P.Sem r) a) (Streamly.Array.Array Word.Word8)
-cerealStreamViaListArray = C.Serialize
-  (Streamly.fold (Streamly.Fold.tee
-                   (fmap ((Streamly.ByteString.toArray . S.runPut . S.putListOf S.put) ) $ Streamly.Fold.toList)
-                   (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
-                 )
-  )
-  (P.fromEither . mapLeft (C.DeSerializationError . T.pack) . S.runGet (Streamly.Cereal.getStreamOf S.get) . Streamly.ByteString.fromArray)
-  (fromIntegral . Streamly.Array.length)
-{-# INLINEABLE cerealStreamViaListArray #-}
--}
