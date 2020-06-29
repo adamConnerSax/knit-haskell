@@ -33,6 +33,7 @@ module Knit.Effect.Serialize
   , serializeOne
   , serializeStreamlyViaList
     -- * Implementations
+  , DefaultCacheData
   , cerealStreamlyDict
     -- * Errors
   , SerializationError(..)
@@ -125,8 +126,9 @@ serializeStreamlyViaList (SerializeDict encOne decOne bytes) =
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamlyViaList #-}
 
+type DefaultCacheData = Streamly.Array.Array Word.Word8
 
-cerealStreamlyDict :: SerializeDict S.Serialize (Streamly.Array.Array Word.Word8)
+cerealStreamlyDict :: SerializeDict S.Serialize DefaultCacheData
 cerealStreamlyDict =
   SerializeDict
   Streamly.Cereal.encodeStreamlyArray

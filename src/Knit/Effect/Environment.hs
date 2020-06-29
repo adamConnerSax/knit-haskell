@@ -20,7 +20,7 @@ Stability   : experimental
 module Knit.Effect.Environment
   (
     -- * Environment
-    KnitEnvironment
+    KnitEnvironment(..)
     -- * Effect
   , KnitEnv
     -- * actions    
@@ -28,7 +28,7 @@ module Knit.Effect.Environment
   , getSerializeDict
 
     -- * interpretations
-  , runEnvReader
+  , runKnitEnv
   )
 where
 
@@ -57,5 +57,5 @@ getSerializeDict = PR.asks keSerializeDict
 
 
 -- | Run the EnvReader effect
-runEnvReader :: KnitEnvironment c ct -> P.InterpreterFor (KnitEnv c ct) r
-runEnvReader = PR.runReader
+runKnitEnv :: KnitEnvironment c ct -> P.InterpreterFor (KnitEnv c ct) r
+runKnitEnv = PR.runReader

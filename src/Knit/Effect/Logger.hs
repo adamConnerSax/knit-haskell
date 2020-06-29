@@ -42,8 +42,8 @@ module Knit.Effect.Logger
   , log
   , logLE
   , wrapPrefix
-  , monadIOLogger
   , getPrefix
+  , logWithPrefixToIO
   
   -- * Interpreters
   , filteredLogEntriesToIO
@@ -67,7 +67,6 @@ import qualified Polysemy                      as P
                  
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
-import qualified Polysemy.Reader                as P
 
 import           Control.Monad                  ( when )
 import           Control.Monad.IO.Class         ( MonadIO(..) )
@@ -220,14 +219,6 @@ renderWithPrefix :: (a -> PP.Doc ann) -> WithPrefix a -> PP.Doc ann
 renderWithPrefix k (WithPrefix pr a) = PP.pretty pr PP.<+> PP.align (k a)
 {-# INLINEABLE renderWithPrefix #-}
 
-{-
--- | Convert 'LogEntry' to monad-logger style.
-logEntryToWithSeverity :: LogEntry -> WithSeverity T.Text
-logEntryToWithSeverity (LogEntry s t) =
-  WithSeverity s t
-{-# INLINEABLE logEntryToWithSeverity #-}
--}
-
 -- | Render a prefixed log message with the pretty-printer.
 renderLogEntry
   :: (T.Text -> PP.Doc ann) -> (LogEntry -> PP.Doc ann)
@@ -287,33 +278,21 @@ prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
 prefixedLogEntryToIO = logToIO prefixedLogEntryToText
 {-# INLINEABLE prefixedLogEntryToIO #-}
 
+logWithPrefixToIO :: LogWithPrefixIO
+logWithPrefixToIO prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToIO wp
+
 -- | A synonym for a function to handle direct logging from IO.  Used to allow logging from any stack with IO.
 type LogWithPrefixIO = T.Text -> LogEntry -> IO ()
-
--- | Helper function to retrieve a logging function which can be used in any monad with a 'MonadIO' instance.
--- This allows acccess to the logger from functions which must be run in stacks other than the main @knit-haskell@
--- stack.
-monadIOLogger :: (MonadIO m
-                 , P.Member (P.Reader LogWithPrefixIO) r
-                 )
-              => T.Text
-              -> P.Sem r (LogSeverity -> T.Text -> m ())
-monadIOLogger p = do
-  f <- P.ask
-  return $ \ls t -> liftIO $ f p (LogEntry ls t)
-{-# INLINEABLE monadIOLogger #-}
 
 -- | Run the 'Logger' and 'PrefixLog' effects in 'IO': filtered via the severity of the message and formatted using "prettyprinter".
 filteredLogEntriesToIO
   :: MonadIO (P.Sem r) 
   => (LogSeverity -> Bool) 
-  -> P.Sem (P.Reader LogWithPrefixIO ': (Logger LogEntry ': (PrefixLog ': r))) x
+  -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do
   let f a = lsF (severity $ discardPrefix a)
-      g :: LogWithPrefixIO
-      g prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToIO wp
-  logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) $ P.runReader g mx
+  logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) mx 
 {-# INLINEABLE filteredLogEntriesToIO #-}
 
 -- | List of Logger effects for a prefixed log of type @a@

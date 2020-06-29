@@ -71,7 +71,7 @@ module Knit.Effect.PandocMonad
   , interpretInIO
 
     -- * Runners
-  , runIO
+--  , runIO
 
     -- * Interop
   , absorbPandocMonad
@@ -90,7 +90,6 @@ import           Polysemy.Internal              ( send )
 import           Polysemy.Internal.Combinators  ( stateful )
 import qualified Polysemy.Error                as P
 import qualified Polysemy.ConstraintAbsorber   as P
-import qualified Polysemy.Reader               as P
 
 import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
@@ -473,6 +472,7 @@ interpretInPandocMonad = P.interpret
     Trace             s    -> P.embed @m $ PA.trace s
   )
 
+{-
 -- | Run the Pandoc effects,
 -- and log messages with the given severity, over IO.
 -- If there is a Pandoc error, you will get a Left in the resulting Either.
@@ -506,6 +506,7 @@ runIO
 runIO logIf =
   P.runM . P.runError . Log.filteredLogEntriesToIO logIf . interpretInIO
 #endif
+-}
 
 -- copied from Pandoc code and modified as needed for Polysemy and my implementation of interpretInIO (PandocIO)
 openURLWithState

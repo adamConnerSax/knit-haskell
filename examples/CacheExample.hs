@@ -58,7 +58,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: Knit.KnitOne r => Knit.Sem r ()
+makeDoc :: (Knit.Default Knit.KnitOne) r => Knit.Sem r ()
 makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.logLE Knit.Info "adding some markdown..."
   Knit.addMarkDown md1

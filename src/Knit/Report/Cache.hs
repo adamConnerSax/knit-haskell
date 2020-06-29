@@ -79,16 +79,13 @@ import qualified Control.Monad.Catch.Pure      as Exceptions
 import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
 import           Data.Time.Clock                (UTCTime)
-import qualified Data.Serialize                as S
-import qualified Data.Word                     as Word
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Internal.Prelude              as Streamly
-import qualified Streamly.Memory.Array         as Streamly.Array
+import qualified Streamly.Internal.Prelude     as Streamly
 
 
 -- | type used by the AtomicCache for in-memory storage.
