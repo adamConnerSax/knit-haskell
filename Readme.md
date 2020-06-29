@@ -4,7 +4,7 @@
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
 
-## Breaking Change
+## Breaking Changes
 To move from v0.7.x.x to v0.8.x.x requires a change in how configuration parameters given to ```knit-html``` and ```knit-htmls``` are 
 handled: they are now all placed inside a ```KnitConfig```.  
 It's a trivial change to make and should make the configuration more future-proof as long as you build your ```KnitConfig``` like, e.g., 
@@ -12,6 +12,14 @@ It's a trivial change to make and should make the configuration more future-proo
 myConfig :: KnitConfig
 myConfig = defaultKnitConfig { outerLogPrefix = Just "MyReport", cacheDir = "myCache" }
 ```
+
+There has also been a change in the constraint synonyms used for effectful functions in the knit stack.  Because
+of the addition of the cache, ```KnitEffects```, ```KnitOne``` and ```KnitMany``` take more type parameters now.
+To use as before:
+
+* ```KnitEffects``` becomes ```DefaultEffects```
+* ```KnitOne``` becomes ```DefaultKnitOne```
+* ```KnitMany``` becomes ```DefaultKnitMany```
 
 Also note that a new major version of Pandoc has been released (2.9.x).  knit-haskell can be compiled against this as
 well as the older versions but there are some major changes which may affect you should you use any of the pandoc 
@@ -38,9 +46,14 @@ awaiting (```await```) it's result and running some traversable structure of con
 the traditional interface returns an ```a```. 
 From the docs "The Maybe returned by async is due to the fact that we can't be sure an Error effect didn't fail locally."
 
-A persistent (using memory and disk) cache for "shelving" the results of computations between report runs.  Anything which has
+A persistent (using memory and disk) cache for "shelving" the results of computations between report runs.  Using 
+the default setup, anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
-package can be cached.
+package can be cached. You can use a different serializer if you so choose, but you will have write
+a bit of code to bridge the serializers interface and, depending on the serialized type, you may also 
+have to write your own persistence functions for saving/loading that type to/from disk.  See 
+```Knit.Effect.Serialize``` and ```Knit.Effect.AtomicCache``` for details.
+
 If you use the cache, and you are running in a version-controlled directory,
 you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
 Once data has been loaded from disk/produced once, it remains available in memory via its key. The cache handles 

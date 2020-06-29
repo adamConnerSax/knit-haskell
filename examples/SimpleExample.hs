@@ -29,7 +29,7 @@ main = do
                         templateVars
                         K.mindocOptionsF
                    
-  let knitConfig = K.defaultKnitConfig
+  let knitConfig = (K.defaultKnitConfig Nothing)
         { K.outerLogPrefix = Just "SimpleExample.Main"
         , K.logIf = K.logAll
         , K.pandocWriterConfig = pandocWriterConfig
@@ -49,7 +49,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: K.KnitOne effs => K.Sem effs ()
+makeDoc :: K.DefaultKnitOne effs => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1

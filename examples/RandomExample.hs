@@ -55,7 +55,7 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  let knitConfig = K.defaultKnitConfig
+  let knitConfig = (K.defaultKnitConfig Nothing)
         { K.outerLogPrefix = Just "RandomExample.Main"
         , K.logIf = K.logAll
         , K.pandocWriterConfig = pandocWriterConfig
@@ -81,7 +81,7 @@ md1 = [here|
 |]
 
 makeDoc
-  :: (K.KnitOne effs, K.Member PR.RandomFu effs -- this one needs to be handled before knitting
+  :: (K.DefaultKnitOne effs, K.Member PR.RandomFu effs -- this one needs to be handled before knitting
                                                , K.KnitBase ExampleApp effs)
   => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do

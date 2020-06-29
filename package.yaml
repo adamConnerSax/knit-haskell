@@ -8,7 +8,10 @@ description: ! 'knit-haskell is a beginning attempt at bringing some of the bene
   (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl)
   which includes logging,
   a simplified interface to Pandoc and various writer-like effects to
-  intersperse document building with regular code.
+  intersperse document building with regular code. Also included is
+  a cache (in-memory and persisted to disk) to make caching results
+  of long running computations simple. The cache provides tools for
+  basic dependency tracking.
   Various helper functions are provided to simplify common operations,
   making it especially straightforward to build
   an HTML document from bits of markdown,

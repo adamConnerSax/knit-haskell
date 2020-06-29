@@ -53,13 +53,13 @@ taking into account the newest time-stamp among the dependencies:
 
 @
 computeC :: a -> b -> m c
-computeC ...
+computeC a b = ...
 
 cDeps :: WithCachedTime m (a, b)
 cDeps = (,) <$> cachedA \<*\> cachedB
 
 cachedC :: WithCacheTime m c
-cachedC = retrieveOrMake serialize "c.bin" cDeps $ \(a, b) -> computeC a b
+cachedC = retrieveOrMake serialize "c.bin" cDeps $ \\(a, b) -> computeC a b
 @
 
 As with @cachedA@ and @cachedB@, @cachedC@ will run the computation if the key, "c.bin" in this case,

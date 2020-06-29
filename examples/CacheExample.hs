@@ -37,7 +37,7 @@ main = do
                                                templateVars
                                                Knit.mindocOptionsF
 
-  let knitConfig = Knit.defaultKnitConfig
+  let knitConfig = (Knit.defaultKnitConfig Nothing)
         { Knit.outerLogPrefix = Just "CacheExample.Main"
         , Knit.logIf = Knit.logAll
         , Knit.pandocWriterConfig = pandocWriterConfig
@@ -58,7 +58,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: (Knit.Default Knit.KnitOne) r => Knit.Sem r ()
+makeDoc :: Knit.DefaultKnitOne r => Knit.Sem r ()
 makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.logLE Knit.Info "adding some markdown..."
   Knit.addMarkDown md1
@@ -113,10 +113,10 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.addMarkDown $ "## Caching: List=" <> (T.pack $ show testList)
   return ()
 
-streamLoader :: Knit.KnitEffects q => Knit.Sem q [Int]
+streamLoader :: Knit.DefaultEffects q => Knit.Sem q [Int]
 streamLoader = Streamly.toList $ Knit.ignoreCacheTimeStream $ streamLoaderWC
 
-streamLoaderWC :: Knit.KnitEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
+streamLoaderWC :: Knit.DefaultEffects q => Knit.Sem q (Knit.StreamWithCacheTime q Int)
 streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
   Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
   Knit.retrieveOrMakeStream "cacheExample/test.sbin" (pure ()) $ const $ do               
@@ -127,7 +127,7 @@ streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
       $ Streamly.fromList  [1,10,100]
                
 
-streamLoader2 ::  Knit.KnitEffects q => Knit.Sem q [Int]
+streamLoader2 ::  Knit.DefaultEffects q => Knit.Sem q [Int]
 streamLoader2 = Streamly.toList $ Knit.ignoreCacheTimeStream $ do
   cachedStream <- Knit.streamAsAction <$> streamLoaderWC
   Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do

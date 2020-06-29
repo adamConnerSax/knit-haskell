@@ -30,7 +30,7 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                tvWithCss
                                                K.mindocOptionsF
-  let knitConfig = K.defaultKnitConfig
+  let knitConfig = (K.defaultKnitConfig Nothing)
         { K.outerLogPrefix = Just "MultiDocExample.Main"
         , K.logIf = K.logAll
         , K.pandocWriterConfig = pandocWriterConfig
@@ -53,7 +53,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc1 :: K.KnitOne effs => K.Sem effs ()
+makeDoc1 :: K.DefaultKnitOne effs => K.Sem effs ()
 makeDoc1 = K.wrapPrefix "makeDoc1" $ do
   K.logLE K.Info "adding some markdown."
   K.addMarkDown md1
@@ -74,7 +74,7 @@ md2 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc2 :: K.KnitOne effs => K.Sem effs ()
+makeDoc2 :: K.DefaultKnitOne effs => K.Sem effs ()
 makeDoc2 = K.wrapPrefix "makeDoc2" $ do
   K.logLE K.Info "adding some markdown."
   K.addMarkDown md2

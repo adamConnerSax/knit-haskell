@@ -26,7 +26,7 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  let knitConfig = K.defaultKnitConfig
+  let knitConfig = (K.defaultKnitConfig Nothing)
                    { K.outerLogPrefix = Just "ErrorExample.Main"
                    , K.logIf = K.logAll
                    , K.pandocWriterConfig = pandocWriterConfig
@@ -46,7 +46,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDocWithKnitError :: K.KnitOne effs => K.Sem effs ()
+makeDocWithKnitError :: K.DefaultKnitOne effs => K.Sem effs ()
 makeDocWithKnitError = K.wrapPrefix "makeDocWithKnitError" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1

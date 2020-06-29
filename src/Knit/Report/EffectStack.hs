@@ -40,6 +40,9 @@ module Knit.Report.EffectStack
   , KnitOne
   , KnitMany
   , KnitBase
+  , DefaultEffects
+  , DefaultKnitOne
+  , DefaultKnitMany
   )
 where
 
@@ -54,10 +57,8 @@ import qualified Polysemy                      as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
-import qualified Polysemy.Internal.Kind        as PK
 import qualified System.IO.Error               as IE
 
-import           Data.Kind (Type, Constraint)
 
 import qualified Text.Pandoc                   as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
@@ -75,14 +76,32 @@ import qualified Knit.Effect.AtomicCache       as KC
 import qualified Knit.Effect.Serialize         as KS
 import qualified Knit.Effect.Environment       as KE
 
--- | Parameters for knitting. If possible, use this via, e.g., 
--- @
--- myConfig = defaultKnitConfig { cacheDir = "myCacheDir", pandocWriterConfig = myConfig }
--- @
--- so that your code will still compile if parameters are added to this structure.
+{- |
+Parameters for knitting. If possible, create this via, e.g., 
+
+@
+myConfig = (defaultKnitConfig Nothing) { cacheDir = "myCacheDir", pandocWriterConfig = myConfig }
+@
+so that your code will still compile if parameters are added to this structure.
+
+NB: the type parameters of this configuration specify the cache types:
+
+- @c :: Type -> Constraint@, where @c a@ is the constraint to be satisfied for serializable @a@.
+- @k :: Type@, is the key type of the cache.
+- @ct :: Type@, is the value type held in the in-memory cache.
+
+The @serializeDict@ field holds functions for encoding (@forall a. c a=> a -> ct@)
+and decoding (@forall a. c a => ct -> Either SerializationError a).
+
+The @persistCache@ field holds an interpreter for the persistence layer of
+the cache. See 'Knit.AtomicCache' for examples of persistennce layers.
+
+If you want to use a different serializer ("binary" or "store") and/or a different type to hold cached
+values in-memory, you can set these fields accordingly.
+
+-}
 data KnitConfig c k ct = KnitConfig { outerLogPrefix :: Maybe T.Text
                                     , logIf :: KLog.LogSeverity -> Bool
-                                      --                                    , cacheDir :: T.Text
                                     , pandocWriterConfig :: KO.PandocWriterConfig
                                     , serializeDict :: KS.SerializeDict c ct
                                     , persistCache :: forall r. (P.Member (P.Embed IO) r
@@ -101,7 +120,7 @@ defaultKnitConfig cacheDirM =
      (KO.PandocWriterConfig Nothing M.empty id)
      KS.cerealStreamlyDict
      (KC.persistAsByteArray (\t -> T.unpack (cacheDir <> "/" <> t)))
-                               
+{-# INLINEABLE defaultKnitConfig #-}                               
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify @m@.
@@ -120,6 +139,7 @@ knitHtmls config =
             . KO.toBlazeDocument (KO.PandocWriterConfig mFP (tv' <> tv) oF)
             $ a
         )
+{-# INLINEABLE knitHtmls #-}
 
 -- | Create HTML Text from pandoc fragments.
 -- In use, you may need a type-application to specify @m@.
@@ -133,6 +153,7 @@ knitHtml
 knitHtml config =
   fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack config)
     . KO.pandocWriterToBlazeDocument (pandocWriterConfig config)
+{-# INLINEABLE knitHtml #-}                               
 
 -- | Constraints required to knit a document using effects from a base monad m.
 type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
@@ -140,6 +161,7 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 -- | lift an action in a base monad into a Polysemy monad.  This is just a renaming of `P.embed` for convenience.
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
+{-# INLINE liftKnit #-}                               
 
 --type KnitCache =  KC.AtomicCache T.Text (Streamly.Array.Array Word.Word8)
 
@@ -160,14 +182,20 @@ type KnitEffects c k ct r = (KPM.PandocEffects r
                                         , P.Embed IO] r
                             )
 
--- | type alias to apply default types to KnitEffect constraints
-type Default (t :: (Type -> Constraint) -> Type -> Type -> PK.EffectRow -> Type) = t S.Serialize T.Text KS.DefaultCacheData
-
 -- | Constraint alias for the effects we need to knit one document
 type KnitOne c k ct r = (KnitEffects c k ct r, P.Member KP.ToPandoc r)
 
 -- | Constraint alias for the effects we need to knit multiple documents.
 type KnitMany c k ct r = (KnitEffects c k ct r, P.Member KP.Pandocs r)
+
+-- | Constraint for standard effects stack with all cache parameters set to defaults
+type DefaultEffects r = KnitEffects S.Serialize T.Text KS.DefaultCacheData r
+
+-- | Constraint for effects to knit one document with all cache parameters set to defaults
+type DefaultKnitOne r = KnitOne S.Serialize T.Text KS.DefaultCacheData r
+
+-- | Constraint for effects to knit many documents with all cache parameters set to defaults
+type DefaultKnitMany r = KnitMany S.Serialize T.Text KS.DefaultCacheData r
 
 
 -- From here down is unexported.  
@@ -259,7 +287,8 @@ consumeKnitEffectStack config =
   . KUI.runUnusedId
   . KE.runKnitEnv (KE.KnitEnvironment KLog.logWithPrefixToIO (serializeDict config))
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
-#endif    
+#endif
+{-# INLINEABLE consumeKnitEffectStack #-}
 
 
 ioErrorToPandocError :: IE.IOError -> KPM.PandocError

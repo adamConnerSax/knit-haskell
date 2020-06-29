@@ -29,7 +29,7 @@ main = do
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF
-  let knitConfig = K.defaultKnitConfig
+  let knitConfig = (K.defaultKnitConfig Nothing)
                    { K.outerLogPrefix = Just "AsyncExample.Main"
                    , K.logIf = K.logAll
                    , K.pandocWriterConfig = pandocWriterConfig
@@ -50,7 +50,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: K.KnitOne effs => K.Sem effs ()
+makeDoc :: K.DefaultKnitOne effs => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1
@@ -80,7 +80,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   return ()
 
 -- long running computation
-delay :: K.KnitOne effs => Int -> Int -> K.Sem effs Int
+delay :: K.DefaultKnitOne effs => Int -> Int -> K.Sem effs Int
 delay msDelay val = K.wrapPrefix ("delay") $ do
   K.logLE K.Info $ "delaying " <> (T.pack $ show val) <> " for " <> (T.pack $ show msDelay) <> " ms"
   K.liftKnit (threadDelay $ 1000 * msDelay)
