@@ -36,13 +36,11 @@ module Knit.Report.EffectStack
   , liftKnit
   -- * Constraints for knit-haskell actions (see examples)
   , KnitEffects
+  , KnitEffectsWithCache
   , KnitEffectStack
   , KnitOne
   , KnitMany
   , KnitBase
-  , DefaultEffects
-  , DefaultKnitOne
-  , DefaultKnitMany
   )
 where
 
@@ -74,7 +72,6 @@ import qualified Knit.Effect.Logger            as KLog
 import qualified Knit.Effect.UnusedId          as KUI
 import qualified Knit.Effect.AtomicCache       as KC
 import qualified Knit.Effect.Serialize         as KS
-import qualified Knit.Effect.Environment       as KE
 
 {- |
 Parameters for knitting. If possible, create this via, e.g., 
@@ -94,7 +91,7 @@ The @serializeDict@ field holds functions for encoding (@forall a. c a=> a -> ct
 and decoding (@forall a. c a => ct -> Either SerializationError a).
 
 The @persistCache@ field holds an interpreter for the persistence layer of
-the cache. See 'Knit.AtomicCache' for examples of persistennce layers.
+the cache. See 'Knit.AtomicCache' for examples of persistence layers.
 
 If you want to use a different serializer ("binary" or "store") and/or a different type to hold cached
 values in-memory, you can set these fields accordingly.
@@ -109,6 +106,11 @@ data KnitConfig c k ct = KnitConfig { outerLogPrefix :: Maybe T.Text
                                                                 , KLog.LogWithPrefixesLE r)
                                                       => P.InterpreterFor (KC.Cache k ct) r
                                     }
+
+-- | Constraint to set the cache types.
+-- This allows the type-parameters to be used for type-applications,
+-- which is useful because cache functions need those type-applications.
+type DefaultCache c k ct = (c ~ KS.DefaultSerializer, k ~ T.Text, ct ~ KS.DefaultCacheData)
 
 -- | Sensible defaults for a knit configuration.
 defaultKnitConfig :: Maybe T.Text -> KnitConfig S.Serialize T.Text KS.DefaultCacheData 
@@ -169,25 +171,26 @@ liftKnit = P.embed
 -- when calling 'knitHtml' or 'knitHtmls'.
 -- Anything inside a call to Knit can use any of these effects.
 -- Any other effects added to this stack will need to be run before @knitHtml(s)@
-type KnitEffects c k ct r = (KPM.PandocEffects r
-                            , P.Members [ KUI.UnusedId
-                                        , KE.KnitEnv c ct
-                                        , KLog.Logger KLog.LogEntry
-                                        , KLog.PrefixLog
-                                        , P.Async
-                                        , KC.Cache k ct
-                                        , PE.Error KC.CacheError
-                                        , PE.Error Exceptions.SomeException
-                                        , PE.Error PA.PandocError
-                                        , P.Embed IO] r
-                            )
+type KnitEffects r = (KPM.PandocEffects r
+                     , P.Members [ KUI.UnusedId
+                                 , KLog.Logger KLog.LogEntry
+                                 , KLog.PrefixLog
+                                 , P.Async
+                                 , PE.Error KC.CacheError
+                                 , PE.Error Exceptions.SomeException
+                                 , PE.Error PA.PandocError
+                                 , P.Embed IO] r
+                     )
+
+type KnitEffectsWithCache c k ct r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r, KnitEffects r)                     
 
 -- | Constraint alias for the effects we need to knit one document
-type KnitOne c k ct r = (KnitEffects c k ct r, P.Member KP.ToPandoc r)
+type KnitOne c k ct r = (KnitEffectsWithCache c k ct r, P.Member KP.ToPandoc r)
 
 -- | Constraint alias for the effects we need to knit multiple documents.
-type KnitMany c k ct r = (KnitEffects c k ct r, P.Member KP.Pandocs r)
+type KnitMany c k ct r = (KnitEffectsWithCache c k ct r, P.Member KP.Pandocs r)
 
+{-
 -- | Constraint for standard effects stack with all cache parameters set to defaults
 type DefaultEffects r = KnitEffects S.Serialize T.Text KS.DefaultCacheData r
 
@@ -196,16 +199,16 @@ type DefaultKnitOne r = KnitOne S.Serialize T.Text KS.DefaultCacheData r
 
 -- | Constraint for effects to knit many documents with all cache parameters set to defaults
 type DefaultKnitMany r = KnitMany S.Serialize T.Text KS.DefaultCacheData r
-
+-}
 
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
 type KnitEffectStack c k ct m
-  = '[ KE.KnitEnv c ct
-     , KUI.UnusedId
+  = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
+     , KS.SerializeEnv c ct
      , KC.Cache k ct
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
@@ -219,9 +222,9 @@ type KnitEffectStack c k ct m
      , P.Final m]
 #else
 type KnitEffectStack c k ct m
-  = '[ KE.KnitEnv c ct --PR.Reader KLog.LogWithPrefixIO -- so we can asynchronously log without the sem stack
-     , KUI.UnusedId
+  = '[ KUI.UnusedId
      , KPM.Pandoc
+     , KS.SerializeEnv c ct
      , KC.Cache k ct
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
@@ -260,15 +263,15 @@ consumeKnitEffectStack config =
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
+  . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO
   . KPM.interpretTemplateIO    
   . KUI.runUnusedId
-  . KE.runKnitEnv (KE.KnitEnvironment KLog.logWithPrefixToIO (serializeDict config))
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
 consumeKnitEffectStack
-  :: forall c k ct r m a
-   . MonadIO m
+  :: forall c k ct m a
+   . (MonadIO m, Ord k, Show k)
   => KnitConfig c k ct
   -> P.Sem (KnitEffectStack c k ct m) a
   -> m (Either PA.PandocError a)
@@ -282,10 +285,10 @@ consumeKnitEffectStack config =
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToIO (logIf config)
-  . KC.runPersistentBackedAtomicInmemoryCache' (persistCache config)
+  . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
+  . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO        
   . KUI.runUnusedId
-  . KE.runKnitEnv (KE.KnitEnvironment KLog.logWithPrefixToIO (serializeDict config))
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #endif
 {-# INLINEABLE consumeKnitEffectStack #-}
@@ -300,5 +303,5 @@ cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText $ ("CacheEr
 {-# INLINEABLE cacheErrorToPandocError #-}
 
 someExceptionToPandocError :: Exceptions.SomeException -> KPM.PandocError
-someExceptionToPandocError = PA.PandocSomeError . T.pack . Exceptions.displayException 
+someExceptionToPandocError = PA.PandocSomeError . KPM.textToPandocText . T.pack . Exceptions.displayException 
 {-# INLINEABLE someExceptionToPandocError #-}

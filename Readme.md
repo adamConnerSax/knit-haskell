@@ -85,10 +85,10 @@ Though direct storage and retrieval is useful, typically, one would use the cach
 the result of a long-running computation so it need only be run once.  This pattern is 
 facilitated via 
 ```
-retrieveOrMake :: T.Text -> WithCacheTime m b -> (b -> m a) -> m (WithCacheTime m a)
+retrieveOrMake :: k -> WithCacheTime m b -> (b -> m a) -> m (WithCacheTime m a)
 ```
 
-which takes a text key, a set of dependencies, of type ```b```, with a time-stamp,
+which takes a key, a set of dependencies, of type ```b```, with a time-stamp,
 a (presumably expensive) function taking those dependencies and producing a 
 time-stamped monadic computation for the desired result. If the requested
 data is cached, the time stamp (modification time of the file in cache, more or less) 
@@ -135,13 +135,27 @@ the downstream work of tracking the uses of that data and recomputing where requ
 
 Entries can be cleared from the cache via ```clear```.
 
+The cache types are flexible:
+
+- The default key type is ```Text``` but you may use anything with an ```Ord``` and ```Show`` 
+instance (the latter for logging).  The persistence layer will need to be able to turn the key
+into a key in that layer, e.g., a ```FilePath```.
+
+- The default serializer is the 
+[cereal](https://hackage.haskell.org/package/cereal) package but you may
+use another (e.g., the 
+[binary]() 
+package or 
+[store]()). a different in-memory type 
+
+
+
 Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for more.
 
 Notes:
-1. The addition of caching required me to choose some particular libraries: 
+1. The addition of caching required me to choose some particular default libraries: 
 ([Cereal](https://hackage.haskell.org/package/cereal)) for binary serialization and
 ([Streamly](https://hackage.haskell.org/package/streamly)) for streaming. 
-These are not configurable, though they could perhaps be made so in a future version.
 
 2. Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
 for Cereal are in ```Streamly.External.Cereal```. The Polysemy issue is more complex.

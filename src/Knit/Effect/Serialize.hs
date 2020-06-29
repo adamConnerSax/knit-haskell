@@ -29,6 +29,7 @@ module Knit.Effect.Serialize
     -- * Types
     SerializeDict(..)
   , Serialize(..)
+  , SerializeEnv
     -- * Deploy Implementations
   , serializeOne
   , serializeStreamlyViaList
@@ -36,6 +37,9 @@ module Knit.Effect.Serialize
   , DefaultCacheData
   , DefaultSerializer
   , cerealStreamlyDict
+    -- * Reader for Serializer Dictionary
+  , getSerializeDict
+  , runSerializeEnv
     -- * Errors
   , SerializationError(..)
   )
@@ -43,6 +47,7 @@ where
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
+import qualified Polysemy.Reader               as PR
 import           Data.Int (Int64)
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
@@ -76,6 +81,17 @@ data SerializeDict c ct =
   , decodeOne :: forall a. c a => ct -> Either SerializationError a
   , encBytes :: ct -> Int64
   }
+
+-- | Make the dictionary available within effect stacks
+type SerializeEnv c ct = PR.Reader (SerializeDict c ct)
+
+-- | access the dictionary
+getSerializeDict :: P.Member (SerializeEnv c ct) r => P.Sem r (SerializeDict c ct)
+getSerializeDict = PR.ask
+
+-- | run the SerializeEnv effect by giving it the dictionary for use by the cache functions
+runSerializeEnv :: SerializeDict c ct -> P.InterpreterFor (SerializeEnv c ct) r
+runSerializeEnv = PR.runReader
 
 
 {- |

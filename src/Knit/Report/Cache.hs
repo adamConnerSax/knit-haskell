@@ -72,7 +72,6 @@ import           Knit.Effect.AtomicCache        (clear
                                                 , onlyCacheTime)
 import qualified Knit.Effect.Serialize         as KS                 
 import qualified Knit.Effect.Logger            as K
-import qualified Knit.Effect.Environment       as KE
 
 import qualified Control.Monad.Catch.Pure      as Exceptions
 
@@ -142,7 +141,7 @@ knitSerializeStream = mapSerializationErrorsStreamly . KS.serializeStreamlyViaLi
 
 -- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
 store
-  :: ( P.Members '[KE.KnitEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: ( P.Members '[KS.SerializeEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , Show k
      , c a
@@ -151,28 +150,28 @@ store
   -> a -- ^ (Serializable) Data to store
   -> P.Sem r ()
 store k a = K.wrapPrefix ("Knit.store (key=" <> (T.pack $ show k) <> ")") $ do
-  cacheSD <- KE.getSerializeDict
+  cacheSD <- KS.getSerializeDict
   K.logLE (K.Debug 3) $ "Called with k=" <> (T.pack $ show k)
   C.encodeAndStore (knitSerialize cacheSD) k a
 {-# INLINEABLE store #-}
 
 -- | Retrieve an @a@ from the store at key. Throw if not found or I/O Error.
 retrieve
-  :: (P.Members '[KE.KnitEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: (P.Members '[KS.SerializeEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
      , c a)
   => k                                   -- ^ Key
   -> P.Sem r (C.ActionWithCacheTime r a) -- ^ Time-stamped return from cache.
 retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> (T.pack $ show k) <> ")") $ do
-  cacheSD <- KE.getSerializeDict
+  cacheSD <- KS.getSerializeDict
   C.retrieveAndDecode (knitSerialize cacheSD) k Nothing
 {-# INLINEABLE retrieve #-}
 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k.
 retrieveOrMake
-  :: ( P.Members '[KE.KnitEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: ( P.Members '[KS.SerializeEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , Show k
      , c a     
@@ -183,7 +182,7 @@ retrieveOrMake
   -> P.Sem r (C.ActionWithCacheTime r a) -- ^ Time-stamped return from cache.
 retrieveOrMake k cachedDeps toMake =
   K.wrapPrefix ("Cache.retrieveOrMake (key=" <> (T.pack $ show k) <> ")") $ do
-   cacheSD <- KE.getSerializeDict
+   cacheSD <- KS.getSerializeDict
    C.retrieveOrMake (knitSerialize cacheSD) k cachedDeps toMake
 {-# INLINEABLE retrieveOrMake #-}
 
@@ -193,7 +192,7 @@ retrieveOrMake k cachedDeps toMake =
 -- caching something without a 'Serialize' instance but which is isomorphic to
 -- something with one.
 retrieveOrMakeTransformed
-  :: ( P.Members '[KE.KnitEnv const ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: ( P.Members '[KS.SerializeEnv const ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , Show k
      , const b
@@ -213,7 +212,7 @@ retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
 --
 -- | Store a Streamly stream of @a@ at key k. Throw @PandocIOError@ on 'IOError'.
 storeStream
-  :: ( P.Members '[KE.KnitEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: ( P.Members '[KS.SerializeEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , P.MemberWithError (P.Error Exceptions.SomeException) r
      , K.LogWithPrefixesLE r
      , Show k
@@ -224,7 +223,7 @@ storeStream
   -> P.Sem r ()
 storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> (T.pack $ show k) <> ")") $ do
   K.logLE(K.Debug 3) $ "Called with k=" <> (T.pack $ show k)
-  cacheSD <- KE.getSerializeDict
+  cacheSD <- KS.getSerializeDict
   C.encodeAndStore (knitSerializeStream cacheSD) k aS
 {-# INLINEABLE storeStream #-}
 
@@ -249,7 +248,7 @@ ignoreCacheTimeStream = Streamly.concatM . fmap C.ignoreCacheTime
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
 retrieveStream
-  :: (P.Members '[KE.KnitEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: (P.Members '[KS.SerializeEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , P.MemberWithError (P.Error Exceptions.SomeException) r
      , Show k
@@ -258,7 +257,7 @@ retrieveStream
   -> Maybe Time.UTCTime                -- ^ Cached item invalidation time.  Supply @Nothing@ to retrieve regardless of time-stamp.
   -> P.Sem r (StreamWithCacheTime r a) -- ^ Time-stamped stream from cache.
 retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pack $ show k) <> ")") $ do
-  cacheSD <- KE.getSerializeDict
+  cacheSD <- KS.getSerializeDict
   fmap (C.wctMapAction Streamly.concatM)
     $ C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
 {-# INLINEABLE retrieveStream #-}
@@ -266,7 +265,7 @@ retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pac
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
 -- If retrieve fails then perform the action and store the resulting stream at key @k@. 
 retrieveOrMakeStream
-  :: ( P.Members '[KE.KnitEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: ( P.Members '[KS.SerializeEnv c ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , P.MemberWithError (P.Error Exceptions.SomeException) r
      , Show k
@@ -277,7 +276,7 @@ retrieveOrMakeStream
   -> (b -> Streamly.SerialT (P.Sem r) a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (StreamWithCacheTime r a)   -- ^ Time-stamped stream.
 retrieveOrMakeStream k cachedDeps toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> (T.pack $ show k) <> ")") $ do
-  cacheSD <- KE.getSerializeDict
+  cacheSD <- KS.getSerializeDict
   fmap (C.wctMapAction Streamly.concatM)
     $ C.retrieveOrMake (knitSerializeStream cacheSD) k cachedDeps (return . toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
@@ -288,7 +287,7 @@ retrieveOrMakeStream k cachedDeps toMake = K.wrapPrefix ("Cache.retrieveOrMakeSt
 -- caching something without a 'Serialize' instance but which is isomorphic to
 -- something with one.
 retrieveOrMakeTransformedStream
-  :: ( P.Members '[KE.KnitEnv const ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: ( P.Members '[KS.SerializeEnv const ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , P.MemberWithError (P.Error Exceptions.SomeException) r
      , Show k
