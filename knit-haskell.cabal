@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 475de141bf3777777db085be528d947b92fd0b7c693736936ff07ec8e96c3fb4
+-- hash: f76173c71f03939a813aaa8fd7af1ba73663d61948f1d2b62b0a2347f746e0da
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -66,7 +66,6 @@ library
       Knit.Report.Other.Blaze
       Knit.Utilities.Streamly
   other-modules:
-      Knit.Effect.Environment
       Knit.Effect.Html
       Knit.Report.Error
       Streamly.External.Cereal

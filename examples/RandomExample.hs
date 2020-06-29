@@ -81,8 +81,9 @@ md1 = [here|
 |]
 
 makeDoc
-  :: (K.DefaultKnitOne effs, K.Member PR.RandomFu effs -- this one needs to be handled before knitting
-                                               , K.KnitBase ExampleApp effs)
+  :: (K.KnitOne c k ct effs
+     , K.Member PR.RandomFu effs -- this one needs to be handled before knitting
+     , K.KnitBase ExampleApp effs)
   => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
