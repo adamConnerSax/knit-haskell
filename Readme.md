@@ -144,21 +144,25 @@ into a key in that layer, e.g., a ```FilePath```.
 - The default serializer is the 
 [cereal](https://hackage.haskell.org/package/cereal) package but you may
 use another (e.g., the 
-[binary]() 
+[binary](https://hackage.haskell.org/package/binary-0.8.7.0/docs/Data-Binary.html) 
 package or 
-[store]()). a different in-memory type 
+[store](https://hackage.haskell.org/package/store)).
+The default in-memory storage is a [streamly](https://hackage.haskell.org/package/streamly) 
+[array](https://hackage.haskell.org/package/streamly-0.7.2/docs/Streamly-Memory-Array.html) of bytes 
+([```Word8```](https://hackage.haskell.org/package/base-4.14.0.0/docs/Data-Word.html)) but this can
+also be changed.
 
+To change these, the user must provide a serializer capable of serializing any data type to be stored into
+whatever data-type is held in memory.  And a persistence layer which can persist that in-memory type.
 
-
-Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for more.
+Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for an example using
+the defaults and see  [CacheExample2](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs) for an
+identical example, but with a custom serializer based on the 
+[store]() package and using strict ```ByteStreams``` as th in-memory cache type. 
 
 Notes:
-1. The addition of caching required me to choose some particular default libraries: 
-([Cereal](https://hackage.haskell.org/package/cereal)) for binary serialization and
-([Streamly](https://hackage.haskell.org/package/streamly)) for streaming. 
-
-2. Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
-for Cereal are in ```Streamly.External.Cereal```. The Polysemy issue is more complex.
+Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
+for Cereal are in this library, in ```Streamly.External.Cereal```. The Polysemy issue is more complex.
 Since concurrent streamly streams can only be run over a monad with instances of ```MonadCatch``` and 
 ```MonadBaseControl```. The former is 
 [complex](https://hackage.haskell.org/package/polysemy-zoo-0.7.0.0/docs/Polysemy-ConstraintAbsorber-MonadCatch.html) 

@@ -121,8 +121,8 @@ module Knit.Effect.AtomicCache
     -- * Effect Interpretations
     -- ** Persist To Disk
   , persistAsByteArray
-  , persistAsByteString
-  , persistAsStrictByteString
+  , persistLazyByteString
+  , persistStrictByteString
   , persistAsByteStreamly
     -- ** Thread-safe Map
   , AtomicMemCache
@@ -666,40 +666,54 @@ persistAsByteArray keyToFilePath =
 {-# INLINEABLE persistAsByteArray #-}
 
 -- | Interpreter for Cache via persistence to disk as a strict ByteString
-persistAsStrictByteString
-  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+persistStrictByteString
+  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r, Show k)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k BS.ByteString) r
-persistAsStrictByteString keyToFilePath =
+persistStrictByteString keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> getContentsWithCacheTime BS.readFile (keyToFilePath k)
-    CacheUpdate k mct -> case mct of
-      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-      Just ct -> do
-        let filePath     = (keyToFilePath k)
-            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-        _ <- createDirIfNecessary dirPath
-        K.logLE debugLogSeverity $ "Writing serialization to disk."
-        rethrowIOErrorAsCacheError $ BS.writeFile filePath ct  -- maybe we should do this in another thread?
-{-# INLINEABLE persistAsStrictByteString #-}
+    CacheLookup k -> K.wrapPrefix "persistStrictByteString.CacheLookup" $ getContentsWithCacheTime BS.readFile (keyToFilePath k)
+    CacheUpdate k mct -> K.wrapPrefix "persistStrictByteString.CacheUpdate" $ do
+      let keyText = "key=" <> (T.pack $ show k) <> ": "
+      case mct of
+        Nothing -> do
+          K.logLE debugLogSeverity $ keyText <> "called with Nothing. Deleting file."
+          rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+        Just ct -> do
+          K.logLE debugLogSeverity $ keyText <> "called with content. Writing file."
+          let filePath     = (keyToFilePath k)
+              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+          _ <- createDirIfNecessary dirPath
+          K.logLE debugLogSeverity $ "Writing serialization to disk."
+          let bsLength = BS.length ct
+          K.logLE debugLogSeverity $ keyText <> "Writing " <> (T.pack $ show bsLength) <> " bytes to disk." 
+          rethrowIOErrorAsCacheError $ BS.writeFile filePath ct  -- maybe we should do this in another thread?
+{-# INLINEABLE persistStrictByteString #-}
 
 -- | Interpreter for Cache via persistence to disk as a lazy ByteString
-persistAsByteString
-  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+persistLazyByteString
+  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r, Show k)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k BL.ByteString) r
-persistAsByteString keyToFilePath =
+persistLazyByteString keyToFilePath =
   P.interpret $ \case
-    CacheLookup k -> getContentsWithCacheTime BL.readFile (keyToFilePath k)
-    CacheUpdate k mct -> case mct of
-      Nothing -> rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-      Just ct -> do
-        let filePath     = (keyToFilePath k)
-            (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-        _ <- createDirIfNecessary dirPath
-        K.logLE debugLogSeverity  "Writing serialization to disk."
-        rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
-{-# INLINEABLE persistAsByteString #-}
+    CacheLookup k -> K.wrapPrefix "persistAsLazyByteString.CacheLookup" $ getContentsWithCacheTime BL.readFile (keyToFilePath k)
+    CacheUpdate k mct -> K.wrapPrefix "persistAsLazyByteString.CacheUpdate" $ do
+      let keyText = "key=" <> (T.pack $ show k) <> ": "
+      case mct of
+        Nothing -> do
+          K.logLE debugLogSeverity $ keyText <> "called with Nothing. Deleting file."
+          rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
+        Just ct -> do
+          K.logLE debugLogSeverity $ keyText <> "called with content. Writing file."
+          let filePath     = (keyToFilePath k)
+              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
+          _ <- createDirIfNecessary dirPath
+          K.logLE debugLogSeverity  "Writing serialization to disk."
+          let bsLength = BL.length ct
+          K.logLE debugLogSeverity $ keyText <> "Writing " <> (T.pack $ show bsLength) <> " bytes to disk." 
+          rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
+{-# INLINEABLE persistLazyByteString #-}
 
 -- | Interpreter Cache via persistence to disk as a Streamly stream of Bytes (Word8)
 persistAsByteStreamly

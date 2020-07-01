@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f76173c71f03939a813aaa8fd7af1ba73663d61948f1d2b62b0a2347f746e0da
+-- hash: 132aa63fc2a8f0db83d6892ae393f5120e69d2184cde82b175f10e48173ebc2d
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -97,7 +97,7 @@ library
     , mtl >=2.2.2 && <2.3
     , network >=2.8.0.0 && <3.2.0.0
     , network-uri >=2.6.1.0 && <2.8.0
-    , pandoc >=2.7.2 && <3.0
+    , pandoc >=2.7.2 && <2.11
     , polysemy >=1.3.0 && <1.4
     , polysemy-plugin >=0.2.0.0 && <0.3.0.0
     , polysemy-zoo >=0.6.0 && <0.8
@@ -150,6 +150,28 @@ test-suite CacheExample
     , plots
     , polysemy
     , polysemy-plugin
+    , streamly
+    , text
+  default-language: Haskell2010
+
+test-suite CacheExample2
+  type: exitcode-stdio-1.0
+  main-is: CacheExample2.hs
+  hs-source-dirs:
+      examples
+  ghc-options: -fplugin=Polysemy.Plugin -threaded
+  build-depends:
+      base
+    , blaze-html
+    , bytestring
+    , containers
+    , here
+    , hvega
+    , knit-haskell
+    , plots
+    , polysemy
+    , polysemy-plugin
+    , store
     , streamly
     , text
   default-language: Haskell2010
