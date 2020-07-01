@@ -81,7 +81,7 @@ md1 = [here|
 |]
 
 makeDoc
-  :: (K.KnitOne c k ct effs
+  :: (K.KnitOne effs
      , K.Member PR.RandomFu effs -- this one needs to be handled before knitting
      , K.KnitBase ExampleApp effs)
   => K.Sem effs ()

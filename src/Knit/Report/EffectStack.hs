@@ -36,8 +36,9 @@ module Knit.Report.EffectStack
   , liftKnit
   -- * Constraints for knit-haskell actions (see examples)
   , KnitEffects
+  , CacheEffects
+  , CacheEffectsD
   , DefaultCache
-  , KnitEffectsWithCache
   , KnitEffectStack
   , KnitOne
   , KnitMany
@@ -98,7 +99,7 @@ If you want to use a different serializer ("binary" or "store") and/or a differe
 values in-memory, you can set these fields accordingly.
 
 -}
-data KnitConfig c k ct = KnitConfig { outerLogPrefix :: Maybe T.Text
+data KnitConfig c ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
                                     , logIf :: KLog.LogSeverity -> Bool
                                     , pandocWriterConfig :: KO.PandocWriterConfig
                                     , serializeDict :: KS.SerializeDict c ct
@@ -111,10 +112,10 @@ data KnitConfig c k ct = KnitConfig { outerLogPrefix :: Maybe T.Text
 -- | Constraint to set the cache types.
 -- This allows the type-parameters to be used for type-applications,
 -- which is useful because cache functions need those type-applications.
-type DefaultCache c k ct = (c ~ KS.DefaultSerializer, k ~ T.Text, ct ~ KS.DefaultCacheData)
+type DefaultCache c ct k = (c ~ KS.DefaultSerializer, ct ~ KS.DefaultCacheData, k ~ T.Text)
 
 -- | Sensible defaults for a knit configuration.
-defaultKnitConfig :: Maybe T.Text -> KnitConfig S.Serialize T.Text KS.DefaultCacheData 
+defaultKnitConfig :: Maybe T.Text -> KnitConfig S.Serialize KS.DefaultCacheData T.Text
 defaultKnitConfig cacheDirM =
   let cacheDir = fromMaybe ".knit-haskell-cache" cacheDirM
   in KnitConfig
@@ -131,8 +132,8 @@ defaultKnitConfig cacheDirM =
 -- NB: Resulting documents are *Lazy* Text, as produced by the Blaze render function.
 knitHtmls
   :: (MonadIO m, Ord k, Show k)
-  => KnitConfig c k ct
-  -> P.Sem (KnitEffectDocsStack c k ct m) ()
+  => KnitConfig c ct k
+  -> P.Sem (KnitEffectDocsStack c ct k m) ()
   -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text])
 knitHtmls config =
   let KO.PandocWriterConfig mFP tv oF = pandocWriterConfig config
@@ -150,8 +151,8 @@ knitHtmls config =
 -- NB: Resulting document is *Lazy* Text, as produced by the Blaze render function.
 knitHtml
   :: (MonadIO m, Ord k, Show k)
-  => KnitConfig c k ct
-  -> P.Sem (KnitEffectDocStack c k ct m) ()
+  => KnitConfig c ct k
+  -> P.Sem (KnitEffectDocStack c ct k m) ()
   -> m (Either PA.PandocError TL.Text)
 knitHtml config =
   fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack config)
@@ -182,30 +183,22 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
+                     
+-- | Constraint alias for the effects we need to use the cache.
+type CacheEffects c ct k r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r)
+-- | Constraint alias for the effects we need to use the default cache.
+type CacheEffectsD r = CacheEffects KS.DefaultSerializer KS.DefaultCacheData T.Text r
 
-type KnitEffectsWithCache c k ct r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r, KnitEffects r)                     
-
--- | Constraint alias for the effects we need to knit one document
-type KnitOne c k ct r = (KnitEffectsWithCache c k ct r, P.Member KP.ToPandoc r)
+-- | Constraint alias for the effects we need to knit one document.
+type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
 
 -- | Constraint alias for the effects we need to knit multiple documents.
-type KnitMany c k ct r = (KnitEffectsWithCache c k ct r, P.Member KP.Pandocs r)
-
-{-
--- | Constraint for standard effects stack with all cache parameters set to defaults
-type DefaultEffects r = KnitEffects S.Serialize T.Text KS.DefaultCacheData r
-
--- | Constraint for effects to knit one document with all cache parameters set to defaults
-type DefaultKnitOne r = KnitOne S.Serialize T.Text KS.DefaultCacheData r
-
--- | Constraint for effects to knit many documents with all cache parameters set to defaults
-type DefaultKnitMany r = KnitMany S.Serialize T.Text KS.DefaultCacheData r
--}
+type KnitMany c ct k r = (KnitEffects r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.  
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
-type KnitEffectStack c k ct m
+type KnitEffectStack c ct k m
   = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
@@ -222,7 +215,7 @@ type KnitEffectStack c k ct m
      , P.Embed m
      , P.Final m]
 #else
-type KnitEffectStack c k ct m
+type KnitEffectStack c ct k m
   = '[ KUI.UnusedId
      , KPM.Pandoc
      , KS.SerializeEnv c ct
@@ -240,18 +233,18 @@ type KnitEffectStack c k ct m
 #endif
 
 -- | Add a Multi-doc writer to the front of the effect list
-type KnitEffectDocsStack c k ct m = (KP.Pandocs ': KnitEffectStack c k ct m)
+type KnitEffectDocsStack c ct k m = (KP.Pandocs ': KnitEffectStack c ct k m)
 
 -- | Add a single-doc writer to the front of the effect list
-type KnitEffectDocStack c k ct m = (KP.ToPandoc ': KnitEffectStack c k ct m)
+type KnitEffectDocStack c ct k m = (KP.ToPandoc ': KnitEffectStack c ct k m)
 
 -- | run all knit-effects in @KnitEffectStack m@
 #if MIN_VERSION_pandoc(2,8,0)
 consumeKnitEffectStack
-  :: forall c k ct m a
+  :: forall c ct k m a
    . (MonadIO m, Ord k, Show k)
-  => KnitConfig c k ct
-  -> P.Sem (KnitEffectStack c k ct m) a
+  => KnitConfig c ct k
+  -> P.Sem (KnitEffectStack c ct k m) a
   -> m (Either PA.PandocError a)
 consumeKnitEffectStack config =
   P.runFinal
@@ -271,10 +264,10 @@ consumeKnitEffectStack config =
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
 consumeKnitEffectStack
-  :: forall c k ct m a
+  :: forall c ct k m a
    . (MonadIO m, Ord k, Show k)
-  => KnitConfig c k ct
-  -> P.Sem (KnitEffectStack c k ct m) a
+  => KnitConfig c ct k
+  -> P.Sem (KnitEffectStack c ct k m) a
   -> m (Either PA.PandocError a)
 consumeKnitEffectStack config =
   P.runFinal

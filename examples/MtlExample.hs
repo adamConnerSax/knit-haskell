@@ -71,7 +71,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDoc :: (K.KnitOne c k ct effs, K.KnitBase ExampleApp effs) => K.Sem effs ()
+makeDoc :: (K.KnitOne effs, K.KnitBase ExampleApp effs) => K.Sem effs ()
 makeDoc = K.wrapPrefix "makeDoc" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1

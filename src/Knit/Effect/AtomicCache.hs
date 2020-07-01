@@ -297,7 +297,7 @@ encodeAndStore (KS.Serialize encode _ encBytes) k x =
 
 -- IDEA: when too old, make new, retrieve old and compare?  If same, use older date? Costs time, but saves downstream rebuilds.
 retrieveOrMakeAndUpdateCache
-  :: forall k ct r b a.
+  :: forall ct k r b a.
      ( P.Members [Cache k ct, P.Embed IO] r
      ,  K.LogWithPrefixesLE r
      , Show k
@@ -358,7 +358,8 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
 -- | Combine the action of retrieving from cache and deserializing.
 -- | Throws if item not found or any other error during retrieval
 retrieveAndDecode
-  :: (P.Member (Cache k ct) r
+  :: forall ct k r a .
+     (P.Member (Cache k ct) r
      , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r
      , K.LogWithPrefixesLE r
@@ -378,7 +379,7 @@ retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (ke
 -- | Combine the action of retrieving from cache and deserializing.
 -- | Returns @Nothing@ if item not found, and throws on any other error.
 lookupAndDecode
-  :: forall k a ct r
+  :: forall ct k r a
    . ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
@@ -400,7 +401,8 @@ lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" 
 -- 'ActionWithCacheTime m b'.
 --  Throws if item not found *and* making fails.
 retrieveOrMake
-  :: ( P.Member (Cache k ct) r
+  :: forall ct k r a b.
+     ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
      , P.MemberWithError (P.Error CacheError) r

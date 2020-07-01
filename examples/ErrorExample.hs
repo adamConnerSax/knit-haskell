@@ -46,7 +46,7 @@ md1 = [here|
 [MarkDownLink]:<https://pandoc.org/MANUAL.html#pandocs-markdown>
 |]
 
-makeDocWithKnitError :: K.KnitOne c k ct effs => K.Sem effs ()
+makeDocWithKnitError :: K.KnitOne effs => K.Sem effs ()
 makeDocWithKnitError = K.wrapPrefix "makeDocWithKnitError" $ do
   K.logLE K.Info "adding some markdown..."
   K.addMarkDown md1
