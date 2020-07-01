@@ -157,12 +157,13 @@ To change these, the user must provide a serializer capable of serializing any d
 the desired in-memory storage type,  and a persistence layer which can persist that in-memory type.
 
 Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for an example using
-the defaults and see  [CacheExample2](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs) for an
-identical example, but with a custom serializer based on the 
-[store](https://hackage.haskell.org/package/store) package and using strict ```ByteStreams``` as the in-memory cache type. 
+the default serializer and in-memory storage type. 
+See [CacheExample2](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs) for an
+identical example, but with a custom serializer (based on the 
+[store](https://hackage.haskell.org/package/store)) package and using strict ```ByteStreams``` as the in-memory cache type. 
 
 Notes:
-Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
+1. Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
 for Cereal are in this library, in ```Streamly.External.Cereal```. The Polysemy issue is more complex.
 Since concurrent streamly streams can only be run over a monad with instances of ```MonadCatch``` and 
 ```MonadBaseControl```. The former is 
@@ -172,6 +173,34 @@ So knit-haskell contains some helpers for Streamly streams: basically a wrapper 
 knit-haskell logging.  Concurrent streaming operations can be done over this monad and then, once the stream
 is serial or the result computed, that monad can be lifted into the regular knit-haskell Polysemy stack.  
 See ```Knit.Utilities.Streamly``` for more details.
+
+2. ```Knit.Report```, the main import, provides constraint helpers to use these effects.  The clearest way to
+see how they are used is to look at the examples.  The Cache effects are split into their own constraint helper
+because they have type-parameters and thus add a lot of inference complications.  If you don't need them in a 
+function, you need not specify them.  Some of that inference can be improved using the 
+[polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin) in the source files where you
+have issues.  Otherwise, you may need to use 
+[type applications](https://gitlab.haskell.org/ghc/ghc/-/wikis/type-application)
+when calling some functions in 
+```Knit.Report.Cache```.
+
+- ```KnitEffects r```: All effects except caching or the addition of document fragments.  
+Includes logging, error handling, and any direct use of funtions in PandocMonad or IO.  
+This is often useful to wrap computations that need logging and perhaps IO but that don't 
+write any part of your document.  This is a constraint on the polysemy ```EffectRow```, 
+```r```, typically part of the return type of the function: ```Sem r a```.
+
+- ```CacheEffects sc ct k r```: Effects related to caching. ```sc``` is the Serializer constraint, e.g.,
+```Serialize``` for cereal (the default) or ```Store``` for store. ```ct``` is the in-memory data type,
+```Streamly.Memory.Array.Array Word8``` by default but some flavor of ```ByteStream``` could also make sense. 
+```k``` is the key type, ```Text``` by default but anything with ```Ord``` and ```Show``` instances will do.
+
+- ```CacheEffectsD r```: provides the same effects as ```CacheEffects``` but sets the various types to their defaults.
+
+- ```KnitOne r```: ```KnitEffects r``` and the additional effect required to write Pandoc fragments.
+
+- ```KnitMany r```: ```KnitEffects r``` and the additional effects required to write multiple Pandoc 
+documents.
 
 
 ## Supported Inputs
@@ -204,9 +233,14 @@ Similar to "SimpleExample" but throws a user error during document assembly.
 Similar to "SimpleExample" but uses Polysemy's ```sequenceConcurrently``` to run some example
 computations concurrently (as long as you compile with "-threaded")
 * [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs).  
-Similar to "SimpleExample" but uses the "AtomicCache" effect to store the result of a computation.  On 
-first run it will create the cache and store the result but when you run it again, it will load
-the result from the cache.
+Similar to "SimpleExample" but uses the "AtomicCache" effect to store the result of a computation. 
+Demonstrates the behavior of the cache when multiple threads attempt to access the same item--the first
+thread loads/creates the data while the other blocks until the data is in-memory.  Also demonstrates
+use of time-stamps to force rebuilding when tracked inputs change.
+* [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs).  
+Similar to "CacheExample" but implements and uses a different serializer and persistence layer than the
+default.
+
 
 ## Notes
 * You should be able to get everything you need by just importing the 
