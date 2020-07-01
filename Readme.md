@@ -137,7 +137,7 @@ Entries can be cleared from the cache via ```clear```.
 
 The cache types are flexible:
 
--The default key type is ```Text``` but you may use anything with an ```Ord``` and ```Show`` 
+-The default key type is ```Text``` but you may use anything with an ```Ord``` and ```Show``` 
 instance (the latter for logging).  The persistence layer will need to be able to turn the key
 into a key in that layer, e.g., a ```FilePath```.
 
