@@ -48,7 +48,6 @@ templateVars = M.fromList
   [ ("lang"     , "English")
   , ("author"   , "Adam Conner-Sax")
   , ("pagetitle", "knit-haskell cache example 2")
---  , ("tufte","True")
   ]
 
 main :: IO ()
@@ -60,17 +59,17 @@ main = do
 
   let knitConfig :: Knit.KnitConfig Store.Store BS.ByteString T.Text
       knitConfig = (Knit.defaultKnitConfig Nothing)
-        { Knit.outerLogPrefix = Just "CacheExample.Main"
+        { Knit.outerLogPrefix = Just "CacheExample2.Main"
         , Knit.logIf = Knit.logAll
         , Knit.pandocWriterConfig = pandocWriterConfig
         , Knit.serializeDict = storeByteStreamDict
-        , Knit.persistCache = (Knit.persistStrictByteString (\t  -> T.unpack (".knit-haskell-cache2/" <> t)))
+        , Knit.persistCache = (Knit.persistStrictByteString (\t  -> T.unpack (".knit-haskell-cache/" <> t)))
         }                                               
   resE <- Knit.knitHtml knitConfig makeDoc
 
   case resE of
     Right htmlAsText ->
-      Knit.writeAndMakePathLT "examples/html/cache_example.html" htmlAsText
+      Knit.writeAndMakePathLT "examples/html/cache_examples.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text
@@ -89,7 +88,7 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.logLE Knit.Info "adding some latex..."
   Knit.addMarkDown "## Some example latex"
   Knit.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
-  Knit.logLE Knit.Info "Clearing \"cacheExample/test.bin\" and \"cacheExample/test2.bin\" from cache..."
+  Knit.logLE Knit.Info "Clearing \"cacheExample2/test.bin\" and \"cacheExample2/test2.bin\" from cache..."
   Knit.clearIfPresent "cacheExample/test.sbin"
   Knit.clearIfPresent "cacheExample/test2.sbin"
   Knit.logLE Knit.Info $ "asynchronously retrieveOrMake stream of data, then retrieveOrMake on this thread, after a small delay, to test atomic cache."
@@ -144,7 +143,7 @@ streamLoaderWC :: (Knit.KnitEffects q, CacheEffects q)
                => Knit.Sem q (Knit.StreamWithCacheTime q Int)
 streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
   Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
-  Knit.retrieveOrMakeStream "cacheExample/test.sbin" (pure ()) $ const $ do               
+  Knit.retrieveOrMakeStream "cacheExample2/test.sbin" (pure ()) $ const $ do               
     Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
     Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
     Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
@@ -156,7 +155,7 @@ streamLoader2 ::(Knit.KnitEffects q, CacheEffects q)
               => Knit.Sem q [Int]
 streamLoader2 = Streamly.toList $ Knit.ignoreCacheTimeStream $ do
   cachedStream <- Knit.streamAsAction <$> streamLoaderWC
-  Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do
+  Knit.retrieveOrMakeStream "cacheExample2/test2.sbin" cachedStream $ \sInt -> do
     Streamly.map (*2) sInt
                
 -- example using HVega  

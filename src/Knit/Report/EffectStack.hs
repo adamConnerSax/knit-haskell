@@ -29,16 +29,18 @@ module Knit.Report.EffectStack
     -- * Configuraiton
     KnitConfig(..)
   , defaultKnitConfig
+
     -- * Knit documents
   , knitHtml
   , knitHtmls
+
     -- * helpers
   , liftKnit
-  -- * Constraints for knit-haskell actions (see examples)
+
+    -- * Constraints for knit-haskell actions (see examples)
   , KnitEffects
   , CacheEffects
   , CacheEffectsD
-  , DefaultCache
   , KnitEffectStack
   , KnitOne
   , KnitMany
@@ -99,20 +101,16 @@ If you want to use a different serializer ("binary" or "store") and/or a differe
 values in-memory, you can set these fields accordingly.
 
 -}
-data KnitConfig c ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
-                                    , logIf :: KLog.LogSeverity -> Bool
-                                    , pandocWriterConfig :: KO.PandocWriterConfig
-                                    , serializeDict :: KS.SerializeDict c ct
-                                    , persistCache :: forall r. (P.Member (P.Embed IO) r
-                                                                , P.MemberWithError (PE.Error KC.CacheError) r
-                                                                , KLog.LogWithPrefixesLE r)
-                                                      => P.InterpreterFor (KC.Cache k ct) r
-                                    }
+data KnitConfig sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
+                                     , logIf :: KLog.LogSeverity -> Bool
+                                     , pandocWriterConfig :: KO.PandocWriterConfig
+                                     , serializeDict :: KS.SerializeDict sc ct
+                                     , persistCache :: forall r. (P.Member (P.Embed IO) r
+                                                                 , P.MemberWithError (PE.Error KC.CacheError) r
+                                                                 , KLog.LogWithPrefixesLE r)
+                                                    => P.InterpreterFor (KC.Cache k ct) r
+                                     }
 
--- | Constraint to set the cache types.
--- This allows the type-parameters to be used for type-applications,
--- which is useful because cache functions need those type-applications.
-type DefaultCache c ct k = (c ~ KS.DefaultSerializer, ct ~ KS.DefaultCacheData, k ~ T.Text)
 
 -- | Sensible defaults for a knit configuration.
 defaultKnitConfig :: Maybe T.Text -> KnitConfig S.Serialize KS.DefaultCacheData T.Text
@@ -167,8 +165,6 @@ liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 {-# INLINE liftKnit #-}                               
 
---type KnitCache =  KC.AtomicCache T.Text (Streamly.Array.Array Word.Word8)
-
 -- | Constraint alias for the effects we need (and run)
 -- when calling 'knitHtml' or 'knitHtmls'.
 -- Anything inside a call to Knit can use any of these effects.
@@ -186,6 +182,7 @@ type KnitEffects r = (KPM.PandocEffects r
                      
 -- | Constraint alias for the effects we need to use the cache.
 type CacheEffects c ct k r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r)
+
 -- | Constraint alias for the effects we need to use the default cache.
 type CacheEffectsD r = CacheEffects KS.DefaultSerializer KS.DefaultCacheData T.Text r
 

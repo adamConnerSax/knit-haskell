@@ -137,28 +137,29 @@ Entries can be cleared from the cache via ```clear```.
 
 The cache types are flexible:
 
-- The default key type is ```Text``` but you may use anything with an ```Ord``` and ```Show`` 
+-The default key type is ```Text``` but you may use anything with an ```Ord``` and ```Show`` 
 instance (the latter for logging).  The persistence layer will need to be able to turn the key
 into a key in that layer, e.g., a ```FilePath```.
 
-- The default serializer is the 
+-The default serializer is the 
 [cereal](https://hackage.haskell.org/package/cereal) package but you may
 use another (e.g., the 
 [binary](https://hackage.haskell.org/package/binary-0.8.7.0/docs/Data-Binary.html) 
 package or 
-[store](https://hackage.haskell.org/package/store)).
-The default in-memory storage is a [streamly](https://hackage.haskell.org/package/streamly) 
+[store](https://hackage.haskell.org/package/store).
+
+-The default in-memory storage is a [streamly](https://hackage.haskell.org/package/streamly) 
 [array](https://hackage.haskell.org/package/streamly-0.7.2/docs/Streamly-Memory-Array.html) of bytes 
 ([```Word8```](https://hackage.haskell.org/package/base-4.14.0.0/docs/Data-Word.html)) but this can
 also be changed.
 
-To change these, the user must provide a serializer capable of serializing any data type to be stored into
-whatever data-type is held in memory.  And a persistence layer which can persist that in-memory type.
+To change these, the user must provide a serializer capable of serializing any data-type to be stored into
+the desired in-memory storage type,  and a persistence layer which can persist that in-memory type.
 
 Please see  [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs) for an example using
 the defaults and see  [CacheExample2](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs) for an
 identical example, but with a custom serializer based on the 
-[store]() package and using strict ```ByteStreams``` as th in-memory cache type. 
+[store](https://hackage.haskell.org/package/store) package and using strict ```ByteStreams``` as the in-memory cache type. 
 
 Notes:
 Using Streamly requires some additional support for both Cereal and Polysemy.  The encoding/decoding 
