@@ -18,4 +18,4 @@ examples/html
 *.ps
 *.aux
 *.png
-.knit-haskell-cache
+.knit-haskell-cache*
