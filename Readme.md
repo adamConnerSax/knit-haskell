@@ -237,7 +237,7 @@ Similar to "SimpleExample" but uses the "AtomicCache" effect to store the result
 Demonstrates the behavior of the cache when multiple threads attempt to access the same item--the first
 thread loads/creates the data while the other blocks until the data is in-memory.  Also demonstrates
 use of time-stamps to force rebuilding when tracked inputs change.
-* [CacheExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs).  
+* [CacheExample2](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs).  
 Similar to "CacheExample" but implements and uses a different serializer and persistence layer than the
 default.
 
