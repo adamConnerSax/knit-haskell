@@ -124,7 +124,7 @@ and each piece of data will get cached when this is first run.  Now suppose you 
 cache.  The next time this code runs, it will recompute and cache the result of ```longTimeA```, 
 load the ```BData```  (serialized) from cache, see that
 the cached version of ```CData``` is out of date, 
-and then deserialize ```BData````, and use it and the new ```AData``` 
+and then deserialize ```BData```, and use it and the new ```AData``` 
 to recompute and re-cache ```CData```.  This doesn't eliminate the 
 need for user intervention: the user still had to manually delete "A.bin" to force re-running ```longTimeA```, 
 but it handles the downstream work of tracking the uses of that data and recomputing where required. 
