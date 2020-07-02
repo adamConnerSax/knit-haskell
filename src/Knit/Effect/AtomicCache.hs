@@ -120,7 +120,7 @@ module Knit.Effect.AtomicCache
   , clearIfPresent
     -- * Effect Interpretations
     -- ** Persist To Disk
-  , persistAsByteArray
+  , persistStreamlyByteArray
   , persistLazyByteString
   , persistStrictByteString
     -- ** Thread-safe Map
@@ -152,13 +152,9 @@ import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 import           Control.Monad                  ( join )
 
---import qualified Streamly                          as Streamly
---import qualified Streamly.Prelude                  as Streamly
 import qualified Streamly.Internal.Memory.Array    as Streamly.Array
---import qualified Streamly.FileSystem.Handle        as Streamly.Handle
 import qualified Streamly.Internal.FileSystem.File as Streamly.File
 
---import qualified System.IO                     as System
 import qualified System.Directory              as System
 import qualified System.IO.Error               as IO.Error
 
@@ -640,11 +636,11 @@ runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
 {-# INLINEABLE runPersistenceBackedAtomicInMemoryCache' #-}
 
 -- | Interpreter for Cache via persistence to disk as a Streamly Memory.Array (Contiguous storage of Storables) of Bytes (Word8)
-persistAsByteArray
+persistStreamlyByteArray
   :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k (Streamly.Array.Array Word.Word8)) r
-persistAsByteArray keyToFilePath =
+persistStreamlyByteArray keyToFilePath =
   P.interpret $ \case
     CacheLookup k -> K.wrapPrefix "persistAsByteArray.CacheLookup" $ do
       let filePath = keyToFilePath k
@@ -663,7 +659,7 @@ persistAsByteArray keyToFilePath =
           K.logLE debugLogSeverity  "Writing serialization to disk."
           K.logLE debugLogSeverity $ keyText <> "Writing " <> (T.pack $ show $ Streamly.Array.length ct) <> " bytes to disk." 
           rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
-{-# INLINEABLE persistAsByteArray #-}
+{-# INLINEABLE persistStreamlyByteArray #-}
 
 -- | Interpreter for Cache via persistence to disk as a strict ByteString
 persistStrictByteString
