@@ -37,7 +37,6 @@ library:
   source-dirs: src
   ghc-options:
   - -Wall
-  - -O
   - -fno-warn-unused-top-binds
   - -funbox-strict-fields
   - -fplugin=Polysemy.Plugin
