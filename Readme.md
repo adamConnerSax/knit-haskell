@@ -243,23 +243,32 @@ default.
 
 
 ## Notes
-* You should be able to get everything you need by just importing the 
+* You can often get everything you need by just importing the 
 [Knit.Report](https://github.com/adamConnerSax/knit-haskell/blob/master/src/Knit/Report.hs) 
-module.  This re-exports the main functions for "knitting" documents and re-exports 
-all the required functions to input the supported fragment types and create/write Html, as well as various utilties and
+module. It's meant to be "batteries included."  
+This re-exports the main functions for "knitting" documents and re-exports 
+all the required functions to input the supported fragment types and create/write Html, 
+as well as various utilties and
 combinators for logging, using the cache facility, or throwing errors.
-* This uses [polysemy](https://github.com/isovector/polysemy#readme) for its effect management rather than mtl.  
-Polysemy's inference and performance are greatly improved if you enable the [polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin),
+* This uses [polysemy](https://github.com/polysemy-research/polysemy#readme) for its effect management rather than mtl.  
+Polysemy's inference (and performance?) are greatly improved if you enable 
+the [polysemy-plugin](https://hackage.haskell.org/package/polysemy-plugin),
 which involves:
 1. adding "polysemy-plugin" in build-depends and
-2. Add "ghc-options: -fplugin=Polysemy.Plugin" to your package configuration.
+2. Add "ghc-options: -fplugin=Polysemy.Plugin" to your package configuration or
+```{-# OPTIONS_GHC -fplugin=Polysemy.Plugin #-}``` at the top of any source file
+with inference issues. 
+
 Pandoc effects and writer effects for document building are also provided.
+
 * Polysemy is capable of "absorbing" some mtl-style monad constraints.  This is demonstrated in
 [RandomExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs#L113) and
 composable absorbers for MonadReader, MonadWriter, MonadState and MonadError
 can be found in the [polysemy-zoo](https://github.com/isovector/polysemy-zoo).
+
 * Pandoc templates are included for HTML output.  See the examples for how to access them
 or specify others.
+
 * If you use knit-haskell via an installed executable, it will find the templates that 
 cabal installs.  But if you use from a local build directory and use "cabal new-" or "cabal v2-"
 style commands, you will need to run the executable via some "cabal v2-" command as well, e.g.,
