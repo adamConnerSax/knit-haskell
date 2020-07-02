@@ -15,6 +15,9 @@ License     : BSD-3-Clause
 Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
+This module contains a state effect used to maintain a map of unused id numbers which can be used for HTML
+ids or figure numbering.
+
 -}
 module Knit.Effect.UnusedId
   (

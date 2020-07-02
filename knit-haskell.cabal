@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 132aa63fc2a8f0db83d6892ae393f5120e69d2184cde82b175f10e48173ebc2d
+-- hash: 5b430c95811a8cbe04969120b4c8138b61ebfa3248df8ff70148b085c7f344c4
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -51,7 +51,6 @@ library
       Knit.Effect.UnusedId
       Knit.Report
       Knit.Report.Cache
-      Knit.Report.EffectStack
       Knit.Report.Input.Table.Colonnade
       Knit.Report.Input.Html
       Knit.Report.Input.Html.Lucid
@@ -67,6 +66,7 @@ library
       Knit.Utilities.Streamly
   other-modules:
       Knit.Effect.Html
+      Knit.Report.EffectStack
       Knit.Report.Error
       Streamly.External.Cereal
       Paths_knit_haskell

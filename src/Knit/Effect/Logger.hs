@@ -134,7 +134,7 @@ nonDiagnostic :: LogSeverity -> Bool
 nonDiagnostic ls = ls `elem` [Info, Warning, Error]
 {-# INLINEABLE nonDiagnostic #-}
 
--- | log debug messages with level lower than or equal to l.
+-- | log debug messages with level lower than or equal to the given @Int@.
 logDebug :: Int -> LogSeverity -> Bool
 logDebug l (Debug n) = n <= l
 logDebug _ _         = True
@@ -278,8 +278,12 @@ prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
 prefixedLogEntryToIO = logToIO prefixedLogEntryToText
 {-# INLINEABLE prefixedLogEntryToIO #-}
 
+-- | This function can be used to log directly to IO, bypassing the effect.
+-- It's here to allow logging from within functions that must be run under more
+-- limited stacks and then embedded.
 logWithPrefixToIO :: LogWithPrefixIO
 logWithPrefixToIO prefix le = let wp = WithPrefix prefix le in prefixedLogEntryToIO wp
+{-# INLINEABLE logWithPrefixToIO #-}
 
 -- | A synonym for a function to handle direct logging from IO.  Used to allow logging from any stack with IO.
 type LogWithPrefixIO = T.Text -> LogEntry -> IO ()

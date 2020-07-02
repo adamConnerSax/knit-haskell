@@ -23,8 +23,9 @@ Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
 This module provides the types and supporting functions to use various serializers
-with the caching framework in knit-haskell.  A Cereal implementation is
-provided but using a different implementation is straightforward.
+with the caching framework in knit-haskell.
+A <https://hackage.haskell.org/package/cereal Cereal> implementation is
+provided, but using a different implementation is straightforward.
 See <https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs CacheExample2>
 for an example.
 
@@ -36,6 +37,11 @@ explicit dictionary we get that flexibility.  Once a dictionary for encoding and
 objects of arbitrary type is provided, along with the typeclass constraint required to use it,
 the code in this module can convert that into all the functions the caching effect
 requires to cache that data type or streams of it.
+
+This could be implemented as a more straightforward effect but at the cost of complicating
+the use for streams.  Making the explicit dictionary available balances the flexibility of
+being able to change serializers with the relative ease of bootstrapping the single item serializer
+into a serializer for streams, etc.
 -}
 module Knit.Effect.Serialize
   (
@@ -43,16 +49,20 @@ module Knit.Effect.Serialize
     SerializeDict(..)
   , Serialize(..)
   , SerializeEnv
+
     -- * Deploy Implementations
   , serializeOne
   , serializeStreamlyViaList
+
     -- * Implementations
   , DefaultCacheData
   , DefaultSerializer
   , cerealStreamlyDict
+
     -- * Reader for Serializer Dictionary
   , getSerializeDict
   , runSerializeEnv
+
     -- * Errors
   , SerializationError(..)
   )
@@ -81,13 +91,13 @@ data SerializationError = SerializationError T.Text deriving (Show)
 Encoding/decoding functions for Serializing data, made explicit
 here so we can pass them around as part of a configuration.
 Allows for different Serializers as well as
-Serializing to different types of in memory store.
+Serializing to different types of in-memory store.
 
-
-NB: The first parameter is a constraint which must be satisfied by anything serializable by
+NB: The first parameter is of kind @Type -> Constraint@, e.g., @S.Serialize@,
+which must be satisfied by anything serializable by
 the implementation.
 
-This should be straightforward to write for any serializer and is all that's required to use
+This should be straightforward to write for any serializer, and is all that's required to use
 a non-default serializer as long as it serializes to @ByteStream@
 (or, less likely, @Streamly.Memory.Array.Array@)
 -}

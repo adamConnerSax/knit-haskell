@@ -10,7 +10,7 @@ handled: they are now all placed inside a ```KnitConfig```.
 It's a trivial change to make and should make the configuration more future-proof as long as you build your ```KnitConfig``` like, e.g., 
 ```haskell
 myConfig :: KnitConfig
-myConfig = defaultKnitConfig { outerLogPrefix = Just "MyReport", cacheDir = "myCache" }
+myConfig = (defaultKnitConfig $ Just "myCache") { outerLogPrefix = Just "MyReport"}
 ```
 
 There has also been a change in the constraint synonyms used for effectful functions in the knit stack.  Because

@@ -57,7 +57,6 @@ library:
   - Knit.Effect.UnusedId
   - Knit.Report
   - Knit.Report.Cache
-  - Knit.Report.EffectStack
   - Knit.Report.Input.Table.Colonnade
   - Knit.Report.Input.Html
   - Knit.Report.Input.Html.Lucid
