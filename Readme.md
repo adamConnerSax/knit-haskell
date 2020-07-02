@@ -13,14 +13,6 @@ myConfig :: KnitConfig
 myConfig = (defaultKnitConfig $ Just "myCache") { outerLogPrefix = Just "MyReport"}
 ```
 
-There has also been a change in the constraint synonyms used for effectful functions in the knit stack.  Because
-of the addition of the cache, ```KnitEffects```, ```KnitOne``` and ```KnitMany``` take more type parameters now.
-To use as before:
-
-* ```KnitEffects``` becomes ```DefaultEffects```
-* ```KnitOne``` becomes ```DefaultKnitOne```
-* ```KnitMany``` becomes ```DefaultKnitMany```
-
 Also note that a new major version of Pandoc has been released (2.9.x).  knit-haskell can be compiled against this as
 well as the older versions but there are some major changes which may affect you should you use any of the pandoc 
 functions directly.  In particular, Pandoc has now switched to using ```Text``` instead of ```String``` for
@@ -56,8 +48,10 @@ have to write your own persistence functions for saving/loading that type to/fro
 
 If you use the cache, and you are running in a version-controlled directory,
 you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
-Once data has been loaded from disk/produced once, it remains available in memory via its key. The cache handles 
-multi-threading gracefully.  The in-memory cache is stored in a TVar so only one thread may make requests at a time.
+
+Once data has been loaded from disk/produced once, it remains available in memory (in serialized form) via its key. 
+The cache handles multi-threading gracefully.  The in-memory cache is stored in a TVar so only one thread 
+may make requests at a time.
 If multiple threads request the same item, one not currently in-memory--a 
 relatively common pattern if multiple analyses of the same data are 
 run asynchronously--the first request will fetch or create the data and the rest will block until the first one
@@ -94,16 +88,16 @@ time-stamped monadic computation for the desired result. If the requested
 data is cached, the time stamp (modification time of the file in cache, more or less) 
 is compared to the time-stamp on the dependencies.  As long as the dependencies are older
 than the cached data, an action producing the cached result is returned.  If there is no
-data in the cache for that key or the data is too old, the action producing the dependencies
+data in the cache for that key or the in-cache data is too old, the action producing the dependencies
 is "run" and those dependencies are fed to the computation given, producing the data and 
 caching the result.
 
 NB: The returned monadic computation is *not* simply the result of applying the dependencies to
 the given function.  That computation is run, if necessary, in order to produce the data, which
 is then serialized and cached.  The returned monadic computation is either the data produced
-by the given computation, put into the monad via ```pure``` or the result pulled from the 
+by the given computation, put into the monad via ```pure```, or the result pulled from the 
 cache *before* it is deserialized.  Running the returned computation performs the deserialization
-so the data can be used.  This allows checking the time-stamp of data without deserializing
+so the data can be used.  This allows checking the time-stamp of data without deserializing it
 in order to make the case where it's never actually used more efficient.  
 
 ```WithCacheTime``` is an applicative functor, which facilitates its primary use, to store 
@@ -125,13 +119,14 @@ cachedC <- retrieveOrMake "C.bin" cDeps $ \(a, b) -> longTimeC a b
 ```
 and each piece of data will get cached when this is first run.  Now suppose you change the computation
 ```longTimeA```.  You realize that the cached data is invalid, so you delete "A.bin" from the
-cache.  The next time this code runs, it will recompute and cache the result of longTimeA, 
-load the ```BData```  (serialized) from cache, realize that
+cache.  The next time this code runs, it will recompute and cache the result of ```longTimeA```, 
+load the ```BData```  (serialized) from cache, see that
 the cached version of ```CData``` is out of date, 
 and then deserialize ```BData````, and use it and the new ```AData``` 
 to recompute and re-cache ```CData```.  This doesn't eliminate the 
-need for user intervention: the user still had to manually delete the result of A, but it handles
-the downstream work of tracking the uses of that data and recomputing where required.  
+need for user intervention: the user still had to manually delete "A.bin" to force re-running ```longTimeA```, 
+but it handles the downstream work of tracking the uses of that data and recomputing where required. 
+I've found this extremely useful.
 
 Entries can be cleared from the cache via ```clear```.
 
