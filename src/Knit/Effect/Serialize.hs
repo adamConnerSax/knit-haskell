@@ -120,19 +120,31 @@ This is designed around serialization of streams, where the original (effectful)
 we can return a "buffered" stream which just unfolds from a memory buffer.
 In many cases, we will just return the input in that slot.
 -}
-data Serialize e r a ct where
+data SerializeOne c ct m a where
+  Encode :: x -> Serialize ct m (ct, x)
+  Decode :: ct -> Serialize ct m ct
+  Size :: ct -> Serialize ct m Int64
+
+P.makeSem ''SerializeOne
+
+data Serialize e r a ct
   Serialize :: (P.MemberWithError (P.Error e) r)
             => (a -> P.Sem r (ct, a)) -- ^ Encode
             -> (ct -> P.Sem r a)      -- ^ Decode
             -> (ct -> Int64)          -- ^ Size (in Bytes)
             -> Serialize e r a ct
 
+
+
+
 -- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c a@,
 -- produce the (trivial) 'Serialize' record-of-functions to encode/decode a single @a@.
-serializeOne :: (c a, P.MemberWithError (P.Error SerializationError) r)
-             => SerializeDict c ct
-             -> Serialize SerializationError r a ct
-serializeOne (SerializeDict encOne decOne bytes) =
+serializeOne :: (c a
+                , P.Member (P.SerializeOne ct ct) r
+                , P.MemberWithError (P.Error SerializationError) r                
+                )
+             => Serialize SerializationError r a ct
+serializeOne =
   let enc a = return (encOne a, a)
       {-# INLINEABLE enc #-}      
       dec = P.fromEither @SerializationError . decOne
