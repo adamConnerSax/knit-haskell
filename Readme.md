@@ -39,16 +39,17 @@ awaiting (```await```) it's result and running some traversable structure of con
 the traditional interface returns an ```a```. 
 From the docs "The Maybe returned by async is due to the fact that we can't be sure an Error effect didn't fail locally."
 
-A persistent (using memory and disk) cache for "shelving" the results of computations between report runs.  Using 
-the default setup, anything which has
+A persistent (using memory and disk) cache for "shelving" the results of computations during and between runs.  
+Using the default setup, anything which has
 a ```Serialize``` instance from the [cereal](https://hackage.haskell.org/package/cereal) 
 package can be cached. You can use a different serializer if you so choose, but you will have write
-a bit of code to bridge the serializers interface and, depending on the serialized type, you may also 
-have to write your own persistence functions for saving/loading that type to/from disk.  See 
+a bit of code to bridge the serializer's interface and, depending on what the serializer encodes to, 
+you may also  have to write your own persistence functions for saving/loading that type to/from disk.  See 
 ```Knit.Effect.Serialize``` and ```Knit.Effect.AtomicCache``` for details.
 
 If you use the cache, and you are running in a version-controlled directory,
-you probably want to add your cache directory, specified in the ```knit-hmtl``` call, to ".gitignore" or equivalent.
+you probably want to add your cache directory, specified in ```KnitConfigure``` and defaulting to
+".knit-haskell-cache", to ".gitignore" or equivalent.
 
 Once data has been loaded from disk/produced once, it remains available in memory (in serialized form) via its key. 
 The cache handles multi-threading gracefully.  The in-memory cache is stored in a TVar so only one thread 
