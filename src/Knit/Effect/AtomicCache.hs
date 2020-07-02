@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
-
+{-# OPTIONS_GHC -O2 -fdicts-strict -fspec-constr-recursive=16 -fmax-worker-args=16 #-} -- for Streamly
 {-|
 Module      : Knit.Effect.AtomicCache
 Description : Effect for managing a persistent cache of serializable things to avoid redoing computations
