@@ -61,11 +61,8 @@ import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
 import qualified System.IO.Error               as IE
 
-
 import qualified Text.Pandoc                   as PA
 import qualified Text.Blaze.Html.Renderer.Text as BH
-
-
 
 import qualified Knit.Report.Output            as KO
 import qualified Knit.Report.Output.Html       as KO

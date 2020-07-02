@@ -123,7 +123,6 @@ module Knit.Effect.AtomicCache
   , persistAsByteArray
   , persistLazyByteString
   , persistStrictByteString
-  , persistAsByteStreamly
     -- ** Thread-safe Map
   , AtomicMemCache
   , runAtomicInMemoryCache
@@ -153,13 +152,13 @@ import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 import           Control.Monad                  ( join )
 
-import qualified Streamly                          as Streamly
-import qualified Streamly.Prelude                  as Streamly
+--import qualified Streamly                          as Streamly
+--import qualified Streamly.Prelude                  as Streamly
 import qualified Streamly.Internal.Memory.Array    as Streamly.Array
-import qualified Streamly.FileSystem.Handle        as Streamly.Handle
+--import qualified Streamly.FileSystem.Handle        as Streamly.Handle
 import qualified Streamly.Internal.FileSystem.File as Streamly.File
 
-import qualified System.IO                     as System
+--import qualified System.IO                     as System
 import qualified System.Directory              as System
 import qualified System.IO.Error               as IO.Error
 
@@ -177,7 +176,7 @@ data CacheError =
   | PersistError T.Text
   | OtherCacheError T.Text deriving (Show, Eq)
 
--- | Wrapper to hold (deserializable, if necessary) content and a timestamp
+-- | Wrapper to hold (deserializable, if necessary) content and a timestamp.
 -- The stamp must be at or after the time the data was constructed
 data WithCacheTime m a where
   WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
@@ -264,6 +263,7 @@ P.makeSem ''Cache
 
 debugLogSeverity :: K.LogSeverity
 debugLogSeverity  = K.Debug 3
+{-# INLINE debugLogSeverity #-}
 
 -- | Combine the action of serializing and caching
 encodeAndStore
@@ -436,7 +436,7 @@ clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> return
 -- structure for in-memory atomic cache
 -- outer TVar so only one thread can get the inner TMVar at a time
 -- TMVar so we can block if mulitple threads are trying to read or update
--- Maybe inside so we can notify waiting threads that whatever they were waiting on
+-- the @Maybe@ inside so we can notify waiting threads that whatever they were waiting on
 -- to fill the TMVar failed.
 
 -- | Specific type of in-memory cache.  
@@ -715,36 +715,6 @@ persistLazyByteString keyToFilePath =
           rethrowIOErrorAsCacheError $ BL.writeFile filePath ct  -- maybe we should do this in another thread?
 {-# INLINEABLE persistLazyByteString #-}
 
--- | Interpreter Cache via persistence to disk as a Streamly stream of Bytes (Word8)
-persistAsByteStreamly
-  :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
-  => (k -> FilePath)
-  -> P.InterpreterFor (Cache k (Streamly.SerialT Identity Word.Word8)) r
-persistAsByteStreamly keyToFilePath =
-  P.interpret $ \case
-    CacheLookup k -> K.wrapPrefix "persistAsByteStreamly" $ getContentsWithCacheTime (sequenceStreamly . Streamly.File.toBytes) (keyToFilePath k)
-    CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
-      let keyText = "key=" <> (T.pack $ show k) <> ": "
-      case mct of
-        Nothing -> do
-          K.logLE debugLogSeverity $ keyText <> "called with Nothing. Deleting file."
-          rethrowIOErrorAsCacheError $ System.removeFile (keyToFilePath k)
-        Just ct -> do
-          K.logLE debugLogSeverity $ keyText <> "called with content. Writing file."
-          let filePath     = (keyToFilePath k)
-              (dirPath, _) = T.breakOnEnd "/" (T.pack filePath)
-          _ <- createDirIfNecessary dirPath
-          K.logLE debugLogSeverity $ keyText <> "Writing serialization to disk."
-          let sLength = runIdentity $ Streamly.length ct
-          K.logLE debugLogSeverity $ keyText <> "Writing " <> (T.pack $ show sLength) <> " bytes to disk." 
-          rethrowIOErrorAsCacheError $ (System.withBinaryFile filePath System.WriteMode $ writeToHandle ct) -- maybe we should do this in another thread?
-  where
-    sequenceStreamly :: Monad m => Streamly.SerialT m Word.Word8 -> m (Streamly.SerialT Identity Word.Word8)
-    sequenceStreamly = fmap Streamly.fromList . Streamly.toList
-    streamlyRaise :: Monad m => Streamly.SerialT Identity Word.Word8 -> Streamly.SerialT m Word.Word8
-    streamlyRaise = Streamly.fromList . runIdentity . Streamly.toList
-    writeToHandle bs h = Streamly.fold (Streamly.Handle.write h) $ streamlyRaise bs
-{-# INLINEABLE persistAsByteStreamly #-}
 
 createDirIfNecessary
   :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r)
