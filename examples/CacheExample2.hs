@@ -69,7 +69,7 @@ main = do
 
   case resE of
     Right htmlAsText ->
-      Knit.writeAndMakePathLT "examples/html/cache_examples.html" htmlAsText
+      Knit.writeAndMakePathLT "examples/html/cache_example2.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text
@@ -89,8 +89,8 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.addMarkDown "## Some example latex"
   Knit.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   Knit.logLE Knit.Info "Clearing \"cacheExample2/test.bin\" and \"cacheExample2/test2.bin\" from cache..."
-  Knit.clearIfPresent "cacheExample/test.sbin"
-  Knit.clearIfPresent "cacheExample/test2.sbin"
+  Knit.clearIfPresent "cacheExample2/test.sbin"
+  Knit.clearIfPresent "cacheExample2/test2.sbin"
   Knit.logLE Knit.Info $ "asynchronously retrieveOrMake stream of data, then retrieveOrMake on this thread, after a small delay, to test atomic cache."
     <> "the async retrieveOrMake will try the cache first"
     <> ", in-memory, then disk, then makes the data if those come up empty."
@@ -116,7 +116,7 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.logLE Knit.Info "Calling streamLoader2 again. Should load from cache."
   sl2b <- streamLoader2 -- loads from cache
   Knit.logLE Knit.Info "Removing cached streamLoader1 result, then calling streamLoader 2 again. Should rebuild."
-  Knit.clear "cacheExample/test.sbin" -- remove sl1
+  Knit.clear "cacheExample2/test.sbin" -- remove sl1
   sl2c <- streamLoader2 -- should rebuild
   Knit.logLE Knit.Info $ "streamLoader2=" <> (T.pack $ show sl2c)
   Knit.logLE Knit.Info "adding a visualization..."
