@@ -209,7 +209,7 @@ documents.
 * [Diagrams](https://archives.haskell.org/projects.haskell.org/diagrams/) (via Diagrams SVG backend, inserted as HTML) 
 
 ## Examples
-There are a few examples in the "examples" directory.  
+There are a few [examples](https://adamconnersax.github.io/knit-haskell/) in the "examples" directory.  
 * [SimpleExample](https://github.com/adamConnerSax/knit-haskell/blob/master/examples/SimpleExample.hs) 
 demonstrates the bare bones features of the library.  Creating a document from a few fragments and then 
 "knitting" it into HTML text and writing that to a file. This includes hvega, diagrams and plots examples.
