@@ -37,7 +37,7 @@ main = do
   resE <- K.knitHtml knitConfig makeDoc
   case resE of
     Right htmlAsText ->
-      K.writeAndMakePathLT "examples/html/simple_example.html" htmlAsText
+      K.writeAndMakePathLT "docs/simple_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text

@@ -38,7 +38,7 @@ main = do
   
   case resE of
     Right htmlAsText ->
-      K.writeAndMakePathLT "examples/html/async_example.html" htmlAsText
+      K.writeAndMakePathLT "docs/async_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text

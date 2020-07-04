@@ -68,7 +68,7 @@ main = do
     $ makeDoc
   case resE of
     Right htmlAsText ->
-      K.writeAndMakePathLT "examples/html/random_example.html" htmlAsText
+      K.writeAndMakePathLT "docs/random_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc error: " ++ show err
 
 md1 :: T.Text

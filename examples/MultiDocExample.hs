@@ -41,7 +41,7 @@ main = do
     K.newPandoc (K.PandocInfo "multi_doc2" M.empty) makeDoc2
   case resE of
     Right namedDocs ->
-      K.writeAllPandocResultsWithInfoAsHtml "examples/html" namedDocs
+      K.writeAllPandocResultsWithInfoAsHtml "docs" namedDocs
     Left err -> putStrLn $ "pandoc error: " ++ show err
 
 md1 :: T.Text

@@ -109,6 +109,19 @@ library:
   - svg-builder >=0.1.1 && <0.2
   - transformers-base >= 0.4.5 && < 0.5
 tests:
+  Index:
+    main: Index.hs
+    other-modules: []
+    source-dirs: examples
+    ghc-options: -fplugin=Polysemy.Plugin
+    dependencies:
+    - base
+    - containers
+    - here
+    - knit-haskell
+    - polysemy
+    - polysemy-plugin
+    - text
   SimpleExample:
     main: SimpleExample.hs
     other-modules: []

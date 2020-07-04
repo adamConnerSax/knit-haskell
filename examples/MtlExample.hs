@@ -59,7 +59,7 @@ main = do
     $ K.knitHtml knitConfig makeDoc
   case resE of
     Right htmlAsText ->
-      K.writeAndMakePathLT "examples/html/mtl_example.html" htmlAsText
+      K.writeAndMakePathLT "docs/mtl_example.html" htmlAsText
     Left err -> putStrLn $ "Pandoc error: " ++ show err
 
 md1 :: T.Text

@@ -69,7 +69,7 @@ main = do
 
   case resE of
     Right htmlAsText ->
-      Knit.writeAndMakePathLT "examples/html/cache_example2.html" htmlAsText
+      Knit.writeAndMakePathLT "docs/cache_example2.html" htmlAsText
     Left err -> putStrLn $ "Pandoc Error: " ++ show err
 
 md1 :: T.Text

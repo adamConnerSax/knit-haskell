@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f84555425a577ba3122d3c52935bc2ea4bfb22a0ab91de305fa9ed20849ffefa
+-- hash: 8a38c1d71dc9b59043a19923e8ce843697a1a117c10f69bce3232fe2d5b30f70
 
 name:           knit-haskell
 version:        0.8.0.0
@@ -188,6 +188,22 @@ test-suite ErrorExample
     , containers
     , here >=1.2.10 && <1.3.0
     , hvega
+    , knit-haskell
+    , polysemy
+    , polysemy-plugin
+    , text
+  default-language: Haskell2010
+
+test-suite Index
+  type: exitcode-stdio-1.0
+  main-is: Index.hs
+  hs-source-dirs:
+      examples
+  ghc-options: -fplugin=Polysemy.Plugin
+  build-depends:
+      base
+    , containers
+    , here
     , knit-haskell
     , polysemy
     , polysemy-plugin
