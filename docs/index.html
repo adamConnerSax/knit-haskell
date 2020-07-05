@@ -1,33 +1,64 @@
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="English" xml:lang="English">
+<!doctype html>
+<html  lang="English" >
 <head>
-  <meta charset="utf-8" />
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!--[if lt IE 9]>
+                <script src="http://css3-mediaqueries-js.googlecode.com/svn/trunk/css3-mediaqueries.js"></script>
+        <![endif]-->
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <link href="https://vjs.zencdn.net/5.4.4/video-js.css" rel="stylesheet" />
+
+
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script type='text/javascript' src='menu/js/jquery.cookie.js'></script>
+<script type='text/javascript' src='menu/js/jquery.hoverIntent.minified.js'></script>
+<script type='text/javascript' src='menu/js/jquery.dcjqaccordion.2.7.min.js'></script>
+
+<link href="menu/css/skins/blue.css" rel="stylesheet" type="text/css" />
+<link href="menu/css/skins/graphite.css" rel="stylesheet" type="text/css" />
+<link href="menu/css/skins/grey.css" rel="stylesheet" type="text/css" />
+
+<!-- MathJax -->
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+<!-- Vega and Vega Embed -->
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@3"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@4"></script>        
+  
+  <script src="script.js"></script>
+  
+    <script src="jquery.sticky-kit.js "></script>
   <meta name="generator" content="pandoc" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <title>knit-haskell example index</title>
-  <style>
-      code{white-space: pre-wrap;}
-      span.smallcaps{font-variant: small-caps;}
-      span.underline{text-decoration: underline;}
-      div.column{display: inline-block; vertical-align: top; width: 50%;}
-  </style>
-  <!--[if lt IE 9]>
-    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
-  <![endif]-->
+  <style type="text/css">code{white-space: pre;}</style>
 </head>
 <body>
-<section id="examples" class="level2">
-<h2>Examples</h2>
-<ul>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/SimpleExample.hs">Simple</a> demonstrates the bare bones features of the library. Creating a document from a few fragments and then "knitting" it into HTML text and writing that to a file. This includes hvega, diagrams and plots examples. Result <a href="https://adamconnersax.github.io/knit-haskell/simple_example.html">here</a></p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MultiDocExample.hs">MultiDoc</a> demonstrates how to build multiple documents. Results <a href="https://adamconnersax.github.io/knit-haskell/multi_doc1.html">here</a> and <a href="https://adamconnersax.github.io/knit-haskell/multi_doc2.html">here</a>.</p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MtlExample.hs">Mtl</a> demonstrates the same simple features as above, but runs them atop an example mtl stack, allowing access to the mtl stack's functionality during document assembly. Result <a href="https://adamconnersax.github.io/knit-haskell/mtl_example.html">here</a>.</p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs">Random</a> builds on the mtl example to show how you can also add an additional polysemy effect (in this case, Polysemy.RandomFu from polysemy-RandomFu) to your document-building. This one also demonstrates a use of colonnade for adding a formatted table to the document. Result <a href="https://adamconnersax.github.io/knit-haskell/random_example.html">here</a>.</p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/ErrorExample.hs">Error</a>: Similar to "Simple" but throws a user error during document assembly. Result [here][ErrorExample].</p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/AsyncExample.hs">Async</a>: Similar to "SimpleExample" but uses Polysemy's sequenceConcurrently to run some example computations concurrently (as long as you compile with "-threaded"). Result <a href="https://adamconnersax.github.io/knit-haskell/async_example.html">here</a></p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs">Cache</a>: Similar to "SimpleExample" but uses the "AtomicCache" effect to store the result of a computation. Demonstrates the behavior of the cache when multiple threads attempt to access the same item--the first thread loads/creates the data while the other blocks until the data is in-memory. Also demonstrates use of time-stamps to force rebuilding when tracked inputs change. Result <a href="https://adamconnersax.github.io/knit-haskell/cache_example.html">here</a>.</p></li>
-<li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs">CustomCache</a>: Similar to "CacheExample" but implements and uses a different serializer and persistence layer than the default. Result <a href="https://adamconnersax.github.io/knit-haskell/cache_example2.html">here</a>.</p></li>
-</ul>
-</section>
+
+    
+    <div class="container">
+    <div class="row">
+            <div class="span12">
+            <section id="examples" class="level2">
+            <h2>Examples</h2>
+            <ul>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/SimpleExample.hs">Simple</a> demonstrates the bare bones features of the library. Creating a document from a few fragments and then "knitting" it into HTML text and writing that to a file. This includes hvega, diagrams and plots examples. Result <a href="https://adamconnersax.github.io/knit-haskell/simple_example.html">here</a></p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MultiDocExample.hs">MultiDoc</a> demonstrates how to build multiple documents. Results <a href="https://adamconnersax.github.io/knit-haskell/multi_doc1.html">here</a> and <a href="https://adamconnersax.github.io/knit-haskell/multi_doc2.html">here</a>.</p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/MtlExample.hs">Mtl</a> demonstrates the same simple features as above, but runs them atop an example mtl stack, allowing access to the mtl stack's functionality during document assembly. Result <a href="https://adamconnersax.github.io/knit-haskell/mtl_example.html">here</a>.</p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/RandomExample.hs">Random</a> builds on the mtl example to show how you can also add an additional polysemy effect (in this case, Polysemy.RandomFu from polysemy-RandomFu) to your document-building. This one also demonstrates a use of colonnade for adding a formatted table to the document. Result <a href="https://adamconnersax.github.io/knit-haskell/random_example.html">here</a>.</p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/ErrorExample.hs">Error</a>: Similar to "Simple" but throws a user error during document assembly. Result [here][ErrorExample].</p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/AsyncExample.hs">Async</a>: Similar to "SimpleExample" but uses Polysemy's sequenceConcurrently to run some example computations concurrently (as long as you compile with "-threaded"). Result <a href="https://adamconnersax.github.io/knit-haskell/async_example.html">here</a></p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample.hs">Cache</a>: Similar to "SimpleExample" but uses the "AtomicCache" effect to store the result of a computation. Demonstrates the behavior of the cache when multiple threads attempt to access the same item--the first thread loads/creates the data while the other blocks until the data is in-memory. Also demonstrates use of time-stamps to force rebuilding when tracked inputs change. Result <a href="https://adamconnersax.github.io/knit-haskell/cache_example.html">here</a>.</p></li>
+            <li><p><a href="https://github.com/adamConnerSax/knit-haskell/blob/master/examples/CacheExample2.hs">CustomCache</a>: Similar to "CacheExample" but implements and uses a different serializer and persistence layer than the default. Result <a href="https://adamconnersax.github.io/knit-haskell/cache_example2.html">here</a>.</p></li>
+            </ul>
+            </section>
+            </div>
+    </div>
+  </div>
+
+  <script src="https://vjs.zencdn.net/5.4.4/video.js"></script>
+
 </body>
 </html>

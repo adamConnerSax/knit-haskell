@@ -44,7 +44,7 @@ main :: IO ()
 main = do
   let template = K.FromIncludedTemplateDir "pandoc-bootstrap-KH.html"
   templateVarsWithCss <- K.addCss
-    (K.FromIncludedCssDir "pandoc-bootstrap.css")
+    (K.FullySpecifiedCssPath "css/pandoc-bootstrap.css")
     templateVars
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVarsWithCss

@@ -25,7 +25,7 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let template = K.DefaultTemplate --K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
+  let template = K.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html"
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                templateVars
                                                K.mindocOptionsF

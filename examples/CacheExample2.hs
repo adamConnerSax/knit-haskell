@@ -52,7 +52,7 @@ templateVars = M.fromList
 
 main :: IO ()
 main = do
-  let template = Knit.DefaultTemplate --K.FromIncludedTemplateDir "mindoc-pandoc-KH.html"
+  let template = Knit.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html" 
   pandocWriterConfig <- Knit.mkPandocWriterConfig template
                                                templateVars
                                                Knit.mindocOptionsF
