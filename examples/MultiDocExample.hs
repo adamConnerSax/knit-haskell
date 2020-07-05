@@ -25,7 +25,7 @@ templateVars = M.fromList
 main :: IO ()
 main = do
   let template = K.FromIncludedTemplateDir "pandoc-adaptive-bootstrap-KH.html"
-  tvWithCss <- K.addCss (K.FromIncludedCssDir "pandoc-bootstrap.css")
+  tvWithCss <- K.addCss (K.FullySpecifiedCssPath "css/pandoc-bootstrap.css")
                         templateVars
   pandocWriterConfig <- K.mkPandocWriterConfig template
                                                tvWithCss
