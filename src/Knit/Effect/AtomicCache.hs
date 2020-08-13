@@ -102,9 +102,9 @@ module Knit.Effect.AtomicCache
     -- * Time Stamps
     -- ** Types
   , WithCacheTime
-  , pattern WithCacheTime
+--  , pattern WithCacheTime
   , ActionWithCacheTime
-  , pattern ActionWithCacheTime
+--  , pattern ActionWithCacheTime
     -- ** Constructors
   , withCacheTime
   , onlyCacheTime
@@ -225,14 +225,37 @@ chooseQ :: Ord w => Q w t a -> Q w t a -> Q w t a
 chooseQ (Q w1 t1) (Q w2 t2) = if w1 >= w2 then Q w1 t1 else Q w2 t2
 {-# INLINEABLE chooseQ #-}
 
+productQ :: (Applicative t, Monoid w) => (Q w t a -> Q w t b) -> (Q w t a -> Q w t c) -> Q w t a -> Q w t (b, c)
+productQ makeB makeC cachedA = (,) <$> makeB cachedA <*> makeC cachedA
+{-# INLINEABLE productQ #-}
+
+zipWithQ :: (Monad m, Monoid w)
+         => (b -> d -> m e)
+         -> (Q w m a -> Q w m b)
+         -> (Q w m c -> Q w m d)
+         -> Q w m (a, c)
+         -> Q w m e
+zipWithQ f bFromA dFromC depsAC = do
+  let bQ = bFromA $ fmap fst depsAC
+      dQ = dFromC $ fmap snd depsAC      
+      bdQ = (,) <$> bQ <*> dQ
+  promoteQ (uncurry f) bdQ
+{-# INLINEABLE zipWithQ #-}
+
+{-
+sumQ :: Monad m => (Q w m a -> Q w m b) -> (Q w m c -> Q w m b) -> Q w m (Either a c) -> Q w m b
+sumQ fromA fromC (Q depT mEither) = Q depT actionB where
+  actionB = do
+    e <- mEither
+    case e of
+      Left a -> actionOnlyQ $ fromA (Q depT (return a))
+      Right c -> actionOnlyQ $ fromC (Q depT (return c))
+-}
+
 -- TODO: double check that this is associative
 instance Ord w => Semigroup (Q w t a) where
   (<>) = chooseQ
   {-# INLINEABLE (<>) #-}
-
-nestQ :: Applicative t => Q w t a -> Q w t (Q w t a)
-nestQ (Q w ta) = Q w (pure $ Q w ta)
-{-# INLINE nestQ #-}
 
 type TimeM = Maybe Time.UTCTime
 type CacheTime = Maybe (Semigroup.Max Time.UTCTime)
@@ -247,40 +270,15 @@ type WithCacheTime m a = Q CacheTime m a
 pattern WithCacheTime :: CacheTime -> m a -> WithCacheTime m a
 pattern WithCacheTime mTime ma <- Q mTime ma where
   WithCacheTime mTime ma = Q mTime ma
-  
-{-  
-data WithCacheTime m a where
-  WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
-  deriving (Show)
-
-instance Functor m => Functor (WithCacheTime m) where
-  fmap f (WithCacheTime tM ma) = WithCacheTime tM (fmap f ma)
-  {-# INLINE fmap #-}
-  
-instance Applicative m => Applicative (WithCacheTime m) where
-  pure x = WithCacheTime Nothing (pure x)
-  {-# INLINE pure #-}
-  WithCacheTime t1M mf <*> WithCacheTime t2M ma = WithCacheTime (max t1M t2M) (mf <*> ma)
-  {-# INLINE (<*>) #-}
--}
-{-
-NB: The applicative instance allows merging dependencies
-for passing to things which need them
-as in:
-let cachedDeps = (,,) <$> cached1 <*> cached2 <*> cached3
-
-NB: There is no Monad instance for WithCacheTime.  We would need
-'join :: WithCacheTime t1M (m (WithCacheTime t2M (m b)) -> WithCacheTime (max t1M t2M) (m b)
-but we cannot get t2M "outside" m.
--}
 
 -- | Specialize `WithCacheTime` for use with a Polysemy effects stack.
 type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
 
+{-
 pattern ActionWithCacheTime :: CacheTime -> P.Sem r a -> ActionWithCacheTime r a
 pattern ActionWithCacheTime mTime ma <- Q mTime ma where
   ActionWithCacheTime mTime ma = Q mTime ma
-
+-}
 -- | Construct a WithCacheTime with a time and no action.  
 onlyCacheTime :: Applicative m => TimeM -> WithCacheTime m ()
 onlyCacheTime tM = WithCacheTime (toCacheTime tM) (pure ())
@@ -415,7 +413,8 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
               K.logLE debugLogSeverity $ "Finished making and updating."          
               return $ Just $ withCacheTime (Just curTime) (return a')
     fromCache <- cacheLookup key   
-    let cacheACT = case fromCache of
+    let cacheACT :: ActionWithCacheTime r (Maybe (ActionWithCacheTime r a ))
+        cacheACT = case fromCache of
           Just (Q cTimeM mct) -> Q cTimeM cacheACT' where
             cacheACT' :: P.Sem r (Maybe (ActionWithCacheTime r a))
             cacheACT' = do
@@ -433,7 +432,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
             K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> " running empty cache action.  Which shouldn't happen!"
             return Nothing
     -- we need this order (try before cache) because empty deps will also have "Nothing" for the time and, if cache empty we should
-    -- choose try.
+    -- choose try.  We ignore the outer time because the inner ones carry the time we want to return.
     ignoreCacheTime $ chooseQ tryIfMissingACT cacheACT 
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
 
