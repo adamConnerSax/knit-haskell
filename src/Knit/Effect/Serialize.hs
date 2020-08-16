@@ -83,6 +83,9 @@ import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.Internal.Data.Array           as Streamly.Data.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
 
+import qualified Knit.Utilities.Streamly       as K
+import qualified Knit.Effect.Logger            as KLog
+
 -- | Error Type for Serialization errors.  Simplifies catching and reporting them.
 data SerializationError = SerializationError T.Text deriving (Show)
 
@@ -156,13 +159,16 @@ serializeOne (SerializeDict encOne decOne bytes) =
 -- by mapping the stream to a (lazy) list, and encoding that and
 -- decoding as a list and creating the stream from that.
 serializeStreamlyViaList ::
-  (P.MemberWithError (P.Error SerializationError) r, P.Member (P.Embed IO) r, c [a])
+  (P.MemberWithError (P.Error SerializationError) r
+  , KLog.LogWithPrefixesLE r
+  , P.Member (P.Embed IO) r
+  , c [a])
   => SerializeDict c ct
-  -> Serialize SerializationError r (Streamly.SerialT (P.Sem r) a) ct 
+  -> Serialize SerializationError r (Streamly.SerialT K.StreamlyM a) ct 
 serializeStreamlyViaList (SerializeDict encOne decOne bytes) =
-  let enc = Streamly.fold (Streamly.Fold.tee
-                           (fmap encOne $ Streamly.Fold.toList) 
-                           (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
+  let enc = K.streamlyToKnit . Streamly.fold (Streamly.Fold.tee
+                                              (fmap encOne $ Streamly.Fold.toList) 
+                                              (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
                           )
       {-# INLINEABLE enc #-}
       dec = P.fromEither . fmap Streamly.fromList . decOne

@@ -16,16 +16,12 @@ module Knit.Utilities.Streamly
   )
 where
 
-import qualified Knit.Report as Knit
 import qualified Knit.Effect.Logger as Knit.Logger
 
 import qualified Streamly
 import qualified Streamly.Internal.Prelude as Streamly
 
 import qualified Polysemy 
-
---import qualified Polysemy.Error
---import           Control.Monad.Catch  (SomeException)
 
 import qualified Control.Monad.Reader as Reader
 
@@ -46,7 +42,7 @@ logStreamly ls t = do
   Reader.liftIO $ logFunction ls t
 {-# INLINEABLE logStreamly #-}
 
--- | IO with a ReaderTlayer we can use to expose effects we need.  For now just logging.
+-- | IO with a ReaderT layer we can use to expose effects we need.  For now just logging.
 newtype StreamlyM a = StreamlyM { unStreamlyM :: Reader.ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, Reader.MonadReader StreamlyEffects)
   deriving (MonadThrow, MonadCatch, Reader.MonadIO, MonadBase IO, MonadBaseControl IO) via (Reader.ReaderT StreamlyEffects IO)
@@ -55,7 +51,7 @@ newtype StreamlyM a = StreamlyM { unStreamlyM :: Reader.ReaderT StreamlyEffects 
 streamlyToKnit :: (Polysemy.Member (Polysemy.Embed IO) r
                   , Knit.Logger.LogWithPrefixesLE r
                   )
-  => StreamlyM a -> Knit.Sem r a
+  => StreamlyM a -> Polysemy.Sem r a
 streamlyToKnit sa = do
   curPrefix <- Knit.Logger.getPrefix
   let logFunction = Knit.Logger.logWithPrefixToIO 
@@ -63,10 +59,11 @@ streamlyToKnit sa = do
   Polysemy.embed $ Reader.runReaderT (unStreamlyM sa) se
 {-# INLINEABLE streamlyToKnit #-}
 
+{-# DEPRECATED streamlyToKnitS "This is mysterioiusly slow so will be removed.  Run all streams in the StreamlyM monad. Then lift using @streamlyToKnit@" #-}
 -- | Serial streams work fine over Sem, so we can lift the effectful serial stream into @Sem r@ without running.
 streamlyToKnitS :: (Polysemy.Member (Polysemy.Embed IO) r
                   , Knit.Logger.LogWithPrefixesLE r
                   )
-                => Streamly.SerialT StreamlyM a -> Streamly.SerialT (Knit.Sem r) a
+                => Streamly.SerialT StreamlyM a -> Streamly.SerialT (Polysemy.Sem r) a
 streamlyToKnitS = Streamly.hoist streamlyToKnit
 {-# INLINEABLE streamlyToKnitS #-}

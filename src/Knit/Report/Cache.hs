@@ -48,7 +48,8 @@ module Knit.Report.Cache
     -- * Streamly-Based
     -- ** Dependency Tracking
   , StreamWithCacheTime
-  , ignoreCacheTimeStream
+  , runCachedStream
+  , runCachedStreamM
     -- ** Interoperation with non-stream actions
   , streamToAction
   , streamAsAction
@@ -73,6 +74,7 @@ import           Knit.Effect.AtomicCache        (clear
                                                 , onlyCacheTime)
 import qualified Knit.Effect.Serialize         as KS                 
 import qualified Knit.Effect.Logger            as K
+import qualified Knit.Utilities.Streamly       as KStreamly
 
 import qualified Control.Monad.Catch.Pure      as Exceptions
 
@@ -85,7 +87,7 @@ import qualified Polysemy.Error                as P
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Internal.Prelude     as Streamly
+--import qualified Streamly.Internal.Prelude     as Streamly
 
 
 -- | type used by the AtomicCache for in-memory storage.
@@ -121,22 +123,23 @@ knitSerialize = mapSerializationErrorsOne . KS.serializeOne --KS.cerealStreamlyD
 
 mapSerializationErrorsStreamly ::
   P.MemberWithError (P.Error C.CacheError) r
-  => KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.SerialT (P.Sem (P.Error KS.SerializationError ': r)) a) ct
-  -> KS.Serialize C.CacheError r (Streamly.SerialT (P.Sem r) a) ct
+  => KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.SerialT KStreamly.StreamlyM a) ct
+  -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
 mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =
   let f =  P.mapError serializationToCacheError
   in KS.Serialize
-     (f . fmap (\(ct, a) -> (ct, Streamly.hoist f a)) . encode . Streamly.hoist P.raise)
-     (f . fmap (Streamly.hoist f) . decode)
+     (f . encode)
+     (f . decode)
      encBytes
 
 -- | Serialize a Streamly stream of Serializable structures to the CacheData type.
 knitSerializeStream :: (sc [a]
                        , P.Member (P.Embed IO) r                
                        , P.MemberWithError (P.Error C.CacheError) r
+                       , K.LogWithPrefixesLE r
                        )
                        => KS.SerializeDict sc ct
-                       -> KS.Serialize C.CacheError r (Streamly.SerialT (P.Sem r) a) ct
+                       -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
 knitSerializeStream = mapSerializationErrorsStreamly . KS.serializeStreamlyViaList --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerializeStream #-}
 
@@ -225,7 +228,7 @@ storeStream
   , sc [a]
   )
   => k                            -- ^ Key
-  -> Streamly.SerialT (P.Sem r) a -- ^ Streamly stream to store
+  -> Streamly.SerialT KStreamly.StreamlyM a -- ^ Streamly stream to store
   -> P.Sem r ()
 storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> (T.pack $ show k) <> ")") $ do
   K.logLE(K.Debug 3) $ "Called with k=" <> (T.pack $ show k)
@@ -234,22 +237,58 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> (T.pack $ show k) <
 {-# INLINEABLE storeStream #-}
 
 -- | Specify a Streamly Stream as the action in a 'C.WithCacheTime'
-type StreamWithCacheTime r a = C.WithCacheTime (Streamly.SerialT (P.Sem r)) a
+type StreamWithCacheTime a = C.WithCacheTime (Streamly.SerialT KStreamly.StreamlyM) a
 
--- | Use a function from a @Stream (Sem r) a@  to @Sem r a@ to map from a stream action to a plain action over Sem. 
-streamToAction :: (Streamly.SerialT (P.Sem r) a -> P.Sem r b) -> StreamWithCacheTime r a -> C.ActionWithCacheTime r b
-streamToAction = C.wctMapAction
+-- | Use a function from a @Stream StreamlyM a@  to @StreamlyM b@ to map from a stream action to a plain action, then lift into Sem. 
+streamToAction :: (P.Member (P.Embed IO) r
+                  , K.LogWithPrefixesLE r
+                  )
+               => (Streamly.SerialT KStreamly.StreamlyM a -> KStreamly.StreamlyM b) -> StreamWithCacheTime a -> C.ActionWithCacheTime r b
+streamToAction f = C.wctMapAction (KStreamly.streamlyToKnit . f)
 {-# INLINEABLE streamToAction #-}
 
 -- | Wrap a stream action in @Sem r@ to make a stream action into a plain one holding the (still effectful) stream.
-streamAsAction :: StreamWithCacheTime r a -> C.ActionWithCacheTime r (Streamly.SerialT (P.Sem r) a)
+streamAsAction :: (P.Member (P.Embed IO) r
+                  , K.LogWithPrefixesLE r
+                  ) => StreamWithCacheTime a -> C.ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a)
 streamAsAction = streamToAction return
 {-# INLINEABLE streamAsAction #-}
 
+runCachedStream :: (P.Member (P.Embed IO) r
+                  , K.LogWithPrefixesLE r
+                  )
+                => (Streamly.SerialT KStreamly.StreamlyM a -> KStreamly.StreamlyM b)
+                -> StreamWithCacheTime a
+                -> C.ActionWithCacheTime r b
+runCachedStream f swct =
+  let t = C.cacheTime swct
+      s = C.ignoreCacheTime swct
+  in C.withCacheTime t (KStreamly.streamlyToKnit $ f s)
+{-# INLINEABLE runCachedStream #-}
+
+runCachedStreamM :: (P.Member (P.Embed IO) r
+                  , K.LogWithPrefixesLE r
+                  )
+                 => (Streamly.SerialT KStreamly.StreamlyM a -> KStreamly.StreamlyM b)
+                 -> P.Sem r (StreamWithCacheTime a)
+                 -> P.Sem r b
+runCachedStreamM f swctM = C.ignoreCacheTimeM $ fmap (runCachedStream f) swctM
+{-# INLINEABLE runCachedStreamM #-}
+
+{-
 -- | Wrapper for AtomicCache.ignoreCacheTime, plus the concatM bit for streamly
-ignoreCacheTimeStream :: P.Sem r (StreamWithCacheTime r a) -> Streamly.SerialT (P.Sem r) a
+ignoreCacheTimeStream :: P.Sem r (StreamWithCacheTime a) -> P.Sem r (Streamly.SerialT KStreamly.StreamlyM a)
 ignoreCacheTimeStream = Streamly.concatM . fmap C.ignoreCacheTime
 {-# INLINEABLE ignoreCacheTimeStream #-}
+-}
+
+
+actionWCT2StreamWCT :: P.Sem r (C.ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a)) -> P.Sem r (StreamWithCacheTime a)
+actionWCT2StreamWCT x = do
+  wct <- x
+  s <- ignoreCacheTime wct
+  return $ C.withCacheTime (C.cacheTime wct) s 
+{-# INLINEABLE actionWCT2StreamWCT #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
@@ -262,10 +301,10 @@ retrieveStream
   , sc [a])
   => k                                 -- ^ Key
   -> Maybe Time.UTCTime                -- ^ Cached item invalidation time.  Supply @Nothing@ to retrieve regardless of time-stamp.
-  -> P.Sem r (StreamWithCacheTime r a) -- ^ Time-stamped stream from cache.
+  -> P.Sem r (StreamWithCacheTime a) -- ^ Time-stamped stream from cache.
 retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pack $ show k) <> ")") $ do
   cacheSD <- KS.getSerializeDict
-  fmap (C.wctMapAction Streamly.concatM)
+  actionWCT2StreamWCT
     $ C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
 {-# INLINEABLE retrieveStream #-}
 
@@ -281,11 +320,11 @@ retrieveOrMakeStream
      )
   => k                                   -- ^ Key 
   -> C.ActionWithCacheTime r b           -- ^ Cached dependencies with time-stamp
-  -> (b -> Streamly.SerialT (P.Sem r) a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
-  -> P.Sem r (StreamWithCacheTime r a)   -- ^ Time-stamped stream.
+  -> (b -> Streamly.SerialT KStreamly.StreamlyM a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
+  -> P.Sem r (StreamWithCacheTime a)   -- ^ Time-stamped stream.
 retrieveOrMakeStream k cachedDeps toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> (T.pack $ show k) <> ")") $ do
   cacheSD <- KS.getSerializeDict
-  fmap (C.wctMapAction Streamly.concatM)
+  actionWCT2StreamWCT
     $ C.retrieveOrMake (knitSerializeStream cacheSD) k cachedDeps (return . toMake)
 {-# INLINEABLE retrieveOrMakeStream #-}
 
@@ -306,8 +345,8 @@ retrieveOrMakeTransformedStream
   -> (b -> a)                            -- ^ Transform Serializable @b@ to @a@
   -> k                                   -- ^ Key 
   -> C.ActionWithCacheTime r c           -- ^ Cached dependencies with time-stamp
-  -> (c -> Streamly.SerialT (P.Sem r) a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
-  -> P.Sem r (StreamWithCacheTime r a)   -- ^ Time-stamped stream.
+  -> (c -> Streamly.SerialT KStreamly.StreamlyM a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
+  -> P.Sem r (StreamWithCacheTime a)   -- ^ Time-stamped stream.
 retrieveOrMakeTransformedStream toSerializable fromSerializable k cachedDeps toMake =
   K.wrapPrefix ("retrieveOrMakeTransformedStream (key=" <> (T.pack $ show k) <> ")")
   $ fmap (C.wctMapAction $ Streamly.map fromSerializable)

@@ -15,6 +15,7 @@ import qualified Knit.Utilities.Streamly       as Knit.Streamly
 import qualified Streamly.Prelude as Streamly
 
 import qualified Control.Concurrent            as CC
+import qualified Control.Monad.IO.Class        as MonadIO
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
@@ -114,23 +115,22 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   return ()
 
 streamLoader :: (Knit.KnitEffects q, Knit.CacheEffectsD q) => Knit.Sem q [Int]
-streamLoader = Streamly.toList $ Knit.ignoreCacheTimeStream $ streamLoaderWC
+streamLoader = Knit.runCachedStreamM Streamly.toList streamLoaderWC
 
 streamLoaderWC :: (Knit.KnitEffects q, Knit.CacheEffectsD q)
-               => Knit.Sem q (Knit.StreamWithCacheTime q Int)
+               => Knit.Sem q (Knit.StreamWithCacheTime Int)
 streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
   Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
   Knit.retrieveOrMakeStream "cacheExample/test.sbin" (pure ()) $ const $ do               
-    Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Waiting to make..."
-    Streamly.yieldM $ Knit.liftKnit $ CC.threadDelay 1000000                           
-    Streamly.yieldM $ Knit.logLE Knit.Diagnostic "Making test data"
-    Knit.Streamly.streamlyToKnitS
-      $ Streamly.fromList  [1,10,100]
+    Streamly.yieldM $ Knit.Streamly.logStreamly Knit.Diagnostic "Waiting to make..."
+    Streamly.yieldM $ MonadIO.liftIO $ CC.threadDelay 1000000                           
+    Streamly.yieldM $ Knit.Streamly.logStreamly Knit.Diagnostic "Making test data"
+    Streamly.fromList  [1,10,100]
                
 
 streamLoader2 ::(Knit.KnitEffects q, Knit.CacheEffectsD q)
               => Knit.Sem q [Int]
-streamLoader2 = Streamly.toList $ Knit.ignoreCacheTimeStream $ do
+streamLoader2 =  Knit.runCachedStreamM Streamly.toList $ do
   cachedStream <- Knit.streamAsAction <$> streamLoaderWC
   Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do
     Streamly.map (*2) sInt
