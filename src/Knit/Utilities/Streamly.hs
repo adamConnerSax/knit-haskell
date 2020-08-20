@@ -1,11 +1,13 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE UnboxedTuples              #-} -- This is required for the PrimMonad instance
+{-# LANGUAGE UndecidableInstances       #-}
+
 module Knit.Utilities.Streamly
   (
     StreamlyM
@@ -23,6 +25,7 @@ import qualified Streamly.Internal.Prelude as Streamly
 
 import qualified Polysemy 
 
+import qualified Control.Monad.Primitive as Prim
 import qualified Control.Monad.Reader as Reader
 
 import           Control.Monad.Catch  (MonadThrow, MonadCatch)
@@ -45,7 +48,7 @@ logStreamly ls t = do
 -- | IO with a ReaderT layer we can use to expose effects we need.  For now just logging.
 newtype StreamlyM a = StreamlyM { unStreamlyM :: Reader.ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, Reader.MonadReader StreamlyEffects)
-  deriving (MonadThrow, MonadCatch, Reader.MonadIO, MonadBase IO, MonadBaseControl IO) via (Reader.ReaderT StreamlyEffects IO)
+  deriving (MonadThrow, MonadCatch, Reader.MonadIO, Prim.PrimMonad, MonadBase IO, MonadBaseControl IO) via (Reader.ReaderT StreamlyEffects IO)
 
 -- | lift a 'StreamlyM' computation into a 'Knit.Sem' computation
 streamlyToKnit :: (Polysemy.Member (Polysemy.Embed IO) r

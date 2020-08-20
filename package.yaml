@@ -102,6 +102,7 @@ library:
   - polysemy-plugin >= 0.2.0.0 && < 0.3
   - polysemy-zoo >= 0.6.0 && < 0.8
   - prettyprinter >=1.2.1 && < 1.7
+  - primitive >= 0.7.0 && < 0.8
   - say >= 0.1.0 && < 0.2
   - stm >= 2.4.5.1 && < 2.6
   - streamly >= 0.7.2 && <0.7.3
