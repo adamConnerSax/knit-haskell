@@ -7,6 +7,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
@@ -101,7 +102,9 @@ module Knit.Effect.AtomicCache
     -- * Time Stamps
     -- ** Types
   , WithCacheTime
+--  , pattern WithCacheTime
   , ActionWithCacheTime
+--  , pattern ActionWithCacheTime
     -- ** Constructors
   , withCacheTime
   , onlyCacheTime
@@ -144,6 +147,7 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Functor.Identity          (Identity(..))
 import qualified Data.Map                      as M
+import qualified Data.Semigroup                as Semigroup
 import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
 import qualified Data.Word                     as Word
@@ -174,55 +178,132 @@ data CacheError =
 
 -- | Wrapper to hold (deserializable, if necessary) content and a timestamp.
 -- The stamp must be at or after the time the data was constructed
-data WithCacheTime m a where
-  WithCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
-  deriving (Show)
-
-instance Functor m => Functor (WithCacheTime m) where
-  fmap f (WithCacheTime tM ma) = WithCacheTime tM (fmap f ma)
-  {-# INLINE fmap #-}
+data Q w t a where
+  Q :: w -> t a -> Q w t a
   
-instance Applicative m => Applicative (WithCacheTime m) where
-  pure x = WithCacheTime Nothing (pure x)
-  {-# INLINE pure #-}
-  WithCacheTime t1M mf <*> WithCacheTime t2M ma = WithCacheTime (max t1M t2M) (mf <*> ma)
-  {-# INLINE (<*>) #-}
-{-
-NB: The applicative instance allows merging dependencies
-for passing to things which need them
-as in:
-let cachedDeps = (,,) <$> cached1 <*> cached2 <*> cached3
+instance Functor t => Functor (Q w t) where
+  fmap f (Q w ta) = Q w (fmap f ta)
+  {-# INLINE fmap #-}
 
-NB: There is no Monad instance for WithCacheTime.  We would need
-'join :: WithCacheTime t1M (m (WithCacheTime t2M (m b)) -> WithCacheTime (max t1M t2M) (m b)
-but we cannot get t2M "outside" m.
+instance (Monoid w, Applicative t) => Applicative (Q w t) where
+  pure a = Q mempty (pure a)
+  {-# INLINE pure #-}
+  (Q w1 t1) <*> (Q w2 t2) = Q (w1 <> w2) (t1 <*> t2)
+  {-# INLINE (<*>) #-}
+
+-- | Map one type of action to another via a natural transformation.
+-- Specifically useful for mapping from @Q w Identity a@
+-- to @Q w m a@
+natQ :: (forall a. f a -> g a) -> Q w f b -> Q w g b
+natQ nat (Q tM fb) = Q tM (nat fb)
+{-# INLINEABLE natQ #-}
+
+-- | Map one type of action to another.  NB: 'Q w m' is a functor
+-- (as long as @m@ is), so if @m@ is not changing, you should prefer 'fmap'
+-- to this function.  
+morphQ :: (m a -> n b) -> Q w m a -> Q w n b
+morphQ f (Q tM ma) = Q tM (f ma)
+{-# INLINEABLE morphQ #-}
+
+actionOnlyQ :: Q w m a -> m a
+actionOnlyQ (Q _ ma) = ma
+{-# INLINEABLE actionOnlyQ #-}
+
+monoidOnlyQ :: Q w m a -> w
+monoidOnlyQ (Q w _) = w
+{-# INLINEABLE monoidOnlyQ #-}
+
+joinActionOnlyQ :: Monad m => m (Q w m a) -> m a 
+joinActionOnlyQ = join . fmap actionOnlyQ
+{-# INLINEABLE joinActionOnlyQ #-}
+
+promoteQ :: Monad m => (a -> m b) -> Q w m a -> Q w m b
+promoteQ f (Q w ma) = Q w (ma >>= f)
+{-# INLINEABLE promoteQ #-}
+
+chooseQ :: Ord w => Q w t a -> Q w t a -> Q w t a
+chooseQ (Q w1 t1) (Q w2 t2) = if w1 >= w2 then Q w1 t1 else Q w2 t2
+{-# INLINEABLE chooseQ #-}
+
+productQ :: (Applicative t, Monoid w) => (Q w t a -> Q w t b) -> (Q w t a -> Q w t c) -> Q w t a -> Q w t (b, c)
+productQ makeB makeC cachedA = (,) <$> makeB cachedA <*> makeC cachedA
+{-# INLINEABLE productQ #-}
+
+zipWithQ :: (Monad m, Monoid w)
+         => (b -> d -> m e)
+         -> (Q w m a -> Q w m b)
+         -> (Q w m c -> Q w m d)
+         -> Q w m (a, c)
+         -> Q w m e
+zipWithQ f bFromA dFromC depsAC = do
+  let bQ = bFromA $ fmap fst depsAC
+      dQ = dFromC $ fmap snd depsAC      
+      bdQ = (,) <$> bQ <*> dQ
+  promoteQ (uncurry f) bdQ
+{-# INLINEABLE zipWithQ #-}
+
+{-
+sumQ :: Monad m => (Q w m a -> Q w m b) -> (Q w m c -> Q w m b) -> Q w m (Either a c) -> Q w m b
+sumQ fromA fromC (Q depT mEither) = Q depT actionB where
+  actionB = do
+    e <- mEither
+    case e of
+      Left a -> actionOnlyQ $ fromA (Q depT (return a))
+      Right c -> actionOnlyQ $ fromC (Q depT (return c))
 -}
+
+-- TODO: double check that this is associative
+instance Ord w => Semigroup (Q w t a) where
+  (<>) = chooseQ
+  {-# INLINEABLE (<>) #-}
+
+type TimeM = Maybe Time.UTCTime
+type CacheTime = Maybe (Semigroup.Max Time.UTCTime)
+
+toCacheTime :: TimeM -> CacheTime
+toCacheTime = fmap Semigroup.Max
+
+toTimeM :: CacheTime -> TimeM
+toTimeM = fmap Semigroup.getMax
+
+-- recall that @Ord a => Ord (Maybe a)@ with @Nothing <  Just a@ for all a.
+-- So this specification of Q can be be used in chooseQ (and is a semigroup)
+type WithCacheTime m a = Q CacheTime m a
+
+pattern WithCacheTime :: CacheTime -> m a -> WithCacheTime m a
+pattern WithCacheTime mTime ma <- Q mTime ma where
+  WithCacheTime mTime ma = Q mTime ma
 
 -- | Specialize `WithCacheTime` for use with a Polysemy effects stack.
 type ActionWithCacheTime r a = WithCacheTime (P.Sem r) a
 
+{-
+pattern ActionWithCacheTime :: CacheTime -> P.Sem r a -> ActionWithCacheTime r a
+pattern ActionWithCacheTime mTime ma <- Q mTime ma where
+  ActionWithCacheTime mTime ma = Q mTime ma
+-}
 -- | Construct a WithCacheTime with a time and no action.  
-onlyCacheTime :: Applicative m => Maybe Time.UTCTime -> WithCacheTime m ()
-onlyCacheTime tM = WithCacheTime tM (pure ())
+onlyCacheTime :: Applicative m => TimeM -> WithCacheTime m ()
+onlyCacheTime tM = WithCacheTime (toCacheTime tM) (pure ())
 {-# INLINEABLE onlyCacheTime #-}
 
 -- | Construct a WithCacheTime from a @Maybe Time.UTCTime@ and an action.
-withCacheTime :: Maybe Time.UTCTime -> m a -> WithCacheTime m a
-withCacheTime = WithCacheTime
+withCacheTime :: TimeM -> m a -> WithCacheTime m a
+withCacheTime tM ma = WithCacheTime (toCacheTime tM) ma
 {-# INLINEABLE withCacheTime #-}
 
 -- | Map one type of action to another via a natural transformation.
 -- Specifically useful for mapping from @WithCacheTime Identity a@
 -- to @WithCacheTime m a@
 wctApplyNat :: (forall a. f a -> g a) -> WithCacheTime f b -> WithCacheTime g b
-wctApplyNat nat (WithCacheTime tM fb) = WithCacheTime tM (nat fb)
+wctApplyNat = natQ
 {-# INLINEABLE wctApplyNat #-}
 
 -- | Map one type of action to another.  NB: 'WithCacheTime m' is a functor
 -- (as long as @m@ is), so if @m@ is not changing, you should prefer 'fmap'
 -- to this function.  
 wctMapAction :: (m a -> n b) -> WithCacheTime m a -> WithCacheTime n b
-wctMapAction f (WithCacheTime tM ma) = WithCacheTime tM (f ma)
+wctMapAction = morphQ
 {-# INLINEABLE wctMapAction #-}
 
 -- | natural transformation which is useful for interoperation between
@@ -235,19 +316,19 @@ toSem = pure . runIdentity
 -- 'ignoreCacheTimeM' is required to use the cached value as anything but input
 -- to another cached computation.
 ignoreCacheTime :: WithCacheTime m a -> m a
-ignoreCacheTime (WithCacheTime _ ma) = ma
+ignoreCacheTime = actionOnlyQ 
 {-# INLINEABLE ignoreCacheTime #-}
 
 -- | Access the computation part of an @m (WithCacheTime a)@. This or
 -- 'ignoreCacheTime' is required to use the cached value as anything but input
 -- to another cached computation.
 ignoreCacheTimeM :: Monad m => m (WithCacheTime m a) -> m a
-ignoreCacheTimeM = join . fmap ignoreCacheTime
+ignoreCacheTimeM = joinActionOnlyQ
 {-# INLINEABLE ignoreCacheTimeM #-}
 
 -- | Access the @Maybe Time.UTCTime@ part of a 'WithCacheTime'
-cacheTime :: WithCacheTime m a -> Maybe Time.UTCTime
-cacheTime (WithCacheTime tM _) = tM
+cacheTime :: WithCacheTime m a -> TimeM
+cacheTime = toTimeM . monoidOnlyQ
 {-# INLINEABLE cacheTime #-}
 
 -- | Key/Value store effect requiring its implementation to return values with time-stamps.
@@ -303,52 +384,59 @@ retrieveOrMakeAndUpdateCache
   -> k                                         -- ^ Key
   -> ActionWithCacheTime r b                   -- ^ Cached dependencies of the computation.
   -> P.Sem r (Maybe (ActionWithCacheTime r a)) -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'. Returns 'Nothing" if lookup fails.
-retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing key (WithCacheTime newestM bA) =
+retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing key deps =
   K.wrapPrefix ("AtomicCache.retrieveOrMakeAndUpdateCache (key=" <> (T.pack $ show key) <> ")") $ do
     let
-      makeAndUpdate :: P.Sem r (Maybe (ActionWithCacheTime r a))
-      makeAndUpdate = do
-        K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action."
-        K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": running actions for dependencies."
-        b <- bA
-        K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": making new item."
-        ma <- tryIfMissing b
-        case ma of
-          Nothing -> do
-            K.logLE K.Error $ "key=" <> (T.pack $ show key) <> ": Making failed."
-            cacheUpdate key Nothing
+      loggedDepsA :: ActionWithCacheTime r b
+      loggedDepsA = Q depsCT depsAction where
+        Q depsCT depsA = deps
+        depsAction = do
+          K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Trying to make from given action."
+          K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": running actions for dependencies."
+          depsA
+      tryIfMissingACT :: ActionWithCacheTime r (Maybe (ActionWithCacheTime r a))
+      tryIfMissingACT = promoteQ tryIfMissing' loggedDepsA where      
+        tryIfMissing' :: b -> P.Sem r (Maybe (ActionWithCacheTime r a))
+        tryIfMissing' b = do           
+          K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": making new item."
+          ma <- tryIfMissing b
+          case ma of
+            Nothing -> do
+              K.logLE K.Error $ "key=" <> (T.pack $ show key) <> ": Making failed."
+              cacheUpdate key Nothing
+              return Nothing
+            Just a -> do
+              K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
+              (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
+              let nBytes = encBytes ct'
+              K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
+              K.logLE debugLogSeverity $ "Updating cache..."          
+              cacheUpdate key (Just ct') 
+              curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
+              K.logLE debugLogSeverity $ "Finished making and updating."          
+              return $ Just $ withCacheTime (Just curTime) (return a')
+    fromCache <- cacheLookup key   
+    let cacheACT :: ActionWithCacheTime r (Maybe (ActionWithCacheTime r a ))
+        cacheACT = case fromCache of
+          Just (Q cTimeM mct) -> Q cTimeM cacheACT' where
+            cacheACT' :: P.Sem r (Maybe (ActionWithCacheTime r a))
+            cacheACT' = do
+              let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
+              let nBytes = encBytes ct
+              K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
+              let decodeAction :: P.Sem r a
+                  decodeAction = do
+                    K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing."  
+                    a <- decode ct -- a <- mct >>= decode
+                    K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
+                    return a
+              return $ Just $ Q cTimeM decodeAction
+          Nothing -> Q Nothing $ do
+            K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> " running empty cache action.  Which shouldn't happen!"
             return Nothing
-          Just a -> do
-            K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": Making/Encoding..."
-            (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
-            let nBytes = encBytes ct'
-            K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": serialized to " <> (T.pack $ show nBytes) <> " bytes."
-            K.logLE debugLogSeverity $ "Updating cache..."          
-            cacheUpdate key (Just ct') 
-            curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
-            K.logLE debugLogSeverity $ "Finished making and updating."          
-            return $ Just (WithCacheTime (Just curTime) (return a'))
-    fromCache <- cacheLookup key
-    case fromCache of
-      Just (WithCacheTime cTimeM mct) -> do
-        if cTimeM >= newestM --maybe True (\newest -> cTimeM > newest) newestM
-          then do
-            let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
-            let nBytes = encBytes ct
-            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
-            let decodeAction :: P.Sem r a
-                decodeAction = do
-                   K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing."  
-                   a <- decode ct -- a <- mct >>= decode
-                   K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
-                   return a
-            return (Just $ WithCacheTime cTimeM decodeAction)             
-          else do
-            K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Item in cache too old. Making new."
-            makeAndUpdate
-      Nothing -> do
-        K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Item not found in cache. Making new."
-        makeAndUpdate
+    -- we need this order (try before cache) because empty deps will also have "Nothing" for the time and, if cache empty we should
+    -- choose try.  We ignore the outer time because the inner ones carry the time we want to return.
+    ignoreCacheTime $ chooseQ tryIfMissingACT cacheACT 
 {-# INLINEABLE retrieveOrMakeAndUpdateCache #-}  
 
 -- | Combine the action of retrieving from cache and deserializing.
@@ -480,7 +568,7 @@ atomicMemUpdate cache key mct =
     Nothing -> (P.embed $ C.atomically $ C.modifyTVar cache (M.delete key)) >> return Deleted
     Just ct -> do
       curTime <- P.embed Time.getCurrentTime
-      let wct = WithCacheTime (Just curTime) (Identity ct)
+      let wct = withCacheTime (Just curTime) (Identity ct)
       P.embed $ C.atomically $ do
         m <- C.readTVar cache
         case M.lookup key m of
@@ -550,7 +638,7 @@ atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
       inOtherM <- cacheLookup key      
       case inOtherM of
         Nothing -> K.logLE debugLogSeverity (keyText <> "not found in backup cache.") >> return Nothing
-        Just (WithCacheTime tM mct) -> do
+        Just (Q tM mct) -> do
           K.logLE debugLogSeverity (keyText <> "Found in backup cache.  Filling empty TMVar.")
           let ct = runIdentity mct
           P.embed $ C.atomically $ C.putTMVar emptyTMV (Just $ WithCacheTime tM (Identity ct)) 
@@ -744,7 +832,7 @@ getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
   rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
     ct <- f fp
     cTime <- System.getModificationTime fp
-    return $ WithCacheTime (Just cTime) (Identity ct)
+    return $ withCacheTime (Just cTime) (Identity ct)
 {-# INLINE getContentsWithCacheTime #-}
 
 fileNotFoundToEither :: IO a -> IO (Either () a)
