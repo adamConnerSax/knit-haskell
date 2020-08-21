@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2badba6333b9afef1e283ef7239f76b137be8364f1b461747565ee0f56f0ec74
+-- hash: 8a3aecd96b918059046278876946e185dcb3ab1d2be25a6fa544ff65bd2bb2c4
 
 name:           knit-haskell
-version:        0.8.0.0
+version:        0.9.0.0
 synopsis:       a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description:    knit-haskell is a beginning attempt at bringing some of the benefits of Rmarkdown to Haskell. It includes an effects stack (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl) which includes logging, a simplified interface to Pandoc and various writer-like effects to intersperse document building with regular code. Also included is a cache (in-memory and persisted to disk) to make caching results of long running computations simple. The cache provides tools for basic dependency tracking. Various helper functions are provided to simplify common operations, making it especially straightforward to build an HTML document from bits of markdown, latex and <http://hackage.haskell.org/package/lucid Lucid> or <http://hackage.haskell.org/package/blaze-html Blaze> html. Support is also included for including <http://hackage.haskell.org/package/hvega hvega> visualizations and diagrams from the <https://archives.haskell.org/projects.haskell.org/diagrams/ diagrams> package. More information is available in the <https://github.com/adamConnerSax/knit-haskell/blob/master/Readme.md readme>.
 bug-reports:    https://github.com/adamConnerSax/knit-haskell/issues

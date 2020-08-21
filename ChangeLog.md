@@ -1,3 +1,9 @@
+v0.9.0.0
+* Improved the types underlying the cache system to make the structure clearer and in preparation for adding 
+combinators to make working with caching functions simpler.
+* Added a PrimMonad instance to ```StreamlyM``` so that it is easier to use when building mutable structures up from 
+streams.
+
 v0.8.0.0
 * BREAKING: moved config arguments to ```knit-html``` and ```knit-htmls``` into a data structure ```KnitConfig```.  This breaks
 all existing uses of those functions but is designed to future-proof against additions to the knit configuration.  A breaking
