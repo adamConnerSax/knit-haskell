@@ -1,7 +1,7 @@
 packages: ./ 
 
 -- ghc-8.10
---allow-newer: base polysemy-zoo:ghc-prim 
+allow-newer: base polysemy-zoo:ghc-prim
 
 --source-repository-package
 --  type: git

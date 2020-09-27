@@ -1,4 +1,4 @@
-# knit-haskell v0.8.0.0
+# knit-haskell v0.9.0.0
 
 [![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
