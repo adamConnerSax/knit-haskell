@@ -114,6 +114,7 @@ mapSerializationErrorsOne (KS.Serialize encode decode encBytes) =
 knitSerialize
   :: ( sc a
      , P.Member (P.Embed IO) r
+     , K.LogWithPrefixesLE r
      , P.MemberWithError (P.Error C.CacheError) r
      )
   => KS.SerializeDict sc ct
@@ -286,12 +287,19 @@ ignoreCacheTimeStream = Streamly.concatM . fmap C.ignoreCacheTime
 actionWCT2StreamWCT :: (K.LogWithPrefixesLE r)
                     => P.Sem r (C.ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a))
                     -> P.Sem r (StreamWithCacheTime a)
-actionWCT2StreamWCT x =  K.wrapPrefix "actionWCT2StreamWCT" $ 
-  x >>= \wct -> fmap (C.withCacheTime $ C.cacheTime wct) $ C.ignoreCacheTime wct
+actionWCT2StreamWCT x = K.wrapPrefix "actionWCT2StreamWCT" $ x >>= \wct -> fmap (C.withCacheTime $ C.cacheTime wct) $ C.ignoreCacheTime wct
+{-
+  K.logLE (K.Debug 3) $ "Before wct is bound"
+  wct <- x  
+  K.logLE (K.Debug 3) $ "After wct is bound"
+  fmap (C.withCacheTime $ C.cacheTime wct) $ C.ignoreCacheTime wct
+-}
 {-# INLINEABLE actionWCT2StreamWCT #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
+-- NB: This will deserialize when the return value is bound so this is somewhat less efficient as a
+-- dependency.  As an alternative, use versions 
 retrieveStream
   :: forall sc k ct r a.
   (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
@@ -307,6 +315,23 @@ retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pac
   actionWCT2StreamWCT
     $ C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
 {-# INLINEABLE retrieveStream #-}
+
+{-
+retrieveStream'
+  :: forall sc k ct r a.
+  (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  , K.LogWithPrefixesLE r
+  , P.MemberWithError (P.Error Exceptions.SomeException) r
+  , Show k
+  , sc [a])
+  => k                                 -- ^ Key
+  -> Maybe Time.UTCTime                -- ^ Cached item invalidation time.  Supply @Nothing@ to retrieve regardless of time-stamp.
+  -> P.Sem r (ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a)) -- ^ Time-stamped stream from cache.
+retrieveStream' k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pack $ show k) <> ")") $ do
+  cacheSD <- KS.getSerializeDict
+  C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
+{-# INLINEABLE retrieveStream' #-}
+-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
 -- If retrieve fails then perform the action and store the resulting stream at key @k@. 

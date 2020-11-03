@@ -424,13 +424,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
               let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
               let nBytes = encBytes ct
               K.logLE K.Diagnostic $ "key=" <> (T.pack $ show key) <> ": Retrieved " <> (T.pack $ show nBytes) <> " bytes from cache."
-              let decodeAction :: P.Sem r a
-                  decodeAction = do
-                    K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing."  
-                    a <- decode ct -- a <- mct >>= decode
-                    K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> ": deserializing complete."  
-                    return a
-              return $ Just $ Q cTimeM decodeAction
+              return $ Just $ Q cTimeM (decode ct)
           Nothing -> Q Nothing $ do
             K.logLE debugLogSeverity $ "key=" <> (T.pack $ show key) <> " running empty cache action.  Which shouldn't happen!"
             return Nothing

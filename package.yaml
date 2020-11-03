@@ -257,7 +257,26 @@ tests:
     - polysemy-plugin
     - streamly
     - store
-    - text    
+    - text
+  CacheExample3:
+    main: CacheExample3.hs
+    other-modules: []
+    source-dirs: examples
+    ghc-options: -fplugin=Polysemy.Plugin -threaded
+    dependencies:
+    - base
+    - blaze-html
+    - bytestring
+    - containers
+    - here
+    - hvega
+    - knit-haskell
+    - plots    
+    - polysemy
+    - polysemy-plugin
+    - streamly
+    - store
+    - text        
 data-dir: data
 data-files:
 - knit-haskell-templates/*.html

@@ -76,6 +76,9 @@ import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
 
+import qualified Control.Exception as X
+import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
+
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Data.Fold                 as Streamly.Fold
@@ -88,7 +91,7 @@ import qualified Knit.Effect.Logger            as KLog
 
 -- | Error Type for Serialization errors.  Simplifies catching and reporting them.
 data SerializationError = SerializationError T.Text deriving (Show)
-
+instance X.Exception SerializationError
 
 {- |
 Encoding/decoding functions for Serializing data, made explicit
@@ -142,13 +145,19 @@ data Serialize e r a ct where
 
 -- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c a@,
 -- produce the (trivial) 'Serialize' record-of-functions to encode/decode a single @a@.
-serializeOne :: (c a, P.MemberWithError (P.Error SerializationError) r)
+serializeOne :: (c a
+                , KLog.LogWithPrefixesLE r
+                , P.MemberWithError (P.Error SerializationError) r)
              => SerializeDict c ct
              -> Serialize SerializationError r a ct
 serializeOne (SerializeDict encOne decOne bytes) =
   let enc a = return (encOne a, a)
       {-# INLINEABLE enc #-}      
-      dec = P.fromEither @SerializationError . decOne
+      dec x = KLog.wrapPrefix "serializeOne.dec" $ do
+        KLog.logLE KLog.Diagnostic "deserializing..."
+        a <- P.fromEither @SerializationError $ decOne x
+        KLog.logLE KLog.Diagnostic "deserializing complete."
+        return a
       {-# INLINEABLE dec #-}
   in Serialize enc dec bytes
 {-# INLINEABLE serializeOne #-}
@@ -171,11 +180,19 @@ serializeStreamlyViaList (SerializeDict encOne decOne bytes) =
                                               (fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write)
                           )
       {-# INLINEABLE enc #-}
-      dec = P.fromEither . fmap Streamly.fromList . decOne
+      dec = return .handleEitherInStream . fmap Streamly.fromList . decOne
       {-# INLINEABLE dec #-}
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamlyViaList #-}
 
+
+handleEitherInStream :: Either SerializationError (Streamly.SerialT K.StreamlyM a) -> Streamly.SerialT K.StreamlyM a
+handleEitherInStream e = do
+  case e of
+    Left err -> MonadIO.liftIO $ X.throwIO err
+    Right a -> do
+      Streamly.yieldM $ K.logStreamly KLog.Diagnostic $ "Deserializing stream..."
+      a
 
 -- | type-alias for default in-memory storage type.
 type DefaultCacheData = Streamly.Array.Array Word.Word8
