@@ -1,8 +1,21 @@
 packages: ./ 
+          
+-- ghc-8.10, the base allow-newer is for svg-builder, etc.
+allow-newer: base
 
--- ghc-8.10
-allow-newer: base polysemy-zoo:ghc-prim
+--source-repository-package
+--  type: git
+--  location: https://github.com/adamConnerSax/polysemy-zoo
+--  tag: f66744f0382e0969fce060df709a173d3b5e04d2
 
+source-repository-package
+  type: git
+  location: https://github.com/polysemy-research/polysemy-zoo
+  tag: fd7eb2b9934d15d233fb4e75acb7fbff80d149bf
+
+
+  
+-- fails with GHC panic. No good.
 --source-repository-package
 --  type: git
 --  location: https://github.com/polysemy-research/polysemy

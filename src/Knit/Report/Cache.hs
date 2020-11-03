@@ -283,11 +283,11 @@ ignoreCacheTimeStream = Streamly.concatM . fmap C.ignoreCacheTime
 -}
 
 
-actionWCT2StreamWCT :: P.Sem r (C.ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a)) -> P.Sem r (StreamWithCacheTime a)
-actionWCT2StreamWCT x = do
-  wct <- x
-  s <- ignoreCacheTime wct
-  return $ C.withCacheTime (C.cacheTime wct) s 
+actionWCT2StreamWCT :: (K.LogWithPrefixesLE r)
+                    => P.Sem r (C.ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a))
+                    -> P.Sem r (StreamWithCacheTime a)
+actionWCT2StreamWCT x =  K.wrapPrefix "actionWCT2StreamWCT" $ 
+  x >>= \wct -> fmap (C.withCacheTime $ C.cacheTime wct) $ C.ignoreCacheTime wct
 {-# INLINEABLE actionWCT2StreamWCT #-}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'

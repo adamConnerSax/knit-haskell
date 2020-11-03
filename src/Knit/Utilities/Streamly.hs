@@ -62,7 +62,7 @@ streamlyToKnit sa = do
   Polysemy.embed $ Reader.runReaderT (unStreamlyM sa) se
 {-# INLINEABLE streamlyToKnit #-}
 
-{-# DEPRECATED streamlyToKnitS "This is mysterioiusly slow so will be removed.  Run all streams in the StreamlyM monad. Then lift using @streamlyToKnit@" #-}
+{-# DEPRECATED streamlyToKnitS "This is mysteriously slow so will be removed.  Run all streams in the StreamlyM monad. Then lift using @streamlyToKnit@" #-}
 -- | Serial streams work fine over Sem, so we can lift the effectful serial stream into @Sem r@ without running.
 streamlyToKnitS :: (Polysemy.Member (Polysemy.Embed IO) r
                   , Knit.Logger.LogWithPrefixesLE r
