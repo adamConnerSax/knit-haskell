@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 53d4286d4e299957d676c0ec4aabe2c9dcda301b97a98017d38ba1e8f56174dd
+-- hash: 8a262d92f275574597cd523d5e1ed8286af04503266fe245d318e8ec363b2b69
 
 name:           knit-haskell
 version:        0.9.0.0
@@ -97,8 +97,8 @@ library
     , mtl >=2.2.2 && <2.3
     , network >=2.8.0.0 && <3.2
     , network-uri >=2.6.1.0 && <2.8
-    , pandoc >=2.7.2 && <2.11
-    , polysemy >=1.3.0 && <1.4
+    , pandoc >=2.7.2 && <2.12
+    , polysemy >=1.3.0 && <1.5
     , polysemy-plugin >=0.2.0.0 && <0.3
     , polysemy-zoo >=0.6.0 && <0.8
     , prettyprinter >=1.2.1 && <1.8

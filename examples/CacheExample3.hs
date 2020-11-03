@@ -83,18 +83,19 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
   Knit.ignoreCacheTime (Knit.runCachedStream Streamly.toList testStream1_C) >>= MonadIO.liftIO . putStrLn . show 
   Knit.logLE Knit.Info "Using second  stream via show"
   Knit.ignoreCacheTime (Knit.runCachedStream Streamly.toList testStream2_C) >>= MonadIO.liftIO . putStrLn . show
-
+{-
   Knit.logLE Knit.Info $ "retrieve stream directly"
   testStream3_C <- Knit.retrieveStream  "cacheExample/test3.sbin" Nothing
-  let stream = K.ignoreCacheTime testStream3
+
+  let streamAction = Knit.ignoreCacheTime testStream3_C
       
   Knit.logLE Knit.Info "Using third stream via show"
   streamList :: [Int] <- streamAction >>= Knit.Streamly.streamlyToKnit . Streamly.toList
   MonadIO.liftIO . putStrLn . show  $ streamList
-
+-}
   Knit.logLE Knit.Info $ "retrieve stream without conversion to StreamWithCacheTime"
-  testStream4_C <- Knit.retrieveStream'  "cacheExample/test3.sbin" Nothing
-  let streamAction = Knit.ignoreCacheTime testStream3_C -- P.Sem r (Streamly.SerialT KStreamly.StreamlyM a)  
+  testStream4_C <- Knit.retrieveStream  "cacheExample/test3.sbin" Nothing
+  let streamAction = Knit.ignoreCacheTime testStream4_C -- P.Sem r (Streamly.SerialT KStreamly.StreamlyM a)  
   Knit.logLE Knit.Info "Using fourth stream via show"
   streamList :: [Int] <- streamAction >>= Knit.Streamly.streamlyToKnit . Streamly.toList
   MonadIO.liftIO . putStrLn . show  $ streamList
