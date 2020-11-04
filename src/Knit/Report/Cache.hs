@@ -401,6 +401,7 @@ fileDependency fp = do
         Left _ -> Nothing
         Right modTime -> Just modTime    
   return $ withCacheTime modTimeM (return ())
+{-# INLINEABLE fileDependency #-}
 
 -- | Given a time-tagged @a@ and time-tagged @b@ and an effectful function
 -- producing @b@ from @a@, return the given @b@ or run the function with the
@@ -419,7 +420,7 @@ updateIf cur deps update = if C.cacheTime cur >= C.cacheTime deps then return cu
     updatedB <- ignoreCacheTime deps >>= update
     nowCT <- P.embed $ Time.getCurrentTime
     return $ withCacheTime (Just nowCT) (return updatedB)
-
+{-# INLINEABLE updateIf #-}
 
 -- | Utility for taking a set of time-tagged items and producing a single time-tagged unit.
 -- Useful if you wish to run a function (using, e.g., @updateIf@) when any of a set of things is
@@ -427,3 +428,4 @@ updateIf cur deps update = if C.cacheTime cur >= C.cacheTime deps then return cu
 oldestUnit :: (Foldable f, Functor f, Applicative m) => f (WithCacheTime m w) -> WithCacheTime m ()
 oldestUnit cts = withCacheTime t (pure ()) where
   t = minimum $ fmap C.cacheTime cts
+{-# INLINEABLE oldestUnit #-}
