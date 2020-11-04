@@ -95,10 +95,10 @@ makeDoc = Knit.wrapPrefix "makeDoc" $ do
 -}
   Knit.logLE Knit.Info $ "retrieve stream without conversion to StreamWithCacheTime"
   testStream4_C <- Knit.retrieveStream  "cacheExample/test3.sbin" Nothing
-  let streamAction = Knit.ignoreCacheTime testStream4_C -- P.Sem r (Streamly.SerialT KStreamly.StreamlyM a)  
-  Knit.logLE Knit.Info "Using fourth stream via show"
-  streamList :: [Int] <- streamAction >>= Knit.Streamly.streamlyToKnit . Streamly.toList
-  MonadIO.liftIO . putStrLn . show  $ streamList
+  let stream = Knit.ignoreCacheTime testStream4_C -- P.Sem r (Streamly.SerialT KStreamly.StreamlyM a)  
+  Knit.logLE Knit.Info "running stream (via toList)"
+  asList :: [Int] <- Knit.Streamly.streamlyToKnit $ Streamly.toList stream
+  MonadIO.liftIO . putStrLn $ show asList
   return ()
 
 streamLoader :: (Knit.KnitEffects q, Knit.CacheEffectsD q) => Knit.Sem q [Int]
@@ -171,7 +171,6 @@ logData = [Knit.V2 1 10, Knit.V2 2 100, Knit.V2 2.5 316, Knit.V2 3 1000]
 logAxis :: P.Axis Knit.SVG Knit.V2 Double
 logAxis = P.r2Axis Knit.&~ do
   P.scatterPlot' logData
-
   P.yAxis P.&= do
     P.logScale Knit..= P.LogAxis
     P.majorTicksFunction Knit..= P.logMajorTicks 5 -- <> pure [1]
