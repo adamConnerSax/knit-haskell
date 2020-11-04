@@ -57,7 +57,11 @@ module Knit.Report.Cache
   , storeStream
   , retrieveStream
   , retrieveOrMakeStream
-  , retrieveOrMakeTransformedStream 
+  , retrieveOrMakeTransformedStream
+    -- * Utilities
+  , fileDependency
+  , updateIf
+  , oldestUnit
     -- * Re-Exports
   , UTCTime
   )
@@ -77,6 +81,8 @@ import qualified Knit.Effect.Logger            as K
 import qualified Knit.Utilities.Streamly       as KStreamly
 
 import qualified Control.Monad.Catch.Pure      as Exceptions
+import qualified Control.Monad.Except          as X
+import qualified Control.Exception as EX
 
 import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
@@ -89,6 +95,8 @@ import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
 --import qualified Streamly.Internal.Prelude     as Streamly
 
+import qualified System.Directory as System
+import qualified System.IO.Error as SE
 
 -- | type used by the AtomicCache for in-memory storage.
 -- type CacheData = Streamly.Array.Array Word.Word8
@@ -377,3 +385,45 @@ retrieveOrMakeTransformedStream toSerializable fromSerializable k cachedDeps toM
   $ fmap (C.wctMapAction $ Streamly.map fromSerializable)
   $ retrieveOrMakeStream k cachedDeps (Streamly.map toSerializable . toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
+
+
+-- | Create a cached (), (@ActionWithCacheTime r ()@) to use as a dependency from a FilePath.
+-- If the file does not exist, the cache time will be Nothing, which will cause anything
+-- using this as a dependency to rebuild.
+-- This is intended for use when some function should be re-run when when some file,
+-- presumably a side-effect of that function, is older than some dependency.
+fileDependency :: P.Member (P.Embed IO) r
+               => FilePath
+               -> P.Sem r (ActionWithCacheTime r ())
+fileDependency fp = do
+  modTimeE <- P.embed $ EX.tryJust (X.guard . SE.isDoesNotExistError) $ System.getModificationTime fp
+  let modTimeM = case modTimeE of
+        Left _ -> Nothing
+        Right modTime -> Just modTime    
+  return $ withCacheTime modTimeM (return ())
+
+-- | Given a time-tagged @a@ and time-tagged @b@ and an effectful function
+-- producing @b@ from @a@, return the given @b@ or run the function with the
+-- given @a@, depending on the time-stamps of the given @a@ and @b@.
+-- That is, if the given @b@ is newer than the given @a@, return it,
+-- otherwise run the function to produce a new b.
+-- E.g., can be used along with @fileDependency@ above to run a function
+-- only when the given file is older than some given input dependency.
+updateIf :: P.Member (P.Embed IO) r
+         => ActionWithCacheTime r b
+         -> ActionWithCacheTime r a
+         -> (a -> P.Sem r b)
+         -> P.Sem r (ActionWithCacheTime r b)
+updateIf cur deps update = if C.cacheTime cur >= C.cacheTime deps then return cur else updatedAWCT where
+  updatedAWCT = do
+    updatedB <- ignoreCacheTime deps >>= update
+    nowCT <- P.embed $ Time.getCurrentTime
+    return $ withCacheTime (Just nowCT) (return updatedB)
+
+
+-- | Utility for taking a set of time-tagged items and producing a single time-tagged unit.
+-- Useful if you wish to run a function (using, e.g., @updateIf@) when any of a set of things is
+-- too old an requires updating.
+oldestUnit :: (Foldable f, Functor f, Applicative m) => f (WithCacheTime m w) -> WithCacheTime m ()
+oldestUnit cts = withCacheTime t (pure ()) where
+  t = minimum $ fmap C.cacheTime cts
