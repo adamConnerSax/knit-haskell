@@ -254,7 +254,7 @@ mapCachedStream :: (Streamly.SerialT KStreamly.StreamlyM a -> Streamly.SerialT K
                 -> StreamWithCacheTime a
                 -> StreamWithCacheTime b
 mapCachedStream f swct = C.withCacheTime (C.cacheTime swct) (f $ C.ignoreCacheTime swct)
-{-# INLINEABLE mapCachedAction #-}
+{-# INLINEABLE mapCachedStream #-}
 
 -- | Use a function from a @Stream StreamlyM a@  to @StreamlyM b@ to map from a stream action to a plain action, then lift into Sem. 
 streamToAction :: (P.Member (P.Embed IO) r
