@@ -48,6 +48,7 @@ module Knit.Report.Cache
     -- * Streamly-Based
     -- ** Dependency Tracking
   , StreamWithCacheTime
+  , mapCachedStream
   , runCachedStream
   , runCachedStreamM
     -- ** Interoperation with non-stream actions
@@ -247,6 +248,13 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> (T.pack $ show k) <
 
 -- | Specify a Streamly Stream as the action in a 'C.WithCacheTime'
 type StreamWithCacheTime a = C.WithCacheTime (Streamly.SerialT KStreamly.StreamlyM) a
+
+-- | Apply a stream transformer to a cached stream 
+mapCachedStream :: (Streamly.SerialT KStreamly.StreamlyM a -> Streamly.SerialT KStreamly.StreamlyM b)
+                -> StreamWithCacheTime a
+                -> StreamWithCacheTime b
+mapCachedStream f swct = C.withCacheTime (C.cacheTime swct) (f $ C.ignoreCacheTime swct)
+{-# INLINEABLE mapCachedAction #-}
 
 -- | Use a function from a @Stream StreamlyM a@  to @StreamlyM b@ to map from a stream action to a plain action, then lift into Sem. 
 streamToAction :: (P.Member (P.Embed IO) r

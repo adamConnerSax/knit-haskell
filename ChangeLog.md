@@ -8,6 +8,7 @@ occur even if the stream was not used. Fixed this by pushing error handling for 
 * Added ```fileDependency```, ```updateIf``` and ```oldestUnit``` to ```Knit.Report.Cache``` in order to facilitate using the 
 cache machinery to manage dependencies that result in file outputs that are not themselves loaded as inputs.  This is useful 
 for a workflow which is intended to keep produced assets data up-to-date.
+* Added ```mapCachedAction``` to ```Knit.Report.Cache``` for applying stream transformations directly to cached streams.
 
 v0.8.0.0
 * BREAKING: moved config arguments to ```knit-html``` and ```knit-htmls``` into a data structure ```KnitConfig```.  This breaks
