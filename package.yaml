@@ -1,5 +1,5 @@
 name: knit-haskell
-version: '0.9.0.0'
+version: '0.10.0.0'
 synopsis: a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description: ! 'knit-haskell is a beginning attempt at bringing some of the benefits
   of

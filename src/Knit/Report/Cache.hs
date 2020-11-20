@@ -88,6 +88,7 @@ import qualified Control.Exception as EX
 import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
 import           Data.Time.Clock                (UTCTime)
+import qualified Data.Word as Word
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
@@ -143,14 +144,15 @@ mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =
      encBytes
 
 -- | Serialize a Streamly stream of Serializable structures to the CacheData type.
-knitSerializeStream :: (sc [a]
+knitSerializeStream :: (sc a
+                       , sc Word.Word64
                        , P.Member (P.Embed IO) r                
                        , P.MemberWithError (P.Error C.CacheError) r
                        , K.LogWithPrefixesLE r
                        )
                        => KS.SerializeDict sc ct
                        -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
-knitSerializeStream = mapSerializationErrorsStreamly . KS.serializeStreamlyViaList --KS.cerealStreamlyDict
+knitSerializeStream = mapSerializationErrorsStreamly . KS.serializeStreamly --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerializeStream #-}
 
 -- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
@@ -235,7 +237,8 @@ storeStream
   , P.MemberWithError (P.Error Exceptions.SomeException) r
   , K.LogWithPrefixesLE r
   , Show k
-  , sc [a]
+  , sc a
+  , sc Word.Word64
   )
   => k                            -- ^ Key
   -> Streamly.SerialT KStreamly.StreamlyM a -- ^ Streamly stream to store
@@ -322,7 +325,9 @@ retrieveStream
   , K.LogWithPrefixesLE r
   , P.MemberWithError (P.Error Exceptions.SomeException) r
   , Show k
-  , sc [a])
+  , sc a
+  , sc Word.Word64
+  )
   => k                                 -- ^ Key
   -> Maybe Time.UTCTime                -- ^ Cached item invalidation time.  Supply @Nothing@ to retrieve regardless of time-stamp.
   -> P.Sem r (StreamWithCacheTime a) -- ^ Time-stamped stream from cache.
@@ -357,7 +362,8 @@ retrieveOrMakeStream
      , K.LogWithPrefixesLE r
      , P.MemberWithError (P.Error Exceptions.SomeException) r
      , Show k
-     , sc [a]
+     , sc a
+     , sc Word.Word64
      )
   => k                                   -- ^ Key 
   -> C.ActionWithCacheTime r b           -- ^ Cached dependencies with time-stamp
@@ -380,7 +386,8 @@ retrieveOrMakeTransformedStream
   , K.LogWithPrefixesLE r
   , P.MemberWithError (P.Error Exceptions.SomeException) r
   , Show k
-  , sc [b]
+  , sc b
+  , sc Word.Word64
   )
   => (a -> b)                            -- ^ Transform @a@ to Serializable @b@
   -> (b -> a)                            -- ^ Transform Serializable @b@ to @a@

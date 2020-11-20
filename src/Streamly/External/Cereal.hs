@@ -12,6 +12,10 @@ module Streamly.External.Cereal
   , decodeStreamArray
   , putStreamOf
   , getStreamOf
+  , byteStringToStreamlyArray
+  , lazyByteStringToStreamlyArray
+  , streamlyArrayToByteString
+  , streamlyArrayToLazyByteString
   )
 where
 
@@ -22,6 +26,7 @@ import qualified Streamly.Internal.Memory.Array as Streamly.Array
 import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
 import qualified Streamly.Internal.Data.Parser.Types as Streamly.Parser
 import qualified Streamly.External.ByteString as Streamly.ByteString
+--import qualified Streamly.External.ByteString.Lazy as Streamly.ByteString.Lazy
 
 import qualified Control.Monad.Catch as Exceptions (MonadThrow(..), MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO)
@@ -127,3 +132,22 @@ decodeStreamArray :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
 decodeStreamArray = decodeStream . Streamly.Array.toStream 
 {-# INLINEABLE decodeStreamArray #-}
 
+
+
+-- | ByteString to Streamly.Array.Array Word8
+byteStringToStreamlyArray :: BS.ByteString -> Streamly.Array.Array Word.Word8
+byteStringToStreamlyArray = Streamly.ByteString.toArray 
+
+-- | Lazy ByteString to Streamly.Array.Array Word8
+lazyByteStringToStreamlyArray :: BL.ByteString -> Streamly.Array.Array Word.Word8
+lazyByteStringToStreamlyArray = Streamly.ByteString.toArray . BL.toStrict
+
+
+-- | streamly array to ByteString
+streamlyArrayToByteString :: Streamly.Array.Array Word.Word8 -> BS.ByteString
+streamlyArrayToByteString = Streamly.ByteString.fromArray
+
+
+-- | streamly array to ByteString
+streamlyArrayToLazyByteString :: Streamly.Array.Array Word.Word8 -> BL.ByteString
+streamlyArrayToLazyByteString = BL.fromStrict .  Streamly.ByteString.fromArray
