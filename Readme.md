@@ -3,6 +3,7 @@
 [![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
+[[![Actions Status][github-actions-badge]]][github-actions]
 
 ## Breaking Changes
 To move from v0.7.x.x to v0.8.x.x requires a change in how configuration parameters given to ```knit-html``` and ```knit-htmls``` are 
@@ -292,3 +293,5 @@ But support could be added for other output types if hvega input is not required
 [hackage-badge]: <https://img.shields.io/hackage/v/knit-haskell.svg>
 [hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/knit-haskell.svg>
 [hackage-deps]: <http://packdeps.haskellers.com/feed?needle=knit-haskell>
+[github-actions]: <https://github.com/adamConnerSax/knit-haskell/actions>
+[github-actions-badge]: <https://github.com/adamConnerSax/knit-haskell/workflows/CI/badge.svg>

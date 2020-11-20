@@ -17,6 +17,8 @@ import qualified Knit.Effect.AtomicCache as Knit
 
 import qualified Data.Store as Store
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Builder as BB
 
 import qualified Streamly.Prelude as Streamly
 
@@ -34,11 +36,15 @@ peekExceptionToSerializationError (Store.PeekException offset msg) =
   Knit.SerializationError $ "Store decoding error: offset=" <> (T.pack $ show offset) <> " bytes; msg=" <> msg
 
 -- custom serializer
+-- This has issues! the toStrict in parseOne and the non-handling of exceptions in parseOne.  But as an example, maybe?
 storeByteStreamDict :: Knit.SerializeDict Store.Store BS.ByteString
 storeByteStreamDict =
   Knit.SerializeDict
-  Store.encode
-  (either (Left . peekExceptionToSerializationError) Right . Store.decode)
+  (BB.byteString . Store.encode)
+  (either (Left . peekExceptionToSerializationError) Right . Store.decode . BL.toStrict)
+  (\bl -> let (bytes, a) = Store.decodeExPortionWith Store.peek (BL.toStrict bl) in Right (a, BL.drop (fromIntegral bytes) bl)) -- this can throw? Oy.
+  (BL.toStrict . BB.toLazyByteString)
+  BL.fromStrict
   (fromIntegral . BS.length)
 
 -- type-alias to simplify constraints below

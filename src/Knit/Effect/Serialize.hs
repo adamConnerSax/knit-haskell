@@ -117,7 +117,7 @@ data SerializeDict c ct =
   , decodeOne :: forall a. c a => BL.ByteString -> Either SerializationError a 
   , parseOne :: forall a. c a => BL.ByteString -> Either SerializationError (a, BL.ByteString)  
   , builderToCacheType :: BB.Builder -> ct
-  , cacheTypeByteString :: ct -> BL.ByteString
+  , cacheTypeToLazyByteString :: ct -> BL.ByteString
   , cacheTypeBytes :: ct -> Int64
 --  , encBytes :: BL.ByteString -> Int64
   }
