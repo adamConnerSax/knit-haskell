@@ -75,6 +75,7 @@ import qualified Polysemy.Reader               as PR
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString.Builder       as BB
 import           Data.Int (Int64)
+import           Data.Kind (Type, Constraint)
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
@@ -111,16 +112,32 @@ This should be straightforward to write for any serializer, and is all that's re
 a non-default serializer as long as it serializes to @ByteStream@
 (or, less likely, @Streamly.Memory.Array.Array@)
 -}
-data SerializeDict c ct =
+{-
+data SerializeDict c ct bldr bytes =
   SerializeDict
-  { encodeOne :: forall a. c a => a -> BB.Builder
-  , decodeOne :: forall a. c a => BL.ByteString -> Either SerializationError a 
-  , parseOne :: forall a. c a => BL.ByteString -> Either SerializationError (a, BL.ByteString)  
-  , builderToCacheType :: BB.Builder -> ct
-  , cacheTypeToLazyByteString :: ct -> BL.ByteString
+  { encodeOne :: forall a. (c a, Monoid bldr) => a -> bldr
+  , decodeOne :: forall a. c a => bytes -> Either SerializationError a 
+  , parseOne :: forall a. c a => bytes -> Either SerializationError (a, bytes)  
+  , builderToCacheType :: bldr -> ct
+  , cacheTypeToLazyByteString :: ct -> bytes
   , cacheTypeBytes :: ct -> Int64
+  , zeroBytes :: bytes -> Bool
 --  , encBytes :: BL.ByteString -> Int64
   }
+-}
+
+data SerializeDict (c :: Type -> Constraint) (ct :: Type) where
+  SerializeDict :: forall c ct bldr bytes. (Monoid bldr, c Word.Word64)
+                => (forall a. c a => a -> bldr) -- ^ encode a into a builder
+                -> (forall a. c a => bytes -> Either SerializationError a) -- ^ decode all bytes into a
+                -> (forall a. c a => bytes -> Either SerializationError (a, bytes)) -- ^ decode some bytes into a, returning remainder
+                -> (bldr -> ct) -- ^ turn builder into the type stored in the cache
+                -> (ct -> bytes) -- ^ turn the cache type into raw bytes for deserialization
+                -> (ct -> Int64) -- ^ size (in Bytes) of something of the cache type
+                -> (bytes -> Bool) -- ^ test for zero bytes
+                -> SerializeDict c ct
+
+  
 
 -- | Make the dictionary available within effect stacks
 type SerializeEnv c ct = PR.Reader (SerializeDict c ct)
@@ -156,14 +173,14 @@ data Serialize e r a ct where
 serializeOne :: (c a
                 , KLog.LogWithPrefixesLE r
                 , P.MemberWithError (P.Error SerializationError) r)
-             => SerializeDict c ct 
+             => SerializeDict c ct
              -> Serialize SerializationError r a ct
-serializeOne (SerializeDict encOne decOne _ builderToCT ctToByteString ctBytes) =
+serializeOne (SerializeDict encOne decOne _ builderToCT ctToBytes ctBytes _) =
   let enc a = return (builderToCT $ encOne a, a)
       {-# INLINEABLE enc #-}      
       dec x = KLog.wrapPrefix "serializeOne.dec" $ do
         KLog.logLE KLog.Diagnostic "deserializing..."
-        a <- P.fromEither @SerializationError $ decOne $ ctToByteString x -- NB: should check for empty bs in return 
+        a <- P.fromEither @SerializationError $ decOne $ ctToBytes x -- NB: should check for empty bs in return 
         KLog.logLE KLog.Diagnostic "deserializing complete."
         return a
       {-# INLINEABLE dec #-}
@@ -171,8 +188,7 @@ serializeOne (SerializeDict encOne decOne _ builderToCT ctToByteString ctBytes) 
 {-# INLINEABLE serializeOne #-}
 
 
--- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c [a]@--usually
--- true as long as @a@ satisfies @c a@--produce
+-- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c a@, produce
 -- the 'Serialize' record-of-functions to encode/decode @Streamly.SerialT (P.Sem r) a@,
 -- by mapping the stream to a (lazy) list, and encoding that and
 -- decoding as a list and creating the stream from that.
@@ -181,45 +197,60 @@ serializeStreamly ::
   , KLog.LogWithPrefixesLE r
   , P.Member (P.Embed IO) r
   , c a
-  , c Word.Word64)
+{-  , c Word.Word64-})
   => SerializeDict c ct
   -> Serialize SerializationError r (Streamly.SerialT K.StreamlyM a) ct 
-serializeStreamly sdict@(SerializeDict encOne _ parse builderToCT ctToByteString bytes) =
+serializeStreamly sdict@(SerializeDict encOne _ parseOne builderToCT ctToBytes bytes _) =
   let enc s =   KLog.wrapPrefix "serializeStreamly.encode" $ do
         KLog.logLE KLog.Diagnostic $ "Encoding and buffering..."
         let bufferF = fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write        
-        ((l, encodedB), buffered) <- K.streamlyToKnit $ Streamly.fold (Streamly.Fold.tee (Streamly.Fold.tee Streamly.Fold.length (streamlySerializeF sdict)) bufferF) s
+        (encodedCT, buffered) <- K.streamlyToKnit $ Streamly.fold (Streamly.Fold.tee (streamlySerializeF sdict) bufferF) s
         KLog.logLE KLog.Diagnostic $ "Encoding and buffering complete."
-        return (builderToCT (encOne (fromIntegral @_ @Word.Word64 l) <> encodedB), buffered)
+        return (encodedCT, buffered)
       {-# INLINEABLE enc #-}
-      dec arr = KLog.wrapPrefix "serializeStreamly.decode" $ do
-        (l, bs) <- case parse @Word.Word64 (ctToByteString arr) of
+      dec arr = KLog.wrapPrefix "serializeStreamly.decode" $ streamlyDeserialize sdict arr
+{-      
+        (l, bs) <- case parseOne @Word.Word64 (ctToBytes arr) of
           Left err -> P.throw err
           Right (l, bs) -> return (l, bs)        
         KLog.logLE KLog.Diagnostic $ "creating deserialization stream for " <> (T.pack $ show l) <> " items."
         return $ streamlyDeserialize sdict bs
       {-# INLINEABLE dec #-}
+-}
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamly #-}
 
-streamlySerializeF :: forall m c a ct.(Monad m, c a) => SerializeDict c ct -> Streamly.Fold.Fold m a BB.Builder
-streamlySerializeF sdict = Streamly.Fold.Fold step initial extract where
-  step :: BB.Builder -> a -> m BB.Builder
-  step b !a = return $ b <> (encodeOne sdict) a
-  initial = return mempty
-  extract = return . id
+streamlySerializeF :: forall m c a ct.(Monad m, c a)
+                   => SerializeDict c ct
+                   -> Streamly.Fold.Fold m a ct
+streamlySerializeF (SerializeDict encodeOne _ _ bldrToCT _ _ _) = Streamly.Fold.Fold step initial extract where
+--  step :: (Int, bldr) -> a -> m (Int, bldr)
+  step (n, b) a = return $ (n + 1, b <> encodeOne a)
+  initial = return (0, mempty)
+  extract (n, bldr) = return $ bldrToCT $ encodeOne (fromIntegral @_ @Word.Word64 n) <> bldr 
 
-streamlyDeserialize :: forall a c ct.c a => SerializeDict c ct -> BL.ByteString -> Streamly.SerialT K.StreamlyM a
-streamlyDeserialize sdict bs = do
-  let unfoldOne :: BL.ByteString -> K.StreamlyM (Maybe (a, BL.ByteString))
+streamlyDeserialize :: forall a c ct r. (KLog.LogWithPrefixesLE r
+                                        , P.Member (P.Error SerializationError) r
+                                        , c a
+                                        )
+                    => SerializeDict c ct
+                    -> ct
+                    -> P.Sem r (Streamly.SerialT K.StreamlyM a)
+streamlyDeserialize (SerializeDict _ _ parseOne _ ctToBytes _ zeroBytes) ct = do
+  (l, bs) <- case parseOne @Word.Word64 (ctToBytes ct) of
+    Left err -> P.throw err
+    Right (l, bs) -> return (l, bs)
+  let --unfoldOne :: bytes -> K.StreamlyM (Maybe (a, bytes))
       unfoldOne x = do
-        if BL.null x
+        if zeroBytes x
           then return Nothing
-          else case (parseOne sdict) x of
+          else case parseOne x of
                  Left err -> MonadIO.liftIO $ X.throwIO err
                  Right (a, bs') -> return $ Just (a, bs') 
-  Streamly.yieldM (K.logStreamly KLog.Diagnostic "deserializing stream")
-  Streamly.unfoldrM unfoldOne bs 
+  return $ do 
+    Streamly.yieldM (K.logStreamly KLog.Diagnostic "deserializing stream")
+    Streamly.unfoldrM unfoldOne bs
+
 
 handleEitherInStream :: Either SerializationError (Streamly.SerialT K.StreamlyM a) -> Streamly.SerialT K.StreamlyM a
 handleEitherInStream e = do
@@ -245,7 +276,8 @@ cerealStreamlyDict =
   (\bs -> mapLeft (SerializationError . T.pack) $ S.runGetLazyState S.get bs)
   (Streamly.Cereal.lazyByteStringToStreamlyArray . BB.toLazyByteString)
   Streamly.Cereal.streamlyArrayToLazyByteString
-  (fromIntegral . Streamly.Array.length)  
+  (fromIntegral . Streamly.Array.length)
+  BL.null
 {-# INLINEABLE cerealStreamlyDict #-}
 
 -- | Map the left side of an Either

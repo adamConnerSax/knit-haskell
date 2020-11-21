@@ -123,11 +123,12 @@ mapSerializationErrorsOne (KS.Serialize encode decode encBytes) =
 -- | Serialize a Serializable structure to the CacheData type.
 knitSerialize
   :: ( sc a
+     , Monoid bldr
      , P.Member (P.Embed IO) r
      , K.LogWithPrefixesLE r
      , P.MemberWithError (P.Error C.CacheError) r
      )
-  => KS.SerializeDict sc ct
+  => KS.SerializeDict sc ct bldr bytes
   -> KS.Serialize C.CacheError r a ct
 knitSerialize = mapSerializationErrorsOne . KS.serializeOne --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerialize #-}
@@ -145,22 +146,24 @@ mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =
 
 -- | Serialize a Streamly stream of Serializable structures to the CacheData type.
 knitSerializeStream :: (sc a
+                       , Monoid bldr
                        , sc Word.Word64
                        , P.Member (P.Embed IO) r                
                        , P.MemberWithError (P.Error C.CacheError) r
                        , K.LogWithPrefixesLE r
                        )
-                       => KS.SerializeDict sc ct
+                       => KS.SerializeDict sc ct bldr bytes
                        -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
 knitSerializeStream = mapSerializationErrorsStreamly . KS.serializeStreamly --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerializeStream #-}
 
 -- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
 store
-  :: forall sc ct k r a.
-     ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc ct k bldr bytes r a.
+     ( P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
      , Show k
+     , Monoid bldr
      , sc a
      )
   => k -- ^ Key
@@ -174,8 +177,8 @@ store k a = K.wrapPrefix ("Knit.store (key=" <> (T.pack $ show k) <> ")") $ do
 
 -- | Retrieve an @a@ from the store at key. Throw if not found or I/O Error.
 retrieve
-  :: forall sc ct k r a.
-  (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc ct k bldr bytes r a.
+  (P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   ,  K.LogWithPrefixesLE r
   , Show k
   , sc a)
@@ -189,8 +192,8 @@ retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> (T.pack $ show k) <> ")") 
 -- | Retrieve an a from the store at key k.
 -- If retrieve fails then perform the action and store the resulting a at key k.
 retrieveOrMake
-  :: forall sc ct k r a b.
-  ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc ct k bldr bytes r a b.
+  ( P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
   , Show k
   , sc a     
@@ -211,8 +214,8 @@ retrieveOrMake k cachedDeps toMake =
 -- caching something without a 'Serialize' instance but which is isomorphic to
 -- something with one.
 retrieveOrMakeTransformed
-  :: forall sc ct k r a b c.
-  ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc ct k r bldr bytes a b c.
+  ( P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
   , Show k
   , sc b
@@ -232,8 +235,8 @@ retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
 --
 -- | Store a Streamly stream of @a@ at key k. Throw @PandocIOError@ on 'IOError'.
 storeStream
-  :: forall sc ct k r a.
-  ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc ct k bldr bytes r a.
+  ( P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , P.MemberWithError (P.Error Exceptions.SomeException) r
   , K.LogWithPrefixesLE r
   , Show k
@@ -320,8 +323,8 @@ actionWCT2StreamWCT x = K.wrapPrefix "actionWCT2StreamWCT" $ x >>= \wct -> fmap 
 -- NB: This will deserialize when the return value is bound so this is somewhat less efficient as a
 -- dependency.  As an alternative, use versions 
 retrieveStream
-  :: forall sc k ct r a.
-  (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc k ct bldr bytes r a.
+  (P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
   , P.MemberWithError (P.Error Exceptions.SomeException) r
   , Show k
@@ -381,8 +384,8 @@ retrieveOrMakeStream k cachedDeps toMake = K.wrapPrefix ("Cache.retrieveOrMakeSt
 -- caching something without a 'Serialize' instance but which is isomorphic to
 -- something with one.
 retrieveOrMakeTransformedStream
-  :: forall sc ct k r a b c.
-  ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
+  :: forall sc ct k bldr bytes r a b c.
+  ( P.Members '[KS.SerializeEnv sc ct bldr bytes, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
   , P.MemberWithError (P.Error Exceptions.SomeException) r
   , Show k
