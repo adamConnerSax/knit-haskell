@@ -36,15 +36,19 @@ peekExceptionToSerializationError (Store.PeekException offset msg) =
   Knit.SerializationError $ "Store decoding error: offset=" <> (T.pack $ show offset) <> " bytes; msg=" <> msg
 
 -- custom serializer
--- This has issues! the toStrict in parseOne and the non-handling of exceptions in parseOne.  But as an example, maybe?
+-- This has issues! the non-handling of exceptions in parseOne.  But as an example, maybe?
 storeByteStreamDict :: Knit.SerializeDict Store.Store BS.ByteString
 storeByteStreamDict =
   Knit.SerializeDict
   (BB.byteString . Store.encode)
-  (either (Left . peekExceptionToSerializationError) Right . Store.decode . BL.toStrict)
-  (\bl -> let (bytes, a) = Store.decodeExPortionWith Store.peek (BL.toStrict bl) in Right (a, BL.drop (fromIntegral bytes) bl)) -- this can throw? Oy.
+  (\bs ->
+     let (numBytes, a) = Store.decodeExPortionWith Store.peek bs -- this can throw? Oy.
+         newBS = BS.drop (fromIntegral numBytes) bs
+         bOrd = if BS.null newBS then Knit.Done else Knit.Bytes newBS
+     in Right (a, bOrd) 
+  )
   (BL.toStrict . BB.toLazyByteString)
-  BL.fromStrict
+  id
   (fromIntegral . BS.length)
 
 -- type-alias to simplify constraints below
