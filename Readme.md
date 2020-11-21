@@ -1,6 +1,5 @@
 # knit-haskell v0.10.0.0
 
-[![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
 [[![Actions Status][github-actions-badge]]][github-actions]
