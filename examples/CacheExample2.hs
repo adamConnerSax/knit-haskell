@@ -24,11 +24,14 @@ import qualified Streamly.Prelude as Streamly
 
 import qualified Control.Concurrent            as CC
 import qualified Control.Monad.IO.Class as MonadIO
+import qualified Control.Exception             as X
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
 import qualified Graphics.Vega.VegaLite        as V
 import qualified Plots                         as P
+
+import System.IO.Unsafe (unsafePerformIO)
 
 -- map Store exception to Knit.SerializationException
 peekExceptionToSerializationError :: Store.PeekException -> Knit.SerializationError
@@ -36,16 +39,15 @@ peekExceptionToSerializationError (Store.PeekException offset msg) =
   Knit.SerializationError $ "Store decoding error: offset=" <> (T.pack $ show offset) <> " bytes; msg=" <> msg
 
 -- custom serializer
--- This has issues! the non-handling of exceptions in parseOne.  But as an example, maybe?
 storeByteStreamDict :: Knit.SerializeDict Store.Store BS.ByteString
 storeByteStreamDict =
   Knit.SerializeDict
   (BB.byteString . Store.encode)
   (\bs ->
-     let (numBytes, a) = Store.decodeExPortionWith Store.peek bs -- this can throw? Oy.
-         newBS = BS.drop (fromIntegral numBytes) bs
-         bOrd = if BS.null newBS then Knit.Done else Knit.Bytes newBS
-     in Right (a, bOrd) 
+     let resE = unsafePerformIO $ X.tryJust (Just . peekExceptionToSerializationError) $ Store.decodeIOPortionWith Store.peek bs         
+         newBS n = BS.drop (fromIntegral n) bs
+         bOrd n = let y = newBS n in if BS.null y then Knit.Done else Knit.Bytes y
+     in fmap (\(offset, a) ->  (a, bOrd offset)) resE
   )
   (BL.toStrict . BB.toLazyByteString)
   id
