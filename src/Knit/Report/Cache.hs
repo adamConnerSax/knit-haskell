@@ -82,7 +82,7 @@ import qualified Knit.Effect.Logger            as K
 import qualified Knit.Utilities.Streamly       as KStreamly
 
 import qualified Control.Monad.Catch.Pure      as Exceptions
-import qualified Control.Monad.Except          as X
+--import qualified Control.Monad.Except          as X
 import qualified Control.Exception as EX
 
 import qualified Data.Text                     as T
@@ -94,7 +94,6 @@ import qualified Polysemy.Error                as P
 
 import qualified Streamly                      as Streamly
 import qualified Streamly.Prelude              as Streamly
---import qualified Streamly.Internal.Prelude     as Streamly
 
 import qualified System.Directory as System
 import qualified System.IO.Error as SE
@@ -405,7 +404,8 @@ fileDependency :: P.Member (P.Embed IO) r
                => FilePath
                -> P.Sem r (ActionWithCacheTime r ())
 fileDependency fp = do
-  modTimeE <- P.embed $ EX.tryJust (X.guard . SE.isDoesNotExistError) $ System.getModificationTime fp
+  let checkError e = if SE.isDoesNotExistError e then Just () else Nothing
+  modTimeE <- P.embed $ EX.tryJust checkError $ System.getModificationTime fp
   let modTimeM = case modTimeE of
         Left _ -> Nothing
         Right modTime -> Just modTime    

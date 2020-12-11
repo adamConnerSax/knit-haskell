@@ -82,7 +82,6 @@ import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
 
 import qualified Control.Exception as X
-import           Control.Monad (join)
 import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
 
 import qualified Streamly                      as Streamly
@@ -114,19 +113,6 @@ This should be straightforward to write for any serializer, and is all that's re
 a non-default serializer as long as it serializes to @ByteStream@
 (or, less likely, @Streamly.Memory.Array.Array@)
 -}
-{-
-data SerializeDict c ct bldr bytes =
-  SerializeDict
-  { encodeOne :: forall a. (c a, Monoid bldr) => a -> bldr
-  , decodeOne :: forall a. c a => bytes -> Either SerializationError a 
-  , parseOne :: forall a. c a => bytes -> Either SerializationError (a, bytes)  
-  , builderToCacheType :: bldr -> ct
-  , cacheTypeToLazyByteString :: ct -> bytes
-  , cacheTypeBytes :: ct -> Int64
-  , zeroBytes :: bytes -> Bool
---  , encBytes :: BL.ByteString -> Int64
-  }
--}
 
 data BytesOrDone bytes = Bytes bytes | Done
 
@@ -138,6 +124,14 @@ data SerializeDict (c :: Type -> Constraint) (ct :: Type) where
                 -> (ct -> bytes) -- ^ turn the cache type into bytes for deserialization
                 -> (ct -> Int64) -- ^ size (in Bytes) of something of the cache type
                 -> SerializeDict c ct
+
+parseAll :: (bytes -> Either SerializationError (a, BytesOrDone bytes))
+         -> bytes
+         -> Either SerializationError a
+parseAll parseOne b = parseOne b >>= oneToAll where
+  oneToAll (a, bOrD) = case bOrD of
+    Done -> Right a
+    Bytes _ -> Left $ SerializationError "Bytes remaining after decode in serializeOne.decode)"
 
 -- | Make the dictionary available within effect stacks
 type SerializeEnv c ct = PR.Reader (SerializeDict c ct)
@@ -180,10 +174,7 @@ serializeOne (SerializeDict encOne parseOne builderToCT ctToBytes ctBytes) =
       {-# INLINEABLE enc #-}      
       dec x = KLog.wrapPrefix "serializeOne.dec" $ do
         KLog.logLE KLog.Diagnostic "deserializing..."
-        let parseToDec (a, bOrD) = case bOrD of
-              Done -> Right a
-              Bytes _ -> Left $ SerializationError "Bytes remaining after decode in serializeOne.decode)"
-        a <- P.fromEither @SerializationError $ join $ fmap parseToDec $ parseOne $ ctToBytes x -- NB: should check for empty bs in return 
+        a <- P.fromEither @SerializationError $ parseAll parseOne $ ctToBytes x -- NB: should check for empty bs in return 
         KLog.logLE KLog.Diagnostic "deserializing complete."
         return a
       {-# INLINEABLE dec #-}
