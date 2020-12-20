@@ -60,6 +60,7 @@ module Knit.Report
   , module Knit.Effect.Logger
   , module Knit.Effect.UnusedId
   , module Knit.Effect.Serialize
+  , module Knit.Effect.WorkQueue
   , module Polysemy.Async
   , module Knit.Report.Cache
   )
@@ -107,6 +108,7 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 )
 import           Knit.Effect.UnusedId           ( getNextUnusedId )
 import           Knit.Effect.Serialize          (DefaultCacheData, DefaultSerializer)
+import           Knit.Effect.WorkQueue          (Job(..), simpleJob, asyncWithQueue, sequenceConcurrentlyWithQueue)
 import           Knit.Report.Input.Table.Colonnade
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )

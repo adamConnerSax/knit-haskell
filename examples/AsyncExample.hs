@@ -34,7 +34,8 @@ main = do
                    , K.logIf = K.logAll
                    , K.pandocWriterConfig = pandocWriterConfig
                    }
-  resE <- K.knitHtml knitConfig makeDoc
+  knitConfig' <-  K.setKnitCapabilities (Just 4) knitConfig
+  resE <- K.knitHtml knitConfig' makeDoc
   
   case resE of
     Right htmlAsText ->
@@ -63,7 +64,16 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
     Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
     Just results -> do
       K.logLE K.Info "Concurrent calculations succeeded."
-      K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results) 
+      K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
+  K.logLE K.Info "Launching some concurrent long-running computations, this time using the WorkQueue"
+  K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once first has finished."
+  asyncQResultsM <- sequence <$> (K.sequenceConcurrentlyWithQueue $ fmap K.simpleJob [delay 800 1, delay 1000 2, delay 1200 3])
+  case asyncQResultsM of
+    Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
+    Just results -> do
+      K.logLE K.Info "Concurrent calculations succeeded."
+      K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
+           
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis

@@ -29,6 +29,7 @@ module Knit.Report.EffectStack
     -- * Configuraiton
     KnitConfig(..)
   , defaultKnitConfig
+  , setKnitCapabilities
 
     -- * Knit documents
   , knitHtml
@@ -54,6 +55,7 @@ import           Data.Maybe (fromMaybe)
 import qualified Data.Text                     as T
 --import qualified Data.Serialize                as S
 import qualified Data.Text.Lazy                as TL
+import qualified GHC.Conc                      as Conc
 import qualified Polysemy                      as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
@@ -72,6 +74,7 @@ import qualified Knit.Effect.Logger            as KLog
 import qualified Knit.Effect.UnusedId          as KUI
 import qualified Knit.Effect.AtomicCache       as KC
 import qualified Knit.Effect.Serialize         as KS
+import qualified Knit.Effect.WorkQueue         as KW
 
 {- |
 Parameters for knitting. If possible, create this via, e.g., 
@@ -99,6 +102,7 @@ values in-memory, you can set these fields accordingly.
 data KnitConfig sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
                                      , logIf :: KLog.LogSeverity -> Bool
                                      , pandocWriterConfig :: KO.PandocWriterConfig
+                                     , numCapabilities :: Int
                                      , serializeDict :: KS.SerializeDict sc ct
                                      , persistCache :: forall r. (P.Member (P.Embed IO) r
                                                                  , P.MemberWithError (PE.Error KC.CacheError) r
@@ -116,9 +120,19 @@ defaultKnitConfig cacheDirM =
      (Just "knit-haskell")
      KLog.nonDiagnostic
      (KO.PandocWriterConfig Nothing M.empty id)
+     2
      KS.cerealStreamlyDict
      (KC.persistStreamlyByteArray (\t -> T.unpack (cacheDir <> "/" <> t)))
 {-# INLINEABLE defaultKnitConfig #-}                               
+
+-- | Query available capabilities and set WorkQueue to minimum of 1 and found - 2.
+-- The "-2" here is 1 for main thread and 1 for GC. More or less.
+setKnitCapabilities :: Maybe Int -> KnitConfig s cd k -> IO (KnitConfig s cd k)
+setKnitCapabilities mNC  kc = do
+  ncSys <- Conc.getNumCapabilities
+  let nc = fromMaybe ncSys mNC
+  let wqnc = max 1 (nc - 2)
+  return $ kc { numCapabilities = wqnc }
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify @m@.
@@ -169,7 +183,8 @@ type KnitEffects r = (KPM.PandocEffects r
                      , P.Members [ KUI.UnusedId
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
-                                 , P.Async
+                                 , KW.WorkQueue
+                                 , P.Async                                 
                                  , PE.Error KC.CacheError
                                  , PE.Error Exceptions.SomeException
                                  , PE.Error PA.PandocError
@@ -199,6 +214,7 @@ type KnitEffectStack c ct k m
      , KC.Cache k ct
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
+     , KW.WorkQueue
      , P.Async
      , PE.Error IOError
      , PE.Error KC.CacheError
@@ -215,6 +231,7 @@ type KnitEffectStack c ct k m
      , KC.Cache k ct
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
+     , KW.WorkQueue
      , P.Async
      , PE.Error IOError
      , PE.Error KC.CacheError
@@ -248,6 +265,7 @@ consumeKnitEffectStack config =
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+  . KW.runWorkQueue (numCapabilities config)
   . KLog.filteredLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
@@ -271,6 +289,7 @@ consumeKnitEffectStack config =
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+  . KW.runWorkQueue (numCapabilities config)
   . KLog.filteredLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
