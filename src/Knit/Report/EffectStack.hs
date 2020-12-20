@@ -53,6 +53,7 @@ import qualified Control.Monad.Catch as Exceptions (SomeException, displayExcept
 import qualified Data.Map                      as M
 import           Data.Maybe (fromMaybe)
 import qualified Data.Text                     as T
+import Numeric.Natural (Natural)
 --import qualified Data.Serialize                as S
 import qualified Data.Text.Lazy                as TL
 import qualified GHC.Conc                      as Conc
@@ -102,7 +103,7 @@ values in-memory, you can set these fields accordingly.
 data KnitConfig sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
                                      , logIf :: KLog.LogSeverity -> Bool
                                      , pandocWriterConfig :: KO.PandocWriterConfig
-                                     , numCapabilities :: Int
+                                     , numCapabilities :: Natural
                                      , serializeDict :: KS.SerializeDict sc ct
                                      , persistCache :: forall r. (P.Member (P.Embed IO) r
                                                                  , P.MemberWithError (PE.Error KC.CacheError) r
@@ -132,7 +133,7 @@ setKnitCapabilities mNC  kc = do
   ncSys <- Conc.getNumCapabilities
   let nc = fromMaybe ncSys mNC
   let wqnc = max 1 (nc - 2)
-  return $ kc { numCapabilities = wqnc }
+  return $ kc { numCapabilities = fromIntegral wqnc } -- fromIntegral can throw an underflowError, though not here since the number is bounded below by 1
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify @m@.

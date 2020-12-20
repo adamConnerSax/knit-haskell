@@ -59,21 +59,30 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
   K.addMarkDown "## Some example latex"
   K.addLatex "Overused favorite equation: $e^{i\\pi} + 1 = 0$"
   K.logLE K.Info "Launching some concurrent long-running computations..."
-  asyncResultsM <- sequence <$> K.sequenceConcurrently [delay 800 1, delay 1000 2, delay 1200 3]
+  asyncResultsM <- sequence <$> K.sequenceConcurrently [delay 2000 1, delay 2000 2, delay 2000 3]
   case asyncResultsM of
     Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
     Just results -> do
       K.logLE K.Info "Concurrent calculations succeeded."
       K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
   K.logLE K.Info "Launching some concurrent long-running computations, this time using the WorkQueue"
-  K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once first has finished."
-  asyncQResultsM <- sequence <$> (K.sequenceConcurrentlyWithQueue $ fmap K.simpleJob [delay 800 1, delay 1000 2, delay 1200 3])
+  K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once another has finished."
+  asyncQResultsM <- sequence <$> (K.queuedSequenceConcurrently $ fmap (K.mkQueueableJob 1) [delay 2000 1, delay 4000 2, delay 1000 3])
   case asyncQResultsM of
     Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
     Just results -> do
       K.logLE K.Info "Concurrent calculations succeeded."
       K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
-           
+{-  K.logLE K.Info "This time one will throw, should release capabilties anyway."
+  K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once another has finished."
+  asyncQResultsM <- sequence <$> (K.queuedSequenceConcurrently $ fmap (K.mkQueueableJob 1) [delayAndThrow 2000 1, delay 4000 2, delay 1000 3])
+  case asyncQResultsM of
+    Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
+    Just results -> do
+      K.logLE K.Info "Concurrent calculations succeeded."
+      K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
+-}           
+        
   K.logLE K.Info "adding a visualization..."
   K.addMarkDown "## An example hvega visualization"
   _ <- K.addHvega Nothing (Just "From the cars data-set") exampleVis
@@ -94,8 +103,18 @@ delay :: K.KnitEffects effs => Int -> Int -> K.Sem effs Int
 delay msDelay val = K.wrapPrefix ("delay") $ do
   K.logLE K.Info $ "delaying " <> (T.pack $ show val) <> " for " <> (T.pack $ show msDelay) <> " ms"
   K.liftKnit (threadDelay $ 1000 * msDelay)
-  K.logLE K.Info "done"
+  K.logLE K.Info $ "done (" <> (T.pack $ show val) <> ")"  
   return val
+
+-- long running computation
+delayAndThrow :: K.KnitEffects effs => Int -> Int -> K.Sem effs Int
+delayAndThrow msDelayBefore val = K.wrapPrefix ("delay") $ do
+  K.logLE K.Info $ "delaying " <> (T.pack $ show val) <> " for " <> (T.pack $ show msDelayBefore) <> " ms"
+  K.liftKnit (threadDelay $ 1000 * msDelayBefore)
+  K.knitError $ "Exception in " <> (T.pack $ show val)  
+  K.logLE K.Info $ "done (" <> (T.pack $ show val) <> ")"  
+  return val
+
   
 
 -- example using HVega  

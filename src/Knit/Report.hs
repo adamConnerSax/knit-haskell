@@ -108,7 +108,11 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 )
 import           Knit.Effect.UnusedId           ( getNextUnusedId )
 import           Knit.Effect.Serialize          (DefaultCacheData, DefaultSerializer)
-import           Knit.Effect.WorkQueue          (Job(..), simpleJob, asyncWithQueue, sequenceConcurrentlyWithQueue)
+import           Knit.Effect.WorkQueue          (mkQueueableJob
+                                                , queuedAsync
+                                                , queuedAwait
+                                                , queuedSequenceConcurrently
+                                                , simpleQueuedSequenceConcurrently)
 import           Knit.Report.Input.Table.Colonnade
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )
