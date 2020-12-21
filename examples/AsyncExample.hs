@@ -67,7 +67,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
       K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
   K.logLE K.Info "Launching some concurrent long-running computations, this time using the WorkQueue"
   K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once another has finished."
-  asyncQResultsM <- sequence <$> (K.queuedSequenceConcurrently $ fmap (K.mkQueueableJob 1) [delay 2000 1, delay 4000 2, delay 1000 3])
+  asyncQResultsM <- sequence <$> (K.queuedSequenceConcurrently $ fmap (K.mkAsyncable $ Just 1) [delay 2000 1, delay 4000 2, delay 1000 3])
   case asyncQResultsM of
     Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
     Just results -> do

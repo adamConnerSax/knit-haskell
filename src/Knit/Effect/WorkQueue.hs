@@ -1,10 +1,11 @@
-{-# LANGUAGE FlexibleContexts              #-}
-{-# LANGUAGE OverloadedStrings             #-}
+{-# LANGUAGE BangPatterns                  #-}
 {-# LANGUAGE DataKinds                     #-}
-{-# LANGUAGE PolyKinds                     #-}
+{-# LANGUAGE FlexibleContexts              #-}
 {-# LANGUAGE GADTs                         #-}
-{-# LANGUAGE TypeOperators                 #-}
+{-# LANGUAGE OverloadedStrings             #-}
+{-# LANGUAGE PolyKinds                     #-}
 {-# LANGUAGE ScopedTypeVariables           #-}
+{-# LANGUAGE TypeOperators                 #-}
 {-# LANGUAGE TypeApplications              #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-|
@@ -19,20 +20,16 @@ Stability   : experimental
 module Knit.Effect.WorkQueue
   (
 {-
-    -- * Job Type
-    Job(..)
-  , simpleJob
-    
     -- * Effect
   ,-} WorkQueue
 
     -- * actions
-  , mkQueueableJob  
+  , mkAsyncable
   , queuedAsync
   , queuedAwait
---  , asyncWithQueue
   , queuedSequenceConcurrently
   , simpleQueuedSequenceConcurrently
+  , unboundedQueuedSequenceConcurrently
   
     -- * interpretations
   , runWorkQueue  
@@ -41,111 +38,104 @@ where
 
 import qualified Control.Concurrent.Async      as Async
 import qualified Control.Concurrent.STM        as STM
-import qualified Data.IORef as IORef
+import Data.Maybe (fromMaybe)
 import Numeric.Natural               (Natural)
 import qualified Polysemy                      as P
 import qualified Polysemy.Async                as PA
 import qualified Polysemy.State          as PS
 
-type WorkQueue = PS.State ((STM.TBQueue (), Natural))
+data WorkQueueState = WorkQueueState { globalQ :: STM.TBQueue (), localCapabilities :: !Natural }
+initialWorkQ :: Natural -> IO WorkQueueState
+initialWorkQ n = do
+  q <- STM.atomically $ STM.newTBQueue n
+  return (WorkQueueState q n)
 
-data Job r a = Job { job :: P.Sem r a, willUse :: Natural }
-data JobResult a = JobResult { jobResult :: Async.Async (Maybe a), used :: Natural }
+locallyUse :: Int -> WorkQueueState -> WorkQueueState
+locallyUse n (WorkQueueState q nc) = if n > 0
+                                     then WorkQueueState q (min 1 (nc - fromIntegral n))
+                                     else WorkQueueState q (min 1 nc)
 
-mkQueueableJob :: (P.Member (P.Embed IO) r, P.Member WorkQueue r) => Natural -> P.Sem r a -> Job r a --P.Sem r a
-mkQueueableJob n action =
-  let queuedAction = do 
-        (q, numCapabilities) <- PS.get
-        let toUse = min n numCapabilities
-        blockingUse q toUse -- _ <- traverse (STM.writeTBQueue q) $ replicate toUse () -- this blocks until there are enough/all are available
-        action
-  in Job queuedAction n
-{-# INLINEABLE mkQueueableJob #-}
+type WorkQueue = PS.State WorkQueueState
 
-queuedAsync :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Job r a -> P.Sem r (JobResult a)
-queuedAsync (Job action n) = do
-  aa <- PA.async action
-  return $ JobResult aa n
+data Asyncable r a = Asyncable { asyncableJob :: P.Sem r (Awaitable a) }
+data Awaitable a = Awaitable { awaitableResult :: Async.Async (Maybe a), capabilitiesReserved :: Int }
+
+-- First argument holds capabilities for this thread once it's running. Supply @Nothing@ and nothing will be
+-- reserved.  Use that for threads which just launch others.
+-- Supply an argument, usually @Just 1@, if the thread will use a full CPU/core while running.
+mkAsyncable :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Maybe Natural -> P.Sem r a -> Asyncable r a 
+mkAsyncable mDesired action = Asyncable $ do
+  WorkQueueState q numCapabilities <- PS.get
+  let desired :: Int = fromMaybe 0 (fromIntegral <$> mDesired)-- 0 here meand this thread runs without reserving a capability.  Used for threads which mostly just spawn others.
+  let toUse  = min desired (fromIntegral numCapabilities)
+  aa <- PA.async $ do
+    blockingUse q toUse
+    PS.modify (locallyUse toUse) -- this is *local* state so only "action" sees this smaller available set of capabilities and what to release
+    action
+  return $ Awaitable aa toUse
+{-# INLINEABLE mkAsyncable #-}
+
+queuedAsync :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Asyncable r a -> P.Sem r (Awaitable a)
+queuedAsync = asyncableJob
 {-# INLINEABLE queuedAsync #-}  
 
-queuedAwait :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => JobResult a -> P.Sem r (Maybe a)
-queuedAwait (JobResult aa n) = do
-  ma <- PA.await aa
-  (q, _) <- PS.get
-  errorThrowingRelease q n -- will throw if Q didn't have enough entries to release
+queuedAwait :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Awaitable a -> P.Sem r (Maybe a)
+queuedAwait (Awaitable aa n) = do
+  (WorkQueueState q _) <- PS.get
+  ma <- PA.await aa -- from aa's viewpoint, there are fewer capabilities
+  errorThrowingRelease q n
   return ma
 {-# INLINEABLE queuedAwait #-}
-
 
 queuedSequenceConcurrently :: (Traversable t
                               , P.Member (P.Embed IO) r
                               , P.Member WorkQueue r
                               , P.Member PA.Async r)
-                           => t (Job r a) -> P.Sem r (t (Maybe a))
+                           => t (Asyncable r a) -> P.Sem r (t (Maybe a))
 queuedSequenceConcurrently jobs = traverse queuedAsync jobs >>= traverse queuedAwait                           
+{-# INLINEABLE queuedSequenceConcurrently #-}
 
 simpleQueuedSequenceConcurrently :: (Traversable t
                                     , P.Member (P.Embed IO) r
                                     , P.Member WorkQueue r
                                     , P.Member PA.Async r)
                                  => t (P.Sem r a) -> P.Sem r (t (Maybe a))
-simpleQueuedSequenceConcurrently = queuedSequenceConcurrently . fmap (mkQueueableJob 1)
-                                    
-blockingUse :: P.Member (P.Embed IO) r => STM.TBQueue () -> Natural -> P.Sem r ()
-blockingUse q n =  fmap (const ()) $ P.embed $ STM.atomically $ traverse (STM.writeTBQueue q) $ replicate (fromIntegral n) () 
+simpleQueuedSequenceConcurrently = queuedSequenceConcurrently . fmap (mkAsyncable (Just 1))
+{-# INLINEABLE simpleQueuedSequenceConcurrently #-}
+
+unboundedQueuedSequenceConcurrently :: (Traversable t
+                                    , P.Member (P.Embed IO) r
+                                    , P.Member WorkQueue r
+                                    , P.Member PA.Async r)
+                                 => t (P.Sem r a) -> P.Sem r (t (Maybe a))
+unboundedQueuedSequenceConcurrently = queuedSequenceConcurrently . fmap (mkAsyncable Nothing)
+{-# INLINEABLE unboundedQueuedSequenceConcurrently #-}
+                                   
+blockingUse :: (P.Member (P.Embed IO) r, P.Member WorkQueue r) => STM.TBQueue () -> Int -> P.Sem r ()
+blockingUse q n =  do
+  fmap (const ()) $ P.embed $ STM.atomically $ traverse (STM.writeTBQueue q) $ replicate n ()
 {-# INLINE blockingUse #-}
 
-blockingRelease :: P.Member (P.Embed IO) r => STM.TBQueue () -> Natural -> P.Sem r ()
-blockingRelease q n =  fmap (const ()) $ P.embed $ STM.atomically $ traverse (\_ -> STM.readTBQueue q) $ replicate (fromIntegral n) () 
+blockingRelease :: P.Member (P.Embed IO) r => STM.TBQueue () -> Int -> P.Sem r ()
+blockingRelease q n =  fmap (const ()) $ P.embed $ STM.atomically $ traverse (\_ -> STM.readTBQueue q) $ replicate n () 
 {-# INLINE blockingRelease #-}
 
-nonBlockingRelease :: P.Member (P.Embed IO) r => STM.TBQueue () -> Natural -> P.Sem r ()
-nonBlockingRelease q n =  fmap (const ()) $ P.embed $ STM.atomically $ traverse (\_ -> STM.tryReadTBQueue q) $ replicate (fromIntegral n) () 
+nonBlockingRelease :: P.Member (P.Embed IO) r => STM.TBQueue () -> Int -> P.Sem r ()
+nonBlockingRelease q n =  fmap (const ()) $ P.embed $ STM.atomically $ traverse (\_ -> STM.tryReadTBQueue q) $ replicate n () 
 {-# INLINE nonBlockingRelease #-}
 
-errorThrowingRelease :: P.Member (P.Embed IO) r => STM.TBQueue () -> Natural -> P.Sem r ()
+errorThrowingRelease :: P.Member (P.Embed IO) r => STM.TBQueue () -> Int -> P.Sem r ()
 errorThrowingRelease q n = fmap (const ()) $ P.embed $ STM.atomically $ do
   queueLength <- STM.lengthTBQueue q
-  if (queueLength < n)
+  if (queueLength < fromIntegral n)
     then error "WorkQueue is trying to release more capabilities than it has reserved."
-    else traverse (\_ -> STM.readTBQueue q) $ replicate (fromIntegral n) () 
+    else traverse (\_ -> STM.readTBQueue q) $ replicate n () 
   
-
-{-
-asyncWithQueue :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Job r a -> P.Sem r (Async.Async (Maybe a))
-asyncWithQueue (Job j n) = do
-  (q, numCapabilities) <- PS.get
---  P.embed $ putStrLn $ "In asyncWithQueue (numCapabilities=" ++ show numCapabilities ++ ")"
---  P.embed $ putStrLn $ "writing () to queue to request use of cores."  
-  capabilitiesToUse <- P.embed $ STM.atomically $ do
---    used <- STM.lengthTBQueue q
-    let toUse = min n numCapabilities
-    _ <- traverse (STM.writeTBQueue q) $ replicate toUse () -- this blocks until there are enough/all are available
-    return toUse
---  P.embed $ putStrLn $ "succeeded in writing " ++ show capabilitiesToUse ++ " entries to Q"
-  let jobWithQ = do
-        a <- j
-        _ <- P.embed
-             $ STM.atomically             
-             $ traverse (\_ -> STM.tryReadTBQueue q) $ replicate capabilitiesToUse () -- "tryRead" here in case numbers get out of whack
---        P.embed $ putStrLn $ "reading " ++ show capabilitiesToUse ++ " entries from queue to release cores."  
-        return a
-  PA.async jobWithQ
-{-# INLINEABLE asyncWithQueue #-}  
-
-sequenceConcurrentlyWithQueue :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r, Traversable t)
-                              => t (Job r a) -> P.Sem r (t (Maybe a))
-sequenceConcurrentlyWithQueue jobs = traverse asyncWithQueue jobs >>= traverse PA.await                              
-{-# INLINEABLE sequenceConcurrentlyWithQueue #-}
--}
-
+-- have to use local state here so the count of available capabilities is local.  Queue of actual capabilities is global
 runWorkQueue :: P.Member (P.Embed IO) r => Natural -> P.Sem (WorkQueue ': r) a -> P.Sem r a
 runWorkQueue numCapabilities m = do
-  initialQ <- P.embed $ STM.atomically $ do
-    q <- STM.newTBQueue $ fromIntegral numCapabilities
-    return q
-  initialStateIORef <- P.embed $ IORef.newIORef (initialQ, numCapabilities)
-  PS.runStateIORef initialStateIORef m
+  initialState <- P.embed $ initialWorkQ numCapabilities
+  PS.evalState initialState m
 {-# INLINEABLE runWorkQueue #-}
 
   
