@@ -25,7 +25,7 @@ module Knit.Effect.WorkQueue
 
     -- * actions
   , mkAsyncable
-  , queuedAsync
+  , queueAsyncable
   , queuedAwait
   , queuedSequenceConcurrently
   , simpleQueuedSequenceConcurrently
@@ -38,13 +38,15 @@ where
 
 import qualified Control.Concurrent.Async      as Async
 import qualified Control.Concurrent.STM        as STM
-import Data.Maybe (fromMaybe)
+--import Data.Functor.Identity (Identity(..))
+--import Data.Maybe (fromMaybe)
 import Numeric.Natural               (Natural)
 import qualified Polysemy                      as P
 import qualified Polysemy.Async                as PA
 import qualified Polysemy.State          as PS
 
 data WorkQueueState = WorkQueueState { globalQ :: STM.TBQueue (), localCapabilities :: !Natural }
+
 initialWorkQ :: Natural -> IO WorkQueueState
 initialWorkQ n = do
   q <- STM.atomically $ STM.newTBQueue n
@@ -57,12 +59,44 @@ locallyUse n (WorkQueueState q nc) = if n > 0
 
 type WorkQueue = PS.State WorkQueueState
 
-data Asyncable r a = Asyncable { asyncableJob :: P.Sem r (Awaitable a) }
-data Awaitable a = Awaitable { awaitableResult :: Async.Async (Maybe a), capabilitiesReserved :: Int }
+type NumCapabilities = Maybe Natural
 
--- First argument holds capabilities for this thread once it's running. Supply @Nothing@ and nothing will be
--- reserved.  Use that for threads which just launch others.
--- Supply an argument, usually @Just 1@, if the thread will use a full CPU/core while running.
+numCapabilitiesToInt :: NumCapabilities -> Int
+numCapabilitiesToInt Nothing = 0
+numCapabilitiesToInt (Just x) = fromIntegral x
+
+intToNumCapabilities :: Int -> NumCapabilities
+intToNumCapabilities n
+  | n >  0 = Just $ fromIntegral n
+  | n == 0 = Nothing
+  | otherwise = error "negative Int given to intToNumCapabilities."
+  
+
+data Asyncable r a = Asyncable { asyncableJob :: P.Sem r a, requestedCapabilities ::  NumCapabilities }
+data Awaitable a = Awaitable { awaitableResult :: Async.Async (Maybe a), reservedCapabilities :: NumCapabilities }
+
+
+{-
+First argument holds number of capabilities reserved by this thread once it's running.
+Supply @Nothing@ and nothing will be reserved.  Use that for threads which just launch others.
+Supply an argument, usually @Just 1@, if the thread will use a full CPU/core while running.
+If the thread will launch others which do not themselves use this API, you can reserve n 
+threads via @Just n@.
+-}
+mkAsyncable :: NumCapabilities -> P.Sem r a -> Asyncable r a 
+mkAsyncable n j = Asyncable j n 
+
+queueAsyncable :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Asyncable r a  -> P.Sem r (Awaitable a)
+queueAsyncable (Asyncable action requested) = do
+  WorkQueueState q numCapabilities <- PS.get
+  let iRequested = numCapabilitiesToInt requested -- 0 here meand this thread runs without reserving a capability.  Used for threads which mostly just spawn others.
+      toReserve  = min iRequested (fromIntegral numCapabilities)
+  aa <- PA.async $ do
+    blockingUse q toReserve
+    PS.modify (locallyUse toReserve) -- this is *local* state so only "action" sees this smaller available set of capabilities
+    action
+  return $ Awaitable aa (intToNumCapabilities toReserve)
+{-  
 mkAsyncable :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Maybe Natural -> P.Sem r a -> Asyncable r a 
 mkAsyncable mDesired action = Asyncable $ do
   WorkQueueState q numCapabilities <- PS.get
@@ -70,7 +104,7 @@ mkAsyncable mDesired action = Asyncable $ do
   let toUse  = min desired (fromIntegral numCapabilities)
   aa <- PA.async $ do
     blockingUse q toUse
-    PS.modify (locallyUse toUse) -- this is *local* state so only "action" sees this smaller available set of capabilities and what to release
+    PS.modify (locallyUse toUse) -- this is *local* state so only "action" sees this smaller available set of capabilities
     action
   return $ Awaitable aa toUse
 {-# INLINEABLE mkAsyncable #-}
@@ -78,12 +112,13 @@ mkAsyncable mDesired action = Asyncable $ do
 queuedAsync :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Asyncable r a -> P.Sem r (Awaitable a)
 queuedAsync = asyncableJob
 {-# INLINEABLE queuedAsync #-}  
+-}
 
 queuedAwait :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Awaitable a -> P.Sem r (Maybe a)
 queuedAwait (Awaitable aa n) = do
   (WorkQueueState q _) <- PS.get
   ma <- PA.await aa -- from aa's viewpoint, there are fewer capabilities
-  errorThrowingRelease q n
+  errorThrowingRelease q (numCapabilitiesToInt n)
   return ma
 {-# INLINEABLE queuedAwait #-}
 
@@ -92,7 +127,7 @@ queuedSequenceConcurrently :: (Traversable t
                               , P.Member WorkQueue r
                               , P.Member PA.Async r)
                            => t (Asyncable r a) -> P.Sem r (t (Maybe a))
-queuedSequenceConcurrently jobs = traverse queuedAsync jobs >>= traverse queuedAwait                           
+queuedSequenceConcurrently jobs = traverse queueAsyncable jobs >>= traverse queuedAwait                           
 {-# INLINEABLE queuedSequenceConcurrently #-}
 
 simpleQueuedSequenceConcurrently :: (Traversable t
@@ -131,7 +166,8 @@ errorThrowingRelease q n = fmap (const ()) $ P.embed $ STM.atomically $ do
     then error "WorkQueue is trying to release more capabilities than it has reserved."
     else traverse (\_ -> STM.readTBQueue q) $ replicate n () 
   
--- have to use local state here so the count of available capabilities is local.  Queue of actual capabilities is global
+-- state is *thread-local* here so the count of available capabilities is thread-local.
+-- Queue of actual capabilities is global since it's made of TVars.
 runWorkQueue :: P.Member (P.Embed IO) r => Natural -> P.Sem (WorkQueue ': r) a -> P.Sem r a
 runWorkQueue numCapabilities m = do
   initialState <- P.embed $ initialWorkQ numCapabilities
