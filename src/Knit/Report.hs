@@ -108,7 +108,8 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 )
 import           Knit.Effect.UnusedId           ( getNextUnusedId )
 import           Knit.Effect.Serialize          (DefaultCacheData, DefaultSerializer)
-import           Knit.Effect.WorkQueue          (mkAsyncable
+import           Knit.Effect.WorkQueue          (Whole(..)
+                                                , mkAsyncable
                                                 , queueAsyncable
                                                 , queuedAwait
                                                 , queuedSequenceConcurrently
