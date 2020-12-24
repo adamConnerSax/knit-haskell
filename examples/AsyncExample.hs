@@ -12,7 +12,7 @@ import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
 import qualified Graphics.Vega.VegaLite        as V
 import qualified Plots                         as P
-
+import Control.Monad (join)
 import           Control.Concurrent            (threadDelay)
 
 templateVars :: M.Map String String
@@ -67,12 +67,22 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
       K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
   K.logLE K.Info "Launching some concurrent long-running computations, this time using the WorkQueue"
   K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once another has finished."
-  asyncQResultsM <- sequence <$> (K.queuedSequenceConcurrently $ fmap (K.mkAsyncable $ K.Positive 1) [delay 2000 1, delay 4000 2, delay 1000 3])
+  asyncQResultsM <- sequence <$> (K.simpleQueuedSequenceConcurrently $ [delay 2000 1, delay 4000 2, delay 1000 3])
   case asyncQResultsM of
-    Nothing -> K.logLE K.Error "One or more concurrent calculations failed."
+    Nothing -> K.logLE K.Error "WorkQueue 1: One or more concurrent calculations failed."
     Just results -> do
-      K.logLE K.Info "Concurrent calculations succeeded."
+      K.logLE K.Info "WorkQueue 1: Concurrent calculations succeeded."
       K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)
+  K.logLE K.Info "Testing the WorkQueue doing the release/acquire"
+  K.logLE K.Info $ "This time we launch the 3 async tasks from an async task that itself uses a capability."
+    <> "Should be the same since the awaiting thread will resource its resource upon awaiting."
+  asyncableAction <- K.queueAsyncable $ K.simpleQueuedSequenceConcurrently [delay 2000 1, delay 4000 2, delay 1000 3]
+  asyncQResults2M <- join . fmap sequence <$> K.queuedAwait asyncableAction  
+  case asyncQResults2M of
+    Nothing -> K.logLE K.Error "WorkQueue 2: One or more concurrent calculations failed."
+    Just results -> do
+      K.logLE K.Info "WorkQueue 2: Concurrent calculations succeeded."
+      K.addMarkDown $ "## Some concurrent calculation results: " <> (T.pack $ show results)      
 {-  K.logLE K.Info "This time one will throw, should release capabilties anyway."
   K.logLE K.Info "We've set the queue to allow 2 capabilities so 2 should launch and 1 wait and launch once another has finished."
   asyncQResultsM <- sequence <$> (K.queuedSequenceConcurrently $ fmap (K.mkQueueableJob 1) [delayAndThrow 2000 1, delay 4000 2, delay 1000 3])

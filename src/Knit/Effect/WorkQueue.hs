@@ -23,8 +23,8 @@ module Knit.Effect.WorkQueue
      WorkQueue
 
     -- * actions
-    , mkAsyncable
     , queueAsyncable
+    , queueAsyncableN
     , queuedAwait
     , queuedSequenceConcurrently
     , simpleQueuedSequenceConcurrently
@@ -40,8 +40,6 @@ where
 
 import qualified Control.Concurrent.Async      as Async
 import qualified Control.Concurrent.STM        as STM
---import Data.Functor.Identity (Identity(..))
---import Data.Maybe (fromMaybe)
 import Numeric.Natural               (Natural)
 import qualified Polysemy                      as P
 import qualified Polysemy.Async                as PA
@@ -55,8 +53,9 @@ initialWorkQ n = do
   return (WorkQueueState q n Zero)
 
 locallyUse :: Whole -> WorkQueueState -> WorkQueueState
-locallyUse Zero (WorkQueueState q nc _) = WorkQueueState q (min 1 nc) Zero
-locallyUse (Positive n) (WorkQueueState q nc _) = WorkQueueState q (min 1 (nc - n)) (Positive n)
+locallyUse Zero (WorkQueueState q nc _) = WorkQueueState q nc Zero -- nothing to free up upon awaiting
+locallyUse (Positive n) (WorkQueueState q nc _) = WorkQueueState q nc (Positive n)
+--locallyUse (Positive n) (WorkQueueState q nc _) = WorkQueueState q (max 1 (nc - n)) (Positive n)
 
 type WorkQueue = PS.State WorkQueueState
 
@@ -83,62 +82,90 @@ wholeToNatural (Positive n) = n
 naturalToWhole :: Natural -> Whole
 naturalToWhole n = Positive n
   
-data Asyncable r a = Asyncable { asyncableJob :: P.Sem r a, requestedCapabilities ::  Whole }
-data Awaitable a = Awaitable { awaitableResult :: Async.Async (Maybe a), reservedCapabilities :: Whole }
+newtype Awaitable a = Awaitable { awaitableResult :: Async.Async (Maybe a) }
 
 
-{-
-First argument holds number of capabilities reserved by this thread once it's running.
-Supply @Nothing@ and nothing will be reserved.  Use that for threads which just launch others.
-Supply an argument, usually @Just 1@, if the thread will use a full CPU/core while running.
-If the thread will launch others which do not themselves use this API, you can reserve n 
-threads via @Just n@.
+{- |
+Like @async@ but, using an STM queue representing finite CPU resources, this will
+block if all allocated capabilitied are busy.
 -}
-mkAsyncable :: Whole -> P.Sem r a -> Asyncable r a 
-mkAsyncable n j = Asyncable j n 
+queueAsyncable :: (P.Members [(P.Embed IO), WorkQueue, PA.Async] r) => P.Sem r a  -> P.Sem r (Awaitable a)
+queueAsyncable = queueAsyncableN (Positive 1)
+{-# INLINEABLE queueAsyncable #-}
 
-queueAsyncable :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Asyncable r a  -> P.Sem r (Awaitable a)
-queueAsyncable (Asyncable action requested) = do
+{- |
+Like @async@ but, using an STM queue representing finite CPU resources, this will
+block if all allocated capabilitied are busy.
+First argument holds number of capabilities reserved by this thread once it's running.
+Supply @Zero@ and nothing will be reserved.  Should be uneccessary since threads queued
+this way release held capabilities while awaiting.
+Supply an argument, usually @Positive 1@, if the thread will use a full CPU/core while running
+(see queueAsyncable).
+If the thread will launch others which do not themselves use this API, you can reserve n 
+capabilities by supplyign @Positive n@ as the first argument.
+-}
+queueAsyncableN :: (P.Members [(P.Embed IO), WorkQueue, PA.Async] r) => Whole -> P.Sem r a  -> P.Sem r (Awaitable a)
+queueAsyncableN requested action = do
   WorkQueueState q numCapabilities _ <- PS.get
-  let iRequested = wholeToInt requested -- 0 here meand this thread runs without reserving a capability.  Used for threads which mostly just spawn others.
+  let iRequested = wholeToInt requested -- 0 here means this thread runs without reserving a capability.  Used for threads which mostly just spawn others.
       toReserve  = min iRequested (fromIntegral numCapabilities)
   aa <- PA.async $ do
     blockingUse q toReserve
-    PS.modify (locallyUse $ intToWhole toReserve) -- this is *local* state so only "action" sees this smaller available set of capabilities
-    action
-  return $ Awaitable aa (intToWhole toReserve)
+    PS.modify (locallyUse $ intToWhole toReserve)
+    a <- action
+    errorThrowingRelease q toReserve
+    return a
+  return $ Awaitable aa
+{-# INLINEABLE queueAsyncableN #-}
 
+{- |
+Await an async computation using the WorkQueue to manage CPU capabilities.
+When we await, we free the capabilities used by the awaiting thread.  And when the thread we await
+finishes, we reclaim those resources.
+-}
 queuedAwait :: (P.Member (P.Embed IO) r, P.Member WorkQueue r, P.Member PA.Async r) => Awaitable a -> P.Sem r (Maybe a)
-queuedAwait (Awaitable aa n) = do
-  WorkQueueState q _ _ <- PS.get
-  ma <- PA.await aa -- from aa's viewpoint, there are fewer capabilities
-  errorThrowingRelease q (wholeToInt n)
+queuedAwait (Awaitable aa) = do
+  WorkQueueState q _ wReleaseOnAwait <- PS.get
+  errorThrowingRelease q (wholeToInt wReleaseOnAwait) 
+  ma <- PA.await aa
+  blockingUse q (wholeToInt wReleaseOnAwait)
   return ma
 {-# INLINEABLE queuedAwait #-}
 
+{- |
+A @sequenceConcurrently@ equivalent using the WorkQueue.
+-}
 queuedSequenceConcurrently :: (Traversable t
                               , P.Member (P.Embed IO) r
                               , P.Member WorkQueue r
                               , P.Member PA.Async r)
-                           => t (Asyncable r a) -> P.Sem r (t (Maybe a))
-queuedSequenceConcurrently jobs = traverse queueAsyncable jobs >>= traverse queuedAwait                           
+                           => t (Whole, P.Sem r a) -> P.Sem r (t (Maybe a))
+queuedSequenceConcurrently jobs = traverse (uncurry queueAsyncableN) jobs >>= traverse queuedAwait                           
 {-# INLINEABLE queuedSequenceConcurrently #-}
 
+{- |
+A @sequenceConcurrently@ equivalent using the WorkQueue.  Reserves one capability per thread.
+-}
 simpleQueuedSequenceConcurrently :: (Traversable t
                                     , P.Member (P.Embed IO) r
                                     , P.Member WorkQueue r
                                     , P.Member PA.Async r)
                                  => t (P.Sem r a) -> P.Sem r (t (Maybe a))
-simpleQueuedSequenceConcurrently = queuedSequenceConcurrently . fmap (mkAsyncable (Positive 1))
+simpleQueuedSequenceConcurrently jobs = traverse queueAsyncable jobs >>= traverse queuedAwait                           
 {-# INLINEABLE simpleQueuedSequenceConcurrently #-}
 
+{- |
+A @sequenceConcurrently@ equivalent using the WorkQueue.  Reserves zero capability per thread.
+-}
 unboundedQueuedSequenceConcurrently :: (Traversable t
                                     , P.Member (P.Embed IO) r
                                     , P.Member WorkQueue r
                                     , P.Member PA.Async r)
                                  => t (P.Sem r a) -> P.Sem r (t (Maybe a))
-unboundedQueuedSequenceConcurrently = queuedSequenceConcurrently . fmap (mkAsyncable Zero)
+unboundedQueuedSequenceConcurrently = queuedSequenceConcurrently . fmap (\j -> (Zero, j))
 {-# INLINEABLE unboundedQueuedSequenceConcurrently #-}
+
+
                                    
 blockingUse :: (P.Member (P.Embed IO) r, P.Member WorkQueue r) => STM.TBQueue () -> Int -> P.Sem r ()
 blockingUse q n =  do
