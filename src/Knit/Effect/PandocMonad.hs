@@ -81,7 +81,7 @@ module Knit.Effect.PandocMonad
   )
 where
 
-import Prelude hiding (takeWhile, dropWhile,drop)
+import Prelude hiding (takeWhile, dropWhile,drop, trace)
 import qualified Knit.Effect.Logger            as Log
 import qualified Paths_knit_haskell            as Paths
 
@@ -100,11 +100,9 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.ByteString.Base64         ( decodeLenient )
 import qualified Data.CaseInsensitive          as CI
-
+import Data.List (lookup) -- should re-write this so it's relude compatible
 import qualified Data.Text                     as T
-import           Control.Monad                  ( when )
 import           Control.Monad.Except           ( MonadError(..)
-                                                , liftIO
                                                 )
 
 --import qualified Data.Constraint               as C

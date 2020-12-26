@@ -68,6 +68,7 @@ module Knit.Report.Cache
   )
 where
 
+import qualified Control.Foldl as Foldl
 import qualified Knit.Effect.AtomicCache       as C
 import           Knit.Effect.AtomicCache        (clear
                                                 , clearIfPresent
@@ -82,7 +83,6 @@ import qualified Knit.Effect.Logger            as K
 import qualified Knit.Utilities.Streamly       as KStreamly
 
 import qualified Control.Monad.Catch.Pure      as Exceptions
---import qualified Control.Monad.Except          as X
 import qualified Control.Exception as EX
 
 import qualified Data.Text                     as T
@@ -92,7 +92,7 @@ import           Data.Time.Clock                (UTCTime)
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
-import qualified Streamly                      as Streamly
+import qualified Streamly  
 import qualified Streamly.Prelude              as Streamly
 
 import qualified System.Directory as System
@@ -436,5 +436,12 @@ updateIf cur deps update = if C.cacheTime cur >= C.cacheTime deps then return cu
 -- too old an requires updating.
 oldestUnit :: (Foldable f, Functor f, Applicative m) => f (WithCacheTime m w) -> WithCacheTime m ()
 oldestUnit cts = withCacheTime t (pure ()) where
-  t = minimum $ fmap C.cacheTime cts
+--  t = minimum $ fmap C.cacheTime cts
+  t = join $ Foldl.fold Foldl.minimum $ fmap C.cacheTime cts
+
+{-
+  if null cts
+    then Nothing
+    else foldl' (\min x -> if x < min then x else min) Nothing $ fmap C.cacheTime cts
+-}
 {-# INLINEABLE oldestUnit #-}

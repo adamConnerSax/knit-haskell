@@ -1,1 +1,34 @@
-cradle: {cabal: {component: "lib:knit-haskell"}}
+cradle:
+  cabal:
+    - path: "./src"
+      component: "lib:knit-haskell"
+
+    - path: "./examples"
+      component: "knit-haskell:test:AsyncExample"
+
+    - path: "./examples"
+      component: "knit-haskell:test:CacheExample"
+
+    - path: "./examples"
+      component: "knit-haskell:test:CacheExample2"
+
+    - path: "./examples"
+      component: "knit-haskell:test:CacheExample3"
+
+    - path: "./examples"
+      component: "knit-haskell:test:ErrorExample"
+
+    - path: "./examples"
+      component: "knit-haskell:test:Index"
+
+    - path: "./examples"
+      component: "knit-haskell:test:MtlExample"
+
+    - path: "./examples"
+      component: "knit-haskell:test:MultiDocExample"
+
+    - path: "./examples"
+      component: "knit-haskell:test:RandomExample"
+
+    - path: "./examples"
+      component: "knit-haskell:test:SimpleExample"

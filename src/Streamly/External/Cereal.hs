@@ -26,10 +26,8 @@ import qualified Streamly.Internal.Memory.Array as Streamly.Array
 import qualified Streamly.Internal.Memory.ArrayStream as Streamly.Array
 import qualified Streamly.Internal.Data.Parser.Types as Streamly.Parser
 import qualified Streamly.External.ByteString as Streamly.ByteString
---import qualified Streamly.External.ByteString.Lazy as Streamly.ByteString.Lazy
 
 import qualified Control.Monad.Catch as Exceptions (MonadThrow(..), MonadCatch(..))
-import Control.Monad.IO.Class (MonadIO)
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL

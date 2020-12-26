@@ -68,20 +68,15 @@ import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
-import           Control.Monad                  ( when )
-import           Control.Monad.IO.Class         ( MonadIO(..) )
+--import           Control.Monad                  ( when )
 import qualified Data.List                     as List
 import qualified Data.Text                     as T
-import qualified Data.Text.Lazy                as LT
 import qualified Data.Text.Prettyprint.Doc     as PP
 import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP
-import           Data.Data (Data, Typeable)                                               
-import           Prelude                 hiding ( log )
+import           Data.Data (Data)                                               
 
-import           System.IO                      ( hFlush
-                                                , stdout
-                                                )
+import           System.IO                      ( hFlush ) -- relude claims to export this but seems not to?
 
 import qualified Say                           as S
 
@@ -113,7 +108,7 @@ data LogSeverity =
 -- NB: Cribbed from monad-logger.  Thanks ocharles!
 -- TODO: add colors for ansi-terminal output
 instance PP.Pretty LogSeverity where
-  pretty = PP.pretty . LT.pack . show
+  pretty = PP.pretty @Text . show
 
 -- | A basic log entry with a severity and a ('Text') message
 data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
@@ -182,7 +177,7 @@ removePrefix = send RemovePrefix
 
 -- | Get current prefix 
 getPrefix :: P.Member PrefixLog effs => P.Sem effs T.Text
-getPrefix = send $ GetPrefix
+getPrefix = send GetPrefix
 {-# INLINEABLE getPrefix #-}
 
 -- | Add a prefix for the block of code.
@@ -201,7 +196,7 @@ prefixInState
   -> P.Sem (P.State [T.Text] ': effs) a
 prefixInState = P.reinterpret $ \case
   AddPrefix t  -> P.modify (t :)
-  RemovePrefix -> P.modify @[T.Text] tail -- type application required here since tail is polymorphic
+  RemovePrefix -> P.modify @[T.Text] (fromMaybe [] . viaNonEmpty tail) -- type application required here since tail is polymorphic
   GetPrefix    -> fmap (T.intercalate "." . List.reverse) P.get
 {-# INLINEABLE prefixInState #-}
 
@@ -259,8 +254,8 @@ filterLog filterF h a = when (filterF a) $ h a
 -- Uses "Say" to insure messages issued from each thread are output coherently.
 -- Can be used as base for any other handler that gives @Text@.
 logToIO :: MonadIO m => (a -> T.Text) -> Handler m a
-logToIO toText a = liftIO $ do
-  S.say $ toText a
+logToIO asText a = liftIO $ do
+  S.say $ asText a
   hFlush stdout
 {-# INLINEABLE logToIO #-}
 
@@ -296,7 +291,7 @@ filteredLogEntriesToIO
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do
   let f a = lsF (severity $ discardPrefix a)
-  logAndHandlePrefixed (filterLog f $ prefixedLogEntryToIO) mx 
+  logAndHandlePrefixed (filterLog f prefixedLogEntryToIO) mx 
 {-# INLINEABLE filteredLogEntriesToIO #-}
 
 -- | List of Logger effects for a prefixed log of type @a@

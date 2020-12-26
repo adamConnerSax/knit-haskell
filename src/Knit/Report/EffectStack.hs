@@ -47,10 +47,8 @@ module Knit.Report.EffectStack
   )
 where
 
-import           Control.Monad.Except           ( MonadIO )
 import qualified Control.Monad.Catch as Exceptions (SomeException, displayException) 
 import qualified Data.Map                      as M
-import           Data.Maybe (fromMaybe)
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import qualified Polysemy                      as P
@@ -199,7 +197,7 @@ type KnitEffectStack c ct k m
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
-     , PE.Error IOError
+     , PE.Error IE.IOError
      , PE.Error KC.CacheError
      , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
@@ -281,13 +279,13 @@ consumeKnitEffectStack config =
 
 
 ioErrorToPandocError :: IE.IOError -> KPM.PandocError
-ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText $ ("IOError: " <> (T.pack $ show e))) e
+ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText $ ("IOError: " <> show e)) e
 {-# INLINEABLE ioErrorToPandocError #-}
 
 cacheErrorToPandocError :: KC.CacheError -> KPM.PandocError
-cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText $ ("CacheError: " <> (T.pack $ show e)))
+cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText $ ("CacheError: " <> show e))
 {-# INLINEABLE cacheErrorToPandocError #-}
 
 someExceptionToPandocError :: Exceptions.SomeException -> KPM.PandocError
-someExceptionToPandocError = PA.PandocSomeError . KPM.textToPandocText . T.pack . Exceptions.displayException 
+someExceptionToPandocError = PA.PandocSomeError . KPM.textToPandocText . toText . Exceptions.displayException 
 {-# INLINEABLE someExceptionToPandocError #-}

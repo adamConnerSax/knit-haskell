@@ -145,7 +145,6 @@ import qualified Knit.Effect.Serialize         as KS
 
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
-import           Data.Functor.Identity          (Identity(..))
 import qualified Data.Map                      as M
 import qualified Data.Semigroup                as Semigroup
 import qualified Data.Text                     as T
@@ -154,7 +153,6 @@ import qualified Data.Word                     as Word
 
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
-import           Control.Monad                  ( join )
 
 import qualified Streamly.Internal.Memory.Array    as Streamly.Array
 import qualified Streamly.Internal.FileSystem.File as Streamly.File

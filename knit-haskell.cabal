@@ -1,17 +1,10 @@
-cabal-version: 1.12
-
--- This file has been generated from package.yaml by hpack version 0.31.2.
---
--- see: https://github.com/sol/hpack
---
--- hash: 497010d9898c1aff89fa017749ad3d05991bf0f8d68b917134f3c01f26a6ead8
-
+cabal-version: 2.2
 name:           knit-haskell
 version:        0.10.0.0
 synopsis:       a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description:    knit-haskell is a beginning attempt at bringing some of the benefits of Rmarkdown to Haskell. It includes an effects stack (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl) which includes logging, a simplified interface to Pandoc and various writer-like effects to intersperse document building with regular code. Also included is a cache (in-memory and persisted to disk) to make caching results of long running computations simple. The cache provides tools for basic dependency tracking. Various helper functions are provided to simplify common operations, making it especially straightforward to build an HTML document from bits of markdown, latex and <http://hackage.haskell.org/package/lucid Lucid> or <http://hackage.haskell.org/package/blaze-html Blaze> html. Support is also included for including <http://hackage.haskell.org/package/hvega hvega> visualizations and diagrams from the <https://archives.haskell.org/projects.haskell.org/diagrams/ diagrams> package. More information is available in the <https://github.com/adamConnerSax/knit-haskell/blob/master/Readme.md readme>.
 bug-reports:    https://github.com/adamConnerSax/knit-haskell/issues
-license:        BSD3
+license:        BSD-3-Clause
 license-file:   LICENSE
 author:         Adam Conner-Sax
 maintainer:     adam_conner_sax@yahoo.com
@@ -89,6 +82,7 @@ library
     , directory >=1.3.3.0 && <1.4.0.0
     , doctemplates >=0.2 && <0.9
     , exceptions >=0.10.0 && <0.11
+    , foldl >= 1.4.0 && < 1.5
     , http-client >=0.6.4 && <0.8
     , http-client-tls >=0.3.5.3 && <0.4
     , http-types >=0.12.3 && <0.13
@@ -105,6 +99,7 @@ library
     , prettyprinter >=1.2.1 && <1.8
     , primitive >=0.7.0 && <0.8
     , random >=1.1 && <1.3
+    , relude >=0.7.0 && <0.8
     , say >=0.1.0 && <0.2
     , stm >=2.4.5.1 && <2.6
     , streamly >=0.7.2 && <0.7.3
@@ -113,6 +108,9 @@ library
     , text >=1.2.3 && <1.3
     , time >=1.8.0 && <2.0.0
     , transformers-base >=0.4.5 && <0.5
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+                   , Relude.Extra) 
   hs-source-dirs:
       src
   default-language: Haskell2010

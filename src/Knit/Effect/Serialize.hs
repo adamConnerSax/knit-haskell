@@ -75,8 +75,6 @@ import qualified Polysemy.Reader               as PR
 --import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString.Builder       as BB
-import           Data.Int (Int64)
-import           Data.Kind (Type, Constraint)
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word

@@ -37,7 +37,6 @@ import qualified Polysemy.State                as PS
 
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
-import           Data.Maybe                     ( fromMaybe )
 
 -- | Type alias for the dictionary ('M.Map') of current last used id at each prefix.
 type IdMap = M.Map T.Text Int

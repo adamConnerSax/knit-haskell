@@ -37,7 +37,6 @@ import qualified Text.Blaze.Html               as BH
 import qualified Text.Blaze.Html5.Attributes   as BHA
 import           Knit.Report.Input.Html.Blaze   ( addBlaze )
 
-import           Data.Text                      ( Text )
 import qualified Polysemy                      as P
 import qualified Knit.Effect.Pandoc            as PE
 import qualified Knit.Effect.PandocMonad       as PM
