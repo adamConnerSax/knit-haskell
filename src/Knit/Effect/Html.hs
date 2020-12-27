@@ -101,7 +101,7 @@ newLucidDoc
   => T.Text
   -> P.Sem (Lucid ': effs) ()
   -> P.Sem effs ()
-newLucidDoc n l = (fmap fst $ P.runWriter l) >>= newDoc n
+newLucidDoc n l = (fst <$> P.runWriter l) >>= newDoc n
 
 -- | take the current Blaze HTML in the writer and add it to the set of named docs with the given name
 -- NB: Only use this function for making sets of documents built exclusively from Blaze. Otherwise use the more general Pandoc infrastructure in
@@ -111,7 +111,7 @@ newBlazeDoc
   => T.Text
   -> P.Sem (Blaze ': effs) ()
   -> P.Sem effs ()
-newBlazeDoc n l = (fmap fst $ P.runWriter l) >>= newDoc n
+newBlazeDoc n l = (fst <$> P.runWriter l) >>= newDoc n
 
 -- | Interpret the LucidDocs effect (via Writer), producing a list of named Lucid docs, suitable for writing to disk.
 lucidToNamedText

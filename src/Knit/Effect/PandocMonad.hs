@@ -145,7 +145,6 @@ import qualified Control.Exception             as E
 
 #if MIN_VERSION_pandoc(2,8,0)
 import qualified Text.DocTemplates             as DT
-import           Data.Functor.Identity          (runIdentity)
 #else
 import qualified Data.List as L
 #endif
@@ -160,10 +159,10 @@ textToPandocText :: T.Text -> PandocText
 textToPandocText = id
 
 pandocTextToString :: PandocText -> String
-pandocTextToString = T.unpack
+pandocTextToString = toString
 
 stringToPandocText :: String -> PandocText
-stringToPandocText = T.pack
+stringToPandocText = toText
 
 pandocTextToBS :: PandocText -> BS.ByteString
 pandocTextToBS = UTF8.fromText
@@ -266,7 +265,7 @@ absorbTemplateMonad = P.absorbWithSem @DT.TemplateMonad @TemplateAction (Templat
 newtype TemplateAction m s' a =
   TemplateAction { templateAction :: m a} deriving (Functor, Applicative, Monad)
 
-data TemplateDict m = TemplateDict { getPartial_ :: FilePath -> m T.Text }
+newtype TemplateDict m = TemplateDict { getPartial_ :: FilePath -> m T.Text }
 
 instance (Monad m, P.Reifies s' (TemplateDict m)) => DT.TemplateMonad (TemplateAction m s') where
   getPartial = TemplateAction . getPartial_ (P.reflect $ P.Proxy @s')
@@ -415,14 +414,14 @@ interpretInIO = fmap snd . stateful f PA.def
   liftPair :: forall f x y . Functor f => (x, f y) -> f (x, y)
   liftPair (x, fy) = fmap (x, ) fy
   f :: Pandoc m x -> PA.CommonState -> P.Sem effs (PA.CommonState, x)
-  f (LookupEnv s)         cs = liftPair (cs, liftIO $ fmap (fmap stringToPandocText) $ IO.lookupEnv (pandocTextToString s))
+  f (LookupEnv s)         cs = liftPair (cs, liftIO $ fmap stringToPandocText <$> IO.lookupEnv (pandocTextToString s))
   f GetCurrentTime        cs = liftPair (cs, liftIO $ IO.getCurrentTime)
   f GetCurrentTimeZone    cs = liftPair (cs, liftIO IO.getCurrentTimeZone)
   f NewStdGen             cs = liftPair (cs, liftIO IO.newStdGen)
   f NewUniqueHash         cs = liftPair (cs, hashUnique <$> liftIO IO.newUnique)
   f (OpenURL         url) cs = openURLWithState cs url
-  f (ReadFileLazy    fp ) cs = liftPair (cs, liftIOError LBS.readFile fp)
-  f (ReadFileStrict  fp ) cs = liftPair (cs, liftIOError BS.readFile fp)
+  f (ReadFileLazy    fp ) cs = liftPair (cs, liftIOError readFileLBS fp)
+  f (ReadFileStrict  fp ) cs = liftPair (cs, liftIOError readFileBS fp)
   f (Glob            s  ) cs = liftPair (cs, liftIOError IO.glob s)
   f (FileExists fp) cs = liftPair (cs, liftIOError Directory.doesFileExist fp)
   f (GetDataFileName s  ) cs = liftPair (cs, liftIOError getDataFileName' s)
@@ -435,7 +434,7 @@ interpretInIO = fmap snd . stateful f PA.def
   f (LogOutput         msg) cs = liftPair (cs, logPandocMessage msg)
   f (Trace             msg) cs = liftPair
     ( cs
-    , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ (pandocTextToString msg)) (return ())
+    , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ pandocTextToString msg) (return ())
     )
 
 
@@ -525,7 +524,7 @@ openURLWithState cs u
     return (cs, (decodeLenient contents, Just mime))
   | otherwise = do
     let toReqHeader (n, v) = (CI.mk (pandocTextToBS n), pandocTextToBS v)
-        customHeaders = fmap toReqHeader $ PA.stRequestHeaders cs
+        customHeaders = toReqHeader <$> PA.stRequestHeaders cs
     cs' <- report cs $ PA.Fetching u
     res <- liftIO $ E.try $ withSocketsDo $ do
       let parseReq = NHC.parseRequest
@@ -544,7 +543,7 @@ openURLWithState cs u
         , UTF8.toString `fmap` lookup NH.hContentType (NHC.responseHeaders resp)
         )
     case res of
-      Right r -> return (cs', (\(x,y) -> (x, stringToPandocText <$> y))  r)
+      Right r -> return (cs', second (fmap stringToPandocText) r)
       Left  e -> P.throw $ PA.PandocHttpError u e
 
 -- | Stateful version of the Pandoc @report@ function, outputting relevant log messages
@@ -558,7 +557,7 @@ report cs msg = do
   let verbosity = PA.stVerbosity cs
       level     = PA.messageVerbosity msg
   when (level <= verbosity) $ logPandocMessage msg
-  let stLog' = msg : (PA.stLog cs)
+  let stLog' = msg : PA.stLog cs
       cs'    = cs { PA.stLog = stLog' }
   return cs'
 
@@ -581,5 +580,5 @@ liftIOError f u = do
 getDataFileName' :: FilePath -> IO FilePath
 getDataFileName' fp = do
   dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir")
-                                (\_ -> Paths.getDataDir)
+                                (const Paths.getDataDir)
   return (dir ++ "/pandoc-data/" ++ fp)

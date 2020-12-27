@@ -67,14 +67,10 @@ where
 import qualified Text.Pandoc                   as PA
 import qualified Data.Text                     as T
 import           Data.ByteString.Lazy          as LBS
-import qualified Data.Foldable                 as F
 import qualified Data.Map                      as M
-import qualified Data.Monoid                   as Mon
-import           Data.Set                      as S
+import qualified Data.Set                      as S
 import qualified Text.Blaze.Html               as Blaze
 import           Control.Monad.Except           ( throwError )
-
-
 
 import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
@@ -88,6 +84,7 @@ import           Knit.Effect.Docs               ( Docs
                                                 , newDoc
                                                 , toDocList
                                                 )
+import qualified Control.Monad
 
 -- For now, just handle the Html () case since then it's monoidal and we can interpret via writer
 --newtype FreerHtml = FreerHtml { unFreer :: H.Html () }
@@ -128,8 +125,8 @@ data Requirement
   deriving (Show, Ord, Eq, Bounded, Enum)
 
 handlesAll :: PandocWriteFormat a -> S.Set Requirement -> Bool
-handlesAll f rs = Mon.getAll
-  $ F.fold (fmap (Mon.All . handles f) $ S.toList rs)
+handlesAll f rs = getAll
+  $ fold (All . handles f <$> S.toList rs)
  where
   handles :: PandocWriteFormat a -> Requirement -> Bool
   handles WriteHtml5       VegaSupport  = True
@@ -192,7 +189,7 @@ toPandoc
   -> PA.ReaderOptions
   -> a
   -> m PA.Pandoc
-toPandoc prf pro x = readF pro x
+toPandoc prf = readF
  where
   readF = case prf of
     ReadDocX       -> PA.readDocx
@@ -216,9 +213,9 @@ fromPandoc pwf pwo (PandocWithRequirements pdoc rs) = case handlesAll pwf rs of
       $  PA.PandocSomeError
       $  PM.textToPandocText
       $  "One of "
-      <> (T.pack $ show $ S.toList rs)
+      <> show (S.toList rs)
       <> " cannot be output to "
-      <> (T.pack $ show pwf)
+      <> show pwf
   True -> write pwo pdoc
    where
     write = case pwf of
@@ -269,7 +266,7 @@ newPandoc
   => PandocInfo  -- ^ name and template variables for document
   -> P.Sem (ToPandoc ': effs) ()
   -> P.Sem effs ()
-newPandoc n l = fmap fst (P.runWriter $ toWriter l) >>= newPandocPure n
+newPandoc n l = P.runWriter (toWriter l) >>= newPandocPure n . fst
 
 -- | Given a write format and options, convert the NamedDoc to the requested format
 pandocFrom
@@ -291,7 +288,7 @@ pandocsToDocs
   -> P.Sem (Pandocs ': effs) () -- ^ effects stack to be (partially) run to get documents
   -> P.Sem effs [DocWithInfo PandocInfo a] -- ^ documents in requested format, within the effects monad
 pandocsToDocs pwf pwo =
-  (traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) =<<) . toDocList
+  traverse (\x -> PM.absorbPandocMonad $ pandocFrom pwf pwo x) Control.Monad.<=< toDocList
 
 -- | Given a write format and options, run the writer-style ToPandoc effect and produce a doc of requested type
 fromPandocE
@@ -301,7 +298,6 @@ fromPandocE
   -> P.Sem (ToPandoc ': effs) () -- ^ effects stack to be (partially) run to get document
   -> P.Sem effs a -- ^ document in requested format, within the effects monad
 fromPandocE pwf pwo =
-  (((\x -> PM.absorbPandocMonad $ fromPandoc pwf pwo x) . fst) =<<)
-    . P.runWriter
-    . toWriter
+  ((\x -> PM.absorbPandocMonad $ fromPandoc pwf pwo x) . fst) Control.Monad.<=< (P.runWriter
+    . toWriter)
 

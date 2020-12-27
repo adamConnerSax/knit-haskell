@@ -57,4 +57,4 @@ addLazyTextHtml
   :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
   => LT.Text
   -> P.Sem effs ()
-addLazyTextHtml = addStrictTextHtml . LT.toStrict
+addLazyTextHtml = addStrictTextHtml . toText

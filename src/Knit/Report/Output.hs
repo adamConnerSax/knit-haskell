@@ -24,7 +24,6 @@ import qualified Paths_knit_haskell            as Paths
 import qualified Data.Map                      as M
 import qualified Text.Pandoc                   as PA
 import qualified Data.Text                     as T
-import qualified Data.Text.IO                  as T
 import qualified Data.Text.Lazy                as TL
 import qualified System.Directory              as SD
 
@@ -64,9 +63,9 @@ data TemplatePath = DefaultTemplate
 -- | get correct path to give Pandoc, depending on how things are installed
 pandocTemplatePath :: TemplatePath -> IO (Maybe String)
 pandocTemplatePath DefaultTemplate                = return Nothing
-pandocTemplatePath (FullySpecifiedTemplatePath x) = return $ Just (T.unpack x)
+pandocTemplatePath (FullySpecifiedTemplatePath x) = return $ Just (toString x)
 pandocTemplatePath (FromIncludedTemplateDir x) =
-  fmap (Just . (++ "/knit-haskell-templates/" ++ (T.unpack x))) Paths.getDataDir
+  fmap (Just . (<> "/knit-haskell-templates/" <> toString x)) Paths.getDataDir
 
 -- | Type to specify path to Css,
 -- which may be in a directory installed with knit-haskell or not.
@@ -79,7 +78,7 @@ addCss :: CssPath -> TemplateVariables -> IO TemplateVariables
 addCss (FullySpecifiedCssPath x) pt = return $ appendCss x pt
 addCss (FromIncludedCssDir    x) pt = do
   dir <- Paths.getDataDir
-  let fp = (T.pack dir) <> "/knit-haskell-css/" <> x
+  let fp = toText dir <> "/knit-haskell-css/" <> x
   return $ appendCss fp pt
 
 
@@ -87,7 +86,7 @@ addCss (FromIncludedCssDir    x) pt = do
 appendCss :: T.Text -> TemplateVariables -> TemplateVariables
 appendCss x tv =
   let curValM = M.lookup "css" tv
-      newVal  = maybe (T.unpack x) (\y -> y ++ "," ++ T.unpack x) curValM
+      newVal  = maybe (toString x) (\y -> y <> "," <> toString x) curValM
   in  M.insert "css" newVal tv
 
 -- utilities for file output
@@ -98,7 +97,7 @@ appendCss x tv =
 writeAllPandocResultsWithInfo
   :: T.Text -> T.Text -> [KP.DocWithInfo KP.PandocInfo TL.Text] -> IO ()
 writeAllPandocResultsWithInfo dir extension =
-  fmap (const ()) . traverse (writePandocResultWithInfo dir extension) -- fmap (const ()) :: IO [()] -> IO ()
+  void . traverse (writePandocResultWithInfo dir extension) -- fmap (const ()) :: IO [()] -> IO ()
 
 -- | Write the Lazy Text in a 'KD.DocWithInfo' to disk
 -- Name comes from the 'KP.PandocInfo'
@@ -117,7 +116,7 @@ writePandocResultWithInfo dir extension (KD.DocWithInfo (KP.PandocInfo n _) x)
 -- | Write Lazy Text (Pandoc's Html result) to disk.
 -- Create the parent directory or directories, if necessary.
 writeAndMakePathLT :: T.Text -> TL.Text -> IO ()
-writeAndMakePathLT fPath = writeAndMakePath fPath TL.toStrict
+writeAndMakePathLT fPath = writeAndMakePath fPath toText
 
 -- | Write (to disk) something which can be converted to text.
 -- Create the parent directory or directories, if necessary.
@@ -125,11 +124,11 @@ writeAndMakePath :: T.Text -> (a -> T.Text) -> a -> IO ()
 writeAndMakePath fPath toStrictText x = do
   let (dirPath, fName) = T.breakOnEnd "/" fPath
   putStrLn
-    $  T.unpack
+    $  toString
     $  "If necessary, creating "
     <> dirPath
     <> " (and parents), and writing "
     <> fName
-  SD.createDirectoryIfMissing True (T.unpack dirPath)
-  T.writeFile (T.unpack fPath) $ toStrictText x
+  SD.createDirectoryIfMissing True (toString dirPath)
+  writeFileText (toString fPath) $ toStrictText x
 

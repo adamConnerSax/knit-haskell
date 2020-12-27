@@ -72,7 +72,6 @@ where
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Polysemy.Reader               as PR
---import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString.Builder       as BB
 import qualified Data.Serialize                as S
@@ -82,7 +81,7 @@ import qualified Data.Word                     as Word
 import qualified Control.Exception as X
 import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
 
-import qualified Streamly                      as Streamly
+import qualified Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Data.Fold            as Streamly.Fold
 import qualified Streamly.Internal.Data.Fold   as Streamly.Fold
@@ -94,7 +93,7 @@ import qualified Knit.Utilities.Streamly       as K
 import qualified Knit.Effect.Logger            as KLog
 
 -- | Error Type for Serialization errors.  Simplifies catching and reporting them.
-data SerializationError = SerializationError T.Text deriving (Show)
+newtype SerializationError = SerializationError T.Text deriving (Show)
 instance X.Exception SerializationError
 
 {- |
@@ -194,10 +193,10 @@ serializeStreamly ::
   -> Serialize SerializationError r (Streamly.SerialT K.StreamlyM a) ct 
 serializeStreamly sdict@(SerializeDict _ _ _ _ bytes) =
   let enc s =   KLog.wrapPrefix "serializeStreamly.encode" $ do
-        KLog.logLE KLog.Diagnostic $ "Encoding and buffering..."
-        let bufferF = fmap (Streamly.Data.Array.toStream) Streamly.Data.Array.write        
+        KLog.logLE KLog.Diagnostic "Encoding and buffering..."
+        let bufferF = fmap Streamly.Data.Array.toStream Streamly.Data.Array.write        
         (encodedCT, buffered) <- K.streamlyToKnit $ Streamly.fold (Streamly.Fold.tee (streamlySerializeF sdict) bufferF) s
-        KLog.logLE KLog.Diagnostic $ "Encoding and buffering complete."
+        KLog.logLE KLog.Diagnostic "Encoding and buffering complete."
         return (encodedCT, buffered)
       {-# INLINEABLE enc #-}
       dec arr = KLog.wrapPrefix "serializeStreamly.decode" $ streamlyDeserialize sdict arr
@@ -209,7 +208,7 @@ streamlySerializeF :: forall m c a ct.(Monad m, c a)
                    -> Streamly.Fold.Fold m a ct
 streamlySerializeF (SerializeDict encodeOne _ bldrToCT _ _) = Streamly.Fold.Fold step initial extract where
 --  step :: (Int, bldr) -> a -> m (Int, bldr)
-  step (n, b) a = return $ (n + 1, b <> encodeOne a)
+  step (n, b) a = return (n + 1, b <> encodeOne a)
   initial = return (0, mempty)
   extract (n, bldr) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> bldr 
 
@@ -224,7 +223,7 @@ streamlyDeserialize (SerializeDict _ parseOne _ ctToBytes _) ct = do
   (l, bs) <- case parseOne @Word.Word64 (ctToBytes ct) of
     Left err -> P.throw err
     Right (l, bs) -> return (l, bs)
-  KLog.logLE KLog.Diagnostic $ "creating deserialization stream for " <> (T.pack $ show l) <> " items."
+  KLog.logLE KLog.Diagnostic $ "creating deserialization stream for " <> show l <> " items."
   let --unfoldOne :: bytes -> K.StreamlyM (Maybe (a, bytes))
       unfoldOne x = do
         case x of
@@ -242,7 +241,7 @@ handleEitherInStream e = do
   case e of
     Left err -> MonadIO.liftIO $ X.throwIO err
     Right a -> do
-      Streamly.yieldM $ K.logStreamly KLog.Diagnostic $ "Deserializing stream..."
+      Streamly.yieldM $ K.logStreamly KLog.Diagnostic "Deserializing stream..."
       a
 
 -- | type-alias for default in-memory storage type.
@@ -258,7 +257,7 @@ cerealStreamlyDict =
   let bOrd bs = if BL.null bs then Done else Bytes bs
   in SerializeDict
      (S.execPut . S.put)
-     (\bs -> mapLeft (SerializationError . T.pack) $ fmap (\(a, bytes) -> (a, bOrd bytes)) $ S.runGetLazyState S.get bs)
+     (\bs -> mapLeft (SerializationError . toText) $ second bOrd <$> S.runGetLazyState S.get bs)
      (Streamly.Cereal.lazyByteStringToStreamlyArray . BB.toLazyByteString)
      Streamly.Cereal.streamlyArrayToLazyByteString
      (fromIntegral . Streamly.Array.length)

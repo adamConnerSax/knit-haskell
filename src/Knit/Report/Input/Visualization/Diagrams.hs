@@ -82,5 +82,5 @@ addDiagramAsSVGWithOptions idTextM captionTextM svgOptions diagram = do
     preEscapedLazyText $ SVG.renderText $ D.renderDia DSVG.SVG
                                                       svgOptions
                                                       diagram
-    maybe (return ()) (BH.figcaption . BH.toHtml) captionTextM
+    whenJust captionTextM (BH.figcaption . BH.toHtml)
   return idText

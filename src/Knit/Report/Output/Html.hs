@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeOperators        #-}
 
 {-|
@@ -75,25 +76,25 @@ htmlFullDocWriterOptions
   -> M.Map String String -- ^ template Variable substitutions
   -> m PA.WriterOptions
 htmlFullDocWriterOptions pathM tVars = do
-  let tContext = DT.Context $ M.mapKeys T.pack $ fmap (DT.toVal . T.pack) tVars
+  let tContext = DT.Context $ M.mapKeys toText $ fmap (DT.toVal . toText) tVars
       makeTemplateM :: FilePath -> m T.Text -> m (Maybe (DT.Template T.Text))
       makeTemplateM pfp getText = do
         txt <- getText
         compiled <- PA.compileTemplate pfp txt
         case compiled of
-          Left msg -> X.throwError $ PA.PandocTemplateError $  T.pack msg
-          Right tmplt -> return $ Just $ fmap T.pack tmplt
+          Left msg -> X.throwError $ PA.PandocTemplateError $ toText msg
+          Right tmplt -> return $ Just $ fmap (toText @String) tmplt
       defaultTemplateM = makeTemplateM "default.Html5" (PA.getDefaultTemplate "Html5")
   templateM <- case pathM of
     Nothing -> defaultTemplateM
     Just fp -> do
       exists <- PA.fileExists fp
       if exists
-        then makeTemplateM "" $ fmap (T.pack . BS.unpack) (PA.readFileStrict fp)
+        then makeTemplateM "" $ fmap (toText . BS.unpack) (PA.readFileStrict fp)
         else
           PA.logOutput
               (PA.IgnoredIOError
-                (PM.textToPandocText $ "Couldn't find " <> (T.pack $ show fp))
+                (PM.textToPandocText $ "Couldn't find " <> show fp)
               )
             >> defaultTemplateM
   return $ htmlWriterOptions { PA.writerTemplate      = templateM
@@ -194,5 +195,5 @@ writeAllPandocResultsWithInfoAsHtml dir =
 -- Create the parent directory or directories, if necessary.
 writePandocResultWithInfoAsHtml
   :: T.Text -> PE.DocWithInfo PE.PandocInfo TL.Text -> IO ()
-writePandocResultWithInfoAsHtml dir dwi =
-  KO.writePandocResultWithInfo dir "html" dwi
+writePandocResultWithInfoAsHtml dir  =
+  KO.writePandocResultWithInfo dir "html" 

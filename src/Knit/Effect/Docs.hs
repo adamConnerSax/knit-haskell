@@ -47,6 +47,7 @@ where
 import qualified Polysemy                      as P
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.Writer               as P
+import qualified Control.Monad
 
 -- | GADT to represent storing a document and some info for processing it.
 data Docs i a m r where
@@ -83,7 +84,7 @@ mapDocs f = fmap (fmap (\(DocWithInfo i a) -> DocWithInfo i (f i a)))
 -- | Map over the doc part of @Monad m => m [DocWithInfo i a]@ with @a -> m b@ resulting in @m [DocWithInfo i b]@
 mapDocsM
   :: Monad m => (i -> a -> m b) -> m [DocWithInfo i a] -> m [DocWithInfo i b]
-mapDocsM f = join . fmap (sequence . fmap (traverse id)) . mapDocs f --(traverse (traverse f) =<<)
+mapDocsM f = mapM sequenceA Control.Monad.<=< mapDocs f --(traverse (traverse f) =<<)
 
 -- | Combine the interpretation and mapping step.
 -- Commonly used to "run" the effect and map the results to your desired output format.

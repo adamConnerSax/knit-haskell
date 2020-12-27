@@ -36,7 +36,7 @@ module Knit.Effect.Logger
 
   -- * Effects
   , Logger(..)
-  , PrefixLog  
+  , PrefixLog
 
   -- * Actions
   , log
@@ -44,7 +44,7 @@ module Knit.Effect.Logger
   , wrapPrefix
   , getPrefix
   , logWithPrefixToIO
-  
+
   -- * Interpreters
   , filteredLogEntriesToIO
 
@@ -64,17 +64,16 @@ module Knit.Effect.Logger
 where
 
 import qualified Polysemy                      as P
-                 
+
 import           Polysemy.Internal              ( send )
 import qualified Polysemy.State                as P
 
---import           Control.Monad                  ( when )
 import qualified Data.List                     as List
 import qualified Data.Text                     as T
 import qualified Data.Text.Prettyprint.Doc     as PP
 import qualified Data.Text.Prettyprint.Doc.Render.Text
                                                as PP
-import           Data.Data (Data)                                               
+import           Data.Data (Data)
 
 import           System.IO                      ( hFlush ) -- relude claims to export this but seems not to?
 
@@ -263,9 +262,8 @@ logToIO asText a = liftIO $ do
 -- | '(a -> Text)' function for prefixedLogEntries
 prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
 prefixedLogEntryToText =
-  (PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
+  PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
     (renderLogEntry PP.pretty)
-  )
 {-# INLINEABLE prefixedLogEntryToText #-}
 
 -- | log prefixed entries directly to IO
@@ -285,13 +283,13 @@ type LogWithPrefixIO = T.Text -> LogEntry -> IO ()
 
 -- | Run the 'Logger' and 'PrefixLog' effects in 'IO': filtered via the severity of the message and formatted using "prettyprinter".
 filteredLogEntriesToIO
-  :: MonadIO (P.Sem r) 
-  => (LogSeverity -> Bool) 
+  :: MonadIO (P.Sem r)
+  => (LogSeverity -> Bool)
   -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do
   let f a = lsF (severity $ discardPrefix a)
-  logAndHandlePrefixed (filterLog f prefixedLogEntryToIO) mx 
+  logAndHandlePrefixed (filterLog f prefixedLogEntryToIO) mx
 {-# INLINEABLE filteredLogEntriesToIO #-}
 
 -- | List of Logger effects for a prefixed log of type @a@

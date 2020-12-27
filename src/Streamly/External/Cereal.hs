@@ -5,7 +5,7 @@ module Streamly.External.Cereal
     encodeStreamly
   , decodeStreamly
   , encodeStreamlyArray
-  , decodeStreamlyArray  
+  , decodeStreamlyArray
   , encodeStream
   , decodeStream
   , encodeStreamArray
@@ -19,7 +19,7 @@ module Streamly.External.Cereal
   )
 where
 
-import qualified Streamly as Streamly
+import qualified Streamly
 import qualified Streamly.Prelude as Streamly
 import qualified Streamly.Internal.Prelude as Streamly (splitParse)
 import qualified Streamly.Internal.Memory.Array as Streamly.Array
@@ -31,7 +31,7 @@ import qualified Control.Monad.Catch as Exceptions (MonadThrow(..), MonadCatch(.
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
-import           Data.Functor.Identity (Identity(..))
+--import           Data.Functor.Identity (Identity(..))
 import qualified Data.Serialize as Cereal
 import qualified Data.Text as Text
 import qualified Data.Word as Word
@@ -41,12 +41,12 @@ import qualified Data.Word as Word
 -- on the encoding side.
 -- | Convert something which can encode an @a@ to something which can encode a (non-effectful) stream of @a@
 putStreamOf :: Cereal.Putter a -> Cereal.Putter (Streamly.SerialT Identity a)
-putStreamOf pa = runIdentity . fmap (Cereal.putListOf pa) . Streamly.toList 
+putStreamOf pa = runIdentity . fmap (Cereal.putListOf pa) . Streamly.toList
 {-# INLINEABLE putStreamOf #-}
 
 -- | Convert something which can decode an @a@ to something which can decode a (possibly-effectful) stream of @a@
 getStreamOf :: Monad m => Cereal.Get a -> Cereal.Get (Streamly.SerialT m a)
-getStreamOf ga = fmap Streamly.fromList $ Cereal.getListOf ga
+getStreamOf ga = Streamly.fromList <$> Cereal.getListOf ga
 {-# INLINEABLE getStreamOf #-}
 
 -- | Given @Serialize a@, encode to a Stream of bytes 
@@ -78,18 +78,18 @@ decodeStreamly = decodeGet Cereal.get
 decodeGet :: Monad m => Cereal.Get a -> Streamly.SerialT m Word.Word8 -> m (Either Text.Text a)
 decodeGet g s = go s $ Cereal.runGetPartial g where
   go x f = do
-    y <- Streamly.uncons x 
+    y <- Streamly.uncons x
     case y of
       Nothing -> return $ Left "Premature end of stream reached."
-      Just (b, tx) -> case f $ BS.singleton b of
-        Cereal.Fail e _ -> return $ Left $ "Cereal Error: " <> (Text.pack e)
+      Just (b, tx) -> case f $ one b of
+        Cereal.Fail e _ -> return $ Left $ "Cereal Error: " <> toText e
         Cereal.Done a _ -> return $ Right a
         Cereal.Partial f' -> go tx f'
 {-# INLINEABLE decodeGet #-}
 
 -- | Given @Serialize a@, attempt to decode a Streamly array of bytes into an @a@
 decodeStreamlyArray :: (Cereal.Serialize a) => Streamly.Array.Array Word.Word8 -> Either Text.Text a
-decodeStreamlyArray = either (Left . Text.pack) Right . Cereal.decode . Streamly.ByteString.fromArray 
+decodeStreamlyArray = either (Left . toText) Right . Cereal.decode . Streamly.ByteString.fromArray
 {-# INLINEABLE decodeStreamlyArray #-}
 
 -- | Given @Serialize a@, attempt to encode a stream of @a@s as a Streamly stream of bytes.
@@ -99,7 +99,7 @@ encodeStream = Streamly.concatMap encodeStreamly
 
 -- | Given @Serialize a@, attempt to encode a sterm of @a@s as a Streamly array of bytes.
 encodeStreamArray :: (Monad m, MonadIO m, Cereal.Serialize a) => Streamly.SerialT m a -> m (Streamly.Array.Array Word.Word8)
-encodeStreamArray = Streamly.Array.toArray . Streamly.map encodeStreamlyArray 
+encodeStreamArray = Streamly.Array.toArray . Streamly.map encodeStreamlyArray
 {-# INLINEABLE encodeStreamArray #-}
 
 -- NB this will keep decoding as until failure.  But it can't know why it failed so it
@@ -107,14 +107,14 @@ encodeStreamArray = Streamly.Array.toArray . Streamly.map encodeStreamlyArray
 -- Parser state is (Maybe a, ByteStream -> Cereal.Result a)
 -- | Streamly Parser for decoding bytes into @a@s (given @Serialize a@) 
 streamlyDecodeParser :: (Monad m, Exceptions.MonadThrow m, Cereal.Serialize a) => Streamly.Parser.Parser m Word.Word8 a
-streamlyDecodeParser = Streamly.Parser.Parser step (return $ (Nothing, Cereal.runGetPartial Cereal.get)) extract where
-  step (_, f) w = case f $ BS.singleton w of
+streamlyDecodeParser = Streamly.Parser.Parser step (return (Nothing, Cereal.runGetPartial Cereal.get)) extract where
+  step (_, f) w = case f $ one w of
     Cereal.Fail e _ -> return $ Streamly.Parser.Error e
     Cereal.Done a _ -> return $ Streamly.Parser.Yield 0 (Just a, Cereal.runGetPartial Cereal.get)
     Cereal.Partial f' -> return $ Streamly.Parser.Skip 0 (Nothing, f')
   extract (ma, _)  = case ma of
     Just a -> return a
-    Nothing -> Exceptions.throwM $ Streamly.Parser.ParseError "Parsing error in streamlyDecodeParser (\"extract\" called on incomplete parse.)."   
+    Nothing -> Exceptions.throwM $ Streamly.Parser.ParseError "Parsing error in streamlyDecodeParser (\"extract\" called on incomplete parse.)."
 {-# INLINEABLE streamlyDecodeParser #-}
 
 -- | Given @Serialize a@, decode a Stream of bytes into a stream of @a@s
@@ -127,18 +127,18 @@ decodeStream = Streamly.splitParse streamlyDecodeParser
 -- | Given @Serialize a@, decode an array of bytes into a stream of @a@s
 decodeStreamArray :: (Monad m, Exceptions.MonadCatch m, Cereal.Serialize a)
                   => Streamly.Array.Array Word.Word8 -> Streamly.SerialT m a
-decodeStreamArray = decodeStream . Streamly.Array.toStream 
+decodeStreamArray = decodeStream . Streamly.Array.toStream
 {-# INLINEABLE decodeStreamArray #-}
 
 
 
 -- | ByteString to Streamly.Array.Array Word8
 byteStringToStreamlyArray :: BS.ByteString -> Streamly.Array.Array Word.Word8
-byteStringToStreamlyArray = Streamly.ByteString.toArray 
+byteStringToStreamlyArray = Streamly.ByteString.toArray
 
 -- | Lazy ByteString to Streamly.Array.Array Word8
 lazyByteStringToStreamlyArray :: BL.ByteString -> Streamly.Array.Array Word.Word8
-lazyByteStringToStreamlyArray = Streamly.ByteString.toArray . BL.toStrict
+lazyByteStringToStreamlyArray = Streamly.ByteString.toArray . toStrict
 
 
 -- | streamly array to ByteString
@@ -148,4 +148,4 @@ streamlyArrayToByteString = Streamly.ByteString.fromArray
 
 -- | streamly array to ByteString
 streamlyArrayToLazyByteString :: Streamly.Array.Array Word.Word8 -> BL.ByteString
-streamlyArrayToLazyByteString = BL.fromStrict .  Streamly.ByteString.fromArray
+streamlyArrayToLazyByteString = fromStrict .  Streamly.ByteString.fromArray

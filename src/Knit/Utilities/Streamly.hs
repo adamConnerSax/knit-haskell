@@ -26,7 +26,6 @@ import qualified Streamly.Internal.Prelude as Streamly
 import qualified Polysemy 
 
 import qualified Control.Monad.Primitive as Prim
-import qualified Control.Monad.Reader as Reader
 
 import           Control.Monad.Catch  (MonadThrow, MonadCatch)
 import Control.Monad.Base (MonadBase)
@@ -36,19 +35,19 @@ import qualified Data.Text as Text
 
 -- | record-of-functions to hold access to effects we want to have available in this
 -- ReaderT over IO wrapper for Streamly
-data StreamlyEffects = StreamlyEffects { logIO :: Knit.Logger.LogSeverity -> Text.Text -> IO () }
+newtype StreamlyEffects = StreamlyEffects { logIO :: Knit.Logger.LogSeverity -> Text.Text -> IO () }
 
 -- | Use the logging function in the Reader to log in a StreamlyM context.
 logStreamly :: Knit.Logger.LogSeverity -> Text.Text -> StreamlyM ()
 logStreamly ls t = do
-  logFunction <- Reader.asks logIO
-  Reader.liftIO $ logFunction ls t
+  logFunction <- asks logIO
+  liftIO $ logFunction ls t
 {-# INLINEABLE logStreamly #-}
 
 -- | IO with a ReaderT layer we can use to expose effects we need.  For now just logging.
-newtype StreamlyM a = StreamlyM { unStreamlyM :: Reader.ReaderT StreamlyEffects IO a }
-  deriving newtype (Functor, Applicative, Monad, Reader.MonadReader StreamlyEffects)
-  deriving (MonadThrow, MonadCatch, Reader.MonadIO, Prim.PrimMonad, MonadBase IO, MonadBaseControl IO) via (Reader.ReaderT StreamlyEffects IO)
+newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
+  deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
+  deriving (MonadThrow, MonadCatch, MonadIO, Prim.PrimMonad, MonadBase IO, MonadBaseControl IO) via (ReaderT StreamlyEffects IO)
 
 -- | lift a 'StreamlyM' computation into a 'Knit.Sem' computation
 streamlyToKnit :: (Polysemy.Member (Polysemy.Embed IO) r
@@ -59,7 +58,7 @@ streamlyToKnit sa = do
   curPrefix <- Knit.Logger.getPrefix
   let logFunction = Knit.Logger.logWithPrefixToIO 
       se = StreamlyEffects (\ls lmsg -> logFunction curPrefix (Knit.Logger.LogEntry ls lmsg))
-  Polysemy.embed $ Reader.runReaderT (unStreamlyM sa) se
+  Polysemy.embed $ runReaderT (unStreamlyM sa) se
 {-# INLINEABLE streamlyToKnit #-}
 
 {-# DEPRECATED streamlyToKnitS "This is mysteriously slow so will be removed.  Run all streams in the StreamlyM monad. Then lift using @streamlyToKnit@" #-}

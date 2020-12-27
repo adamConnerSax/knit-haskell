@@ -50,7 +50,7 @@ getNextUnusedId prefixT = do
   idMap <- PS.get @IdMap
   let nextId = fromMaybe 1 $ M.lookup prefixT idMap
   PS.put $ M.insert prefixT (nextId + 1) idMap
-  return $ prefixT <> "_" <> (T.pack $ show nextId)
+  return $ prefixT <> "_" <> show nextId
 
 -- | Run the UnusedId effect and throw away the state.
 runUnusedId :: P.Sem (UnusedId ': r) a -> P.Sem r a

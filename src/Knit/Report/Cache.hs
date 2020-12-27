@@ -39,7 +39,7 @@ module Knit.Report.Cache
   , withCacheTime
   , onlyCacheTime
     -- * Cache Combinators
-  , store  
+  , store
   , clear
   , clearIfPresent
   , retrieve
@@ -72,27 +72,26 @@ import qualified Control.Foldl as Foldl
 import qualified Knit.Effect.AtomicCache       as C
 import           Knit.Effect.AtomicCache        (clear
                                                 , clearIfPresent
-                                                , WithCacheTime                                                
+                                                , WithCacheTime
                                                 , withCacheTime
                                                 , ignoreCacheTime
                                                 , ignoreCacheTimeM
                                                 , ActionWithCacheTime
                                                 , onlyCacheTime)
-import qualified Knit.Effect.Serialize         as KS                 
+import qualified Knit.Effect.Serialize         as KS
 import qualified Knit.Effect.Logger            as K
 import qualified Knit.Utilities.Streamly       as KStreamly
 
 import qualified Control.Monad.Catch.Pure      as Exceptions
 import qualified Control.Exception as EX
 
-import qualified Data.Text                     as T
 import qualified Data.Time.Clock               as Time
 import           Data.Time.Clock                (UTCTime)
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
-import qualified Streamly  
+import qualified Streamly
 import qualified Streamly.Prelude              as Streamly
 
 import qualified System.Directory as System
@@ -143,7 +142,7 @@ mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =
 
 -- | Serialize a Streamly stream of Serializable structures to the CacheData type.
 knitSerializeStream :: (sc a
-                       , P.Member (P.Embed IO) r                
+                       , P.Member (P.Embed IO) r
                        , P.MemberWithError (P.Error C.CacheError) r
                        , K.LogWithPrefixesLE r
                        )
@@ -163,9 +162,9 @@ store
   => k -- ^ Key
   -> a -- ^ (Serializable) Data to store
   -> P.Sem r ()
-store k a = K.wrapPrefix ("Knit.store (key=" <> (T.pack $ show k) <> ")") $ do
+store k a = K.wrapPrefix ("Knit.store (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
-  K.logLE (K.Debug 3) $ "Called with k=" <> (T.pack $ show k)
+  K.logLE (K.Debug 3) $ "Called with k=" <> show k
   C.encodeAndStore (knitSerialize cacheSD) k a
 {-# INLINEABLE store #-}
 
@@ -178,7 +177,7 @@ retrieve
   , sc a)
   => k                                   -- ^ Key
   -> P.Sem r (C.ActionWithCacheTime r a) -- ^ Time-stamped return from cache.
-retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> (T.pack $ show k) <> ")") $ do
+retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
   C.retrieveAndDecode (knitSerialize cacheSD) k Nothing
 {-# INLINEABLE retrieve #-}
@@ -190,14 +189,14 @@ retrieveOrMake
   ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
   , Show k
-  , sc a     
+  , sc a
   )
   => k                                   -- ^ Key
   -> C.ActionWithCacheTime r b           -- ^ Cached dependencies with time-stamp
   -> (b -> P.Sem r a)                    -- ^ Computation to produce @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (C.ActionWithCacheTime r a) -- ^ Time-stamped return from cache.
 retrieveOrMake k cachedDeps toMake =
-  K.wrapPrefix ("Cache.retrieveOrMake (key=" <> (T.pack $ show k) <> ")") $ do
+  K.wrapPrefix ("Cache.retrieveOrMake (key=" <> show k <> ")") $ do
    cacheSD <- KS.getSerializeDict
    C.retrieveOrMake (knitSerialize cacheSD) k cachedDeps toMake
 {-# INLINEABLE retrieveOrMake #-}
@@ -221,9 +220,8 @@ retrieveOrMakeTransformed
   -> (c -> P.Sem r a)                    -- ^ Computation to produce @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (C.ActionWithCacheTime r a) -- ^ Time-stamped @a@ from cache.
 retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
-  K.wrapPrefix "retrieveOrMakeTransformed" 
-  $ fmap (fmap fromSerializable)
-  $ retrieveOrMake k newestM (fmap toSerializable . toMake)
+  K.wrapPrefix "retrieveOrMakeTransformed"
+  $ fromSerializable <<$>> retrieveOrMake k newestM (fmap toSerializable . toMake)
 {-# INLINEABLE retrieveOrMakeTransformed #-}
 
 --
@@ -239,8 +237,8 @@ storeStream
   => k                            -- ^ Key
   -> Streamly.SerialT KStreamly.StreamlyM a -- ^ Streamly stream to store
   -> P.Sem r ()
-storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> (T.pack $ show k) <> ")") $ do
-  K.logLE(K.Debug 3) $ "Called with k=" <> (T.pack $ show k)
+storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> show k <> ")") $ do
+  K.logLE(K.Debug 3) $ "Called with k=" <> show k
   cacheSD <- KS.getSerializeDict
   C.encodeAndStore (knitSerializeStream cacheSD) k aS
 {-# INLINEABLE storeStream #-}
@@ -302,7 +300,7 @@ ignoreCacheTimeStream = Streamly.concatM . fmap C.ignoreCacheTime
 actionWCT2StreamWCT :: (K.LogWithPrefixesLE r)
                     => P.Sem r (C.ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a))
                     -> P.Sem r (StreamWithCacheTime a)
-actionWCT2StreamWCT x = K.wrapPrefix "actionWCT2StreamWCT" $ x >>= \wct -> fmap (C.withCacheTime $ C.cacheTime wct) $ C.ignoreCacheTime wct
+actionWCT2StreamWCT x = K.wrapPrefix "actionWCT2StreamWCT" $ x >>= \wct -> C.withCacheTime (C.cacheTime wct) <$> C.ignoreCacheTime wct
 {-
   K.logLE (K.Debug 3) $ "Before wct is bound"
   wct <- x  
@@ -326,7 +324,7 @@ retrieveStream
   => k                                 -- ^ Key
   -> Maybe Time.UTCTime                -- ^ Cached item invalidation time.  Supply @Nothing@ to retrieve regardless of time-stamp.
   -> P.Sem r (StreamWithCacheTime a) -- ^ Time-stamped stream from cache.
-retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pack $ show k) <> ")") $ do
+retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
   actionWCT2StreamWCT
     $ C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
@@ -363,7 +361,7 @@ retrieveOrMakeStream
   -> C.ActionWithCacheTime r b           -- ^ Cached dependencies with time-stamp
   -> (b -> Streamly.SerialT KStreamly.StreamlyM a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (StreamWithCacheTime a)   -- ^ Time-stamped stream.
-retrieveOrMakeStream k cachedDeps toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> (T.pack $ show k) <> ")") $ do
+retrieveOrMakeStream k cachedDeps toMake = K.wrapPrefix ("Cache.retrieveOrMakeStream (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
   actionWCT2StreamWCT
     $ C.retrieveOrMake (knitSerializeStream cacheSD) k cachedDeps (return . toMake)
@@ -389,9 +387,8 @@ retrieveOrMakeTransformedStream
   -> (c -> Streamly.SerialT KStreamly.StreamlyM a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (StreamWithCacheTime a)   -- ^ Time-stamped stream.
 retrieveOrMakeTransformedStream toSerializable fromSerializable k cachedDeps toMake =
-  K.wrapPrefix ("retrieveOrMakeTransformedStream (key=" <> (T.pack $ show k) <> ")")
-  $ fmap (C.wctMapAction $ Streamly.map fromSerializable)
-  $ retrieveOrMakeStream k cachedDeps (Streamly.map toSerializable . toMake)
+  K.wrapPrefix ("retrieveOrMakeTransformedStream (key=" <> show k <> ")")
+  $ C.wctMapAction (Streamly.map fromSerializable) <$> retrieveOrMakeStream k cachedDeps (Streamly.map toSerializable . toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
 
 
@@ -408,7 +405,7 @@ fileDependency fp = do
   modTimeE <- P.embed $ EX.tryJust checkError $ System.getModificationTime fp
   let modTimeM = case modTimeE of
         Left _ -> Nothing
-        Right modTime -> Just modTime    
+        Right modTime -> Just modTime
   return $ withCacheTime modTimeM (return ())
 {-# INLINEABLE fileDependency #-}
 
@@ -427,7 +424,7 @@ updateIf :: P.Member (P.Embed IO) r
 updateIf cur deps update = if C.cacheTime cur >= C.cacheTime deps then return cur else updatedAWCT where
   updatedAWCT = do
     updatedB <- ignoreCacheTime deps >>= update
-    nowCT <- P.embed $ Time.getCurrentTime
+    nowCT <- P.embed Time.getCurrentTime
     return $ withCacheTime (Just nowCT) (return updatedB)
 {-# INLINEABLE updateIf #-}
 

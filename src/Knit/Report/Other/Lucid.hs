@@ -1,6 +1,7 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeApplications     #-}
 {-|
 Module      : Knit.Report.Other.Lucid
 Description : freer-simple random effect
@@ -26,24 +27,23 @@ where
 
 import qualified Data.Aeson.Encode.Pretty   as A
 import qualified Data.ByteString.Lazy.Char8 as BS
-import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import qualified Graphics.Vega.VegaLite     as GV
 import qualified Lucid                      as H
 import qualified Text.Pandoc                as P
 
 -- | Convert Latex to Lucid Html
-latexToHtml :: T.Text -> H.Html ()
+latexToHtml :: Text -> H.Html ()
 latexToHtml lText = do
   let latexReadOptions = P.def
       htmlWriteOptions = P.def { P.writerHTMLMathMethod = P.MathJax "" }
       asHtml = P.readLaTeX latexReadOptions lText >>= P.writeHtml5String htmlWriteOptions
   case P.runPure asHtml of
-    Left err       -> H.span_ (H.toHtml $ show err)
+    Left err       -> H.span_ (H.toHtml $ show @String err)
     Right htmlText -> H.span_ (H.toHtmlRaw htmlText)
 
 -- | Convert Latex to Lucid Html
-latex_ :: T.Text -> H.Html ()
+latex_ :: Text -> H.Html ()
 latex_ = latexToHtml
 
 -- | Add headers for MathJax
@@ -71,7 +71,7 @@ tufteSetup = do
    H.meta_ [H.name_ "viewport", H.content_"width=device-width, initial-scale=1"]
 
 -- | -- | wrap given html in appropriate headers for the hvega and latex functions to work
-makeReportHtml :: T.Text -> H.Html a -> H.Html a
+makeReportHtml :: Text -> H.Html a -> H.Html a
 makeReportHtml title reportHtml = H.html_ $ htmlHead >> H.body_ (H.article_ reportHtml) where
   htmlHead :: H.Html () = H.head_ (do
                                   H.title_ (H.toHtmlRaw title)
@@ -82,9 +82,9 @@ makeReportHtml title reportHtml = H.html_ $ htmlHead >> H.body_ (H.article_ repo
                               )
 
 -- | add an hvega visualization with the given id
-placeVisualization :: T.Text -> GV.VegaLite -> H.Html ()
+placeVisualization :: Text -> GV.VegaLite -> H.Html ()
 placeVisualization idText vl =
-  let vegaScript :: T.Text = T.decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
+  let vegaScript :: Text = T.decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
       script = "var vlSpec=\n" <> vegaScript <> ";\n" <> "vegaEmbed(\'#" <> idText <> "\',vlSpec);"
   in H.figure_ [H.id_ idText] (H.script_ [H.type_ "text/javascript"]  (H.toHtmlRaw script))
 

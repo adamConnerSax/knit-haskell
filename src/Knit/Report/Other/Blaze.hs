@@ -1,6 +1,7 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeApplications #-}
 {-|
 Module      : Knit.Report.Other.Blaze
 Description : Support functions for simple reports in Blaze
@@ -27,8 +28,6 @@ where
 
 import qualified Data.Aeson.Encode.Pretty      as A
 import qualified Data.ByteString.Lazy.Char8    as BS
-import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as T
 import qualified Graphics.Vega.VegaLite        as GV
 import qualified Text.Blaze.Html5              as H
 import           Text.Blaze.Html5               ( (!) )
@@ -36,7 +35,7 @@ import qualified Text.Blaze.Html5.Attributes   as HA
 import qualified Text.Pandoc                   as P
 
 -- | Convert Latex to Blaze Html
-latexToHtml :: T.Text -> H.Html
+latexToHtml :: Text -> H.Html
 latexToHtml lText = do
   let
     latexReadOptions = P.def
@@ -44,10 +43,10 @@ latexToHtml lText = do
     asHtml =
       P.readLaTeX latexReadOptions lText >>= P.writeHtml5String htmlWriteOptions
   case P.runPure asHtml of
-    Left  err      -> H.span (H.toHtml $ show err)
+    Left  err      -> H.span (H.toHtml $ show @String err)
     Right htmlText -> H.span (H.preEscapedToHtml htmlText)
 
-latex_ :: T.Text -> H.Html
+latex_ :: Text -> H.Html
 latex_ = latexToHtml
 
 mathJaxScript :: H.Html
@@ -86,20 +85,20 @@ tufteSetup = do
   H.meta ! HA.name "viewport" ! HA.content "width=device-width, initial-scale=1"
 
 -- | Wrap given html in appropriate headers for the hvega and latex functions to work
-makeReportHtml :: T.Text -> H.Html -> H.Html
+makeReportHtml :: Text -> H.Html -> H.Html
 makeReportHtml title reportHtml = H.html $ H.docTypeHtml $ do
   H.head $ do
     H.title (H.toHtml title)
     tufteSetup
     mathJaxScript
     vegaScripts2
-  H.body $ H.article $ reportHtml
+  H.body $ H.article reportHtml
 
 -- | Add an hvega visualization with the given id
-placeVisualization :: T.Text -> GV.VegaLite -> H.Html
+placeVisualization :: Text -> GV.VegaLite -> H.Html
 placeVisualization idText vl =
-  let vegaScript :: T.Text =
-        T.decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
+  let vegaScript :: Text =
+        decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
       script =
         "var vlSpec=\n"
           <> vegaScript

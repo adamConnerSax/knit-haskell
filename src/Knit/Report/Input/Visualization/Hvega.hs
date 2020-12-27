@@ -27,7 +27,6 @@ import           Knit.Report.Input.Html.Blaze   ( addBlaze )
 import qualified Data.Aeson.Encode.Pretty      as A
 import qualified Data.ByteString.Lazy.Char8    as BS
 import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as T
 import qualified Graphics.Vega.VegaLite        as GV
 import qualified Text.Blaze.Html5              as BH
 import qualified Text.Blaze.Html5.Attributes   as BHA
@@ -60,7 +59,7 @@ addHvega idTextM captionTextM vl = do
 placeVisualization :: T.Text -> Maybe T.Text -> GV.VegaLite -> BH.Html
 placeVisualization idText captionTextM vl =
   let vegaScript :: T.Text =
-        T.decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
+        decodeUtf8 $ BS.toStrict $ A.encodePretty $ GV.fromVL vl
       script =
         "var vlSpec=\n"
           <> vegaScript
@@ -70,7 +69,7 @@ placeVisualization idText captionTextM vl =
           <> "\',vlSpec);"
   in  BH.figure BH.! BHA.id (BH.toValue idText) $ do
         BH.script BH.! BHA.type_ "text/javascript" $ BH.preEscapedToHtml script
-        maybe (return ()) (BH.figcaption . BH.toHtml) captionTextM
+        whenJust captionTextM (BH.figcaption . BH.toHtml)
 
 
 

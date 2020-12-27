@@ -114,7 +114,7 @@ defaultKnitConfig cacheDirM =
      KLog.nonDiagnostic
      (KO.PandocWriterConfig Nothing M.empty id)
      KS.cerealStreamlyDict
-     (KC.persistStreamlyByteArray (\t -> T.unpack (cacheDir <> "/" <> t)))
+     (KC.persistStreamlyByteArray (\t -> toString (cacheDir <> "/" <> t)))
 {-# INLINEABLE defaultKnitConfig #-}                               
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
@@ -146,7 +146,7 @@ knitHtml
   -> P.Sem (KnitEffectDocStack c ct k m) () -- ^ computation producing a single document
   -> m (Either PA.PandocError TL.Text) -- ^ Resulting document or error, in base monad.  Usually IO.
 knitHtml config =
-  fmap (fmap (fmap BH.renderHtml)) (consumeKnitEffectStack config)
+  fmap BH.renderHtml <<$>> consumeKnitEffectStack config
     . KO.pandocWriterToBlazeDocument (pandocWriterConfig config)
 {-# INLINEABLE knitHtml #-}                               
 
@@ -279,11 +279,11 @@ consumeKnitEffectStack config =
 
 
 ioErrorToPandocError :: IE.IOError -> KPM.PandocError
-ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText $ ("IOError: " <> show e)) e
+ioErrorToPandocError e = PA.PandocIOError (KPM.textToPandocText ("IOError: " <> show e)) e
 {-# INLINEABLE ioErrorToPandocError #-}
 
 cacheErrorToPandocError :: KC.CacheError -> KPM.PandocError
-cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText $ ("CacheError: " <> show e))
+cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText ("CacheError: " <> show e))
 {-# INLINEABLE cacheErrorToPandocError #-}
 
 someExceptionToPandocError :: Exceptions.SomeException -> KPM.PandocError
