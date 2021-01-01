@@ -62,6 +62,7 @@ module Knit.Report.Cache
     -- * Utilities
   , fileDependency
   , updateIf
+  , loadOrMakeFile
   , oldestUnit
     -- * Re-Exports
   , UTCTime
@@ -246,14 +247,14 @@ storeStream k aS = K.wrapPrefix ("Cache.storeStream key=" <> show k <> ")") $ do
 -- | Specify a Streamly Stream as the action in a 'C.WithCacheTime'
 type StreamWithCacheTime a = C.WithCacheTime (Streamly.SerialT KStreamly.StreamlyM) a
 
--- | Apply a stream transformer to a cached stream 
+-- | Apply a stream transformer to a cached stream
 mapCachedStream :: (Streamly.SerialT KStreamly.StreamlyM a -> Streamly.SerialT KStreamly.StreamlyM b)
                 -> StreamWithCacheTime a
                 -> StreamWithCacheTime b
 mapCachedStream f swct = C.withCacheTime (C.cacheTime swct) (f $ C.ignoreCacheTime swct)
 {-# INLINEABLE mapCachedStream #-}
 
--- | Use a function from a @Stream StreamlyM a@  to @StreamlyM b@ to map from a stream action to a plain action, then lift into Sem. 
+-- | Use a function from a @Stream StreamlyM a@  to @StreamlyM b@ to map from a stream action to a plain action, then lift into Sem.
 streamToAction :: (P.Member (P.Embed IO) r
                   , K.LogWithPrefixesLE r
                   )
@@ -303,7 +304,7 @@ actionWCT2StreamWCT :: (K.LogWithPrefixesLE r)
 actionWCT2StreamWCT x = K.wrapPrefix "actionWCT2StreamWCT" $ x >>= \wct -> C.withCacheTime (C.cacheTime wct) <$> C.ignoreCacheTime wct
 {-
   K.logLE (K.Debug 3) $ "Before wct is bound"
-  wct <- x  
+  wct <- x
   K.logLE (K.Debug 3) $ "After wct is bound"
   fmap (C.withCacheTime $ C.cacheTime wct) $ C.ignoreCacheTime wct
 -}
@@ -312,7 +313,7 @@ actionWCT2StreamWCT x = K.wrapPrefix "actionWCT2StreamWCT" $ x >>= \wct -> C.wit
 -- | Retrieve a Streamly stream of @a@ from the store at key k. Throw if not found or 'IOError'
 -- ignore dependency info
 -- NB: This will deserialize when the return value is bound so this is somewhat less efficient as a
--- dependency.  As an alternative, use versions 
+-- dependency.  As an alternative, use versions
 retrieveStream
   :: forall sc k ct r a.
   (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
@@ -348,7 +349,7 @@ retrieveStream' k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pa
 -}
 
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
--- If retrieve fails then perform the action and store the resulting stream at key @k@. 
+-- If retrieve fails then perform the action and store the resulting stream at key @k@.
 retrieveOrMakeStream
   :: forall sc ct k r a b.
      ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
@@ -357,7 +358,7 @@ retrieveOrMakeStream
      , Show k
      , sc a
      )
-  => k                                   -- ^ Key 
+  => k                                   -- ^ Key
   -> C.ActionWithCacheTime r b           -- ^ Cached dependencies with time-stamp
   -> (b -> Streamly.SerialT KStreamly.StreamlyM a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (StreamWithCacheTime a)   -- ^ Time-stamped stream.
@@ -382,7 +383,7 @@ retrieveOrMakeTransformedStream
   )
   => (a -> b)                            -- ^ Transform @a@ to Serializable @b@
   -> (b -> a)                            -- ^ Transform Serializable @b@ to @a@
-  -> k                                   -- ^ Key 
+  -> k                                   -- ^ Key
   -> C.ActionWithCacheTime r c           -- ^ Cached dependencies with time-stamp
   -> (c -> Streamly.SerialT KStreamly.StreamlyM a) -- ^ Computation to produce Stream of @a@ if absent from cache or cached version is older than dependencies.
   -> P.Sem r (StreamWithCacheTime a)   -- ^ Time-stamped stream.
@@ -409,6 +410,7 @@ fileDependency fp = do
   return $ withCacheTime modTimeM (return ())
 {-# INLINEABLE fileDependency #-}
 
+
 -- | Given a time-tagged @a@ and time-tagged @b@ and an effectful function
 -- producing @b@ from @a@, return the given @b@ or run the function with the
 -- given @a@, depending on the time-stamps of the given @a@ and @b@.
@@ -427,6 +429,26 @@ updateIf cur deps update = if C.cacheTime cur >= C.cacheTime deps then return cu
     nowCT <- P.embed Time.getCurrentTime
     return $ withCacheTime (Just nowCT) (return updatedB)
 {-# INLINEABLE updateIf #-}
+
+-- | Given a file name and way to turn that file into type @b@, check for existence and then
+-- check timestamp against input data.  Remake if too old or make if file is missing.
+loadOrMakeFile ::  P.Member (P.Embed IO) r
+               => FilePath  -- ^ path to file
+               -> (FilePath -> P.Sem r b) -- ^ action to make result from file if it exists
+               -> ActionWithCacheTime r a -- dependencies
+               -> (a -> P.Sem r b) -- ^ action to make result from existing data
+               -> P.Sem r (ActionWithCacheTime r b)
+loadOrMakeFile fp loader deps maker = do
+  fileDep <- fileDependency fp
+  let fromFile = C.wctBind loader (fmap (const fp) fileDep)
+      makeNew = do
+        updatedB <- ignoreCacheTime deps >>= maker
+        nowCT <- P.embed Time.getCurrentTime
+        return $ withCacheTime (Just nowCT) (return updatedB)
+  if isJust (C.cacheTime fileDep)
+    then updateIf fromFile deps maker
+    else makeNew
+{-# INLINEABLE loadOrMakeFile #-}
 
 -- | Utility for taking a set of time-tagged items and producing a single time-tagged unit.
 -- Useful if you wish to run a function (using, e.g., @updateIf@) when any of a set of things is

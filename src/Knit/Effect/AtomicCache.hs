@@ -40,7 +40,7 @@ computeA = ...
 computeB :: m b
 computeB = ...
 
-cachedA :: WithCacheTime m a 
+cachedA :: WithCacheTime m a
 cachedA :: retrieveOrMake serialize "a.bin" (pure ()) (const computeA)
 
 cachedB :: WithCacheTime m b
@@ -75,7 +75,7 @@ suppose @a@ is retrieved from cache, and @b@ is computed fresh.  @cachedA@ holds
 computation which will deserialize the cached byte array retrieved for a.  @cachedB@ holds a time-stamp
 (the time the computation of b completes) and the trivial monadic action @return b@.  Since @b@ was
 just computed, the cached @c@ is outdated and will be recomputed.  At that point @a@ is deserialized, @b@
-is unwrapped and thse are given to the function to compute @c@, which is then 
+is unwrapped and thse are given to the function to compute @c@, which is then
 stored in cache as well as returned in the @WithCacheTime m c@, holding a new time-stamp.
 
 If multiple threads attempt to lookup or 'retrieveOrMake' at the same key
@@ -91,7 +91,7 @@ significant, you may want to compute the data before launching the threads.
 
 NB: Should the action given to create the data, the @(b -> m a)@ argument of 'retrieveOrMake' somehow
 fail, this may lead to a situation where it runs on the first thread, fails, then runs on all the other threads
-simultaneously, presumably failing all those times as well.  
+simultaneously, presumably failing all those times as well.
 
 <https://github.com/adamConnerSax/knit-haskell/tree/master/examples Examples> are available, and might be useful for seeing how all this works.
 -}
@@ -114,6 +114,7 @@ module Knit.Effect.AtomicCache
   , cacheTime
     -- ** Utilities
   , wctMapAction
+  , wctBind
     -- ** Cache Actions
   , encodeAndStore
   , retrieveAndDecode
@@ -198,7 +199,7 @@ natQ nat (Q tM fb) = Q tM (nat fb)
 
 -- | Map one type of action to another.  NB: 'Q w m' is a functor
 -- (as long as @m@ is), so if @m@ is not changing, you should prefer 'fmap'
--- to this function.  
+-- to this function.
 morphQ :: (m a -> n b) -> Q w m a -> Q w n b
 morphQ f (Q tM ma) = Q tM (f ma)
 {-# INLINEABLE morphQ #-}
@@ -280,7 +281,7 @@ pattern ActionWithCacheTime :: CacheTime -> P.Sem r a -> ActionWithCacheTime r a
 pattern ActionWithCacheTime mTime ma <- Q mTime ma where
   ActionWithCacheTime mTime ma = Q mTime ma
 -}
--- | Construct a WithCacheTime with a time and no action.  
+-- | Construct a WithCacheTime with a time and no action.
 onlyCacheTime :: Applicative m => TimeM -> WithCacheTime m ()
 onlyCacheTime tM = WithCacheTime (toCacheTime tM) (pass)
 {-# INLINEABLE onlyCacheTime #-}
@@ -299,10 +300,16 @@ wctApplyNat = natQ
 
 -- | Map one type of action to another.  NB: 'WithCacheTime m' is a functor
 -- (as long as @m@ is), so if @m@ is not changing, you should prefer 'fmap'
--- to this function.  
+-- to this function.
 wctMapAction :: (m a -> n b) -> WithCacheTime m a -> WithCacheTime n b
 wctMapAction = morphQ
 {-# INLINEABLE wctMapAction #-}
+
+-- | Promote a monadic function to a function between Cached actions.
+wctBind :: Monad m => (a -> m b) -> WithCacheTime m a -> WithCacheTime m b
+wctBind = promoteQ
+{-# INLINEABLE wctBind #-}
+
 
 -- | natural transformation which is useful for interoperation between
 -- the cache storage and the values returned to the user.
@@ -485,7 +492,7 @@ retrieveOrMake
      , Show k
      )
   => KS.Serialize CacheError r a ct      -- ^ Record-Of-Functions for serialization/deserialization
-  -> k                                   -- ^ Key 
+  -> k                                   -- ^ Key
   -> ActionWithCacheTime r b             -- ^ Cached Dependencies
   -> (b -> P.Sem r a)                    -- ^ Computation to produce @a@ if lookup fails.
   -> P.Sem r (ActionWithCacheTime r a)   -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'
@@ -515,7 +522,7 @@ clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> pass)
 -- the @Maybe@ inside so we can notify waiting threads that whatever they were waiting on
 -- to fill the TMVar failed.
 
--- | Specific type of in-memory cache.  
+-- | Specific type of in-memory cache.
 type AtomicMemCache k v = C.TVar (Map k (C.TMVar (Maybe (WithCacheTime Identity v))))
 
 -- | lookup combinator for in-memory AtomicMemCache
@@ -838,5 +845,3 @@ fileNotFoundToMaybe x = fmap Just x `Exception.catch` f where
 rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r) => IO a -> P.Sem r a
 rethrowIOErrorAsCacheError = P.fromExceptionVia (\(e :: IO.Error.IOError) -> PersistError $ "IOError: " <> show e)
 {-# INLINEABLE rethrowIOErrorAsCacheError #-}
-
-
