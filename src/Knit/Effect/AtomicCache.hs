@@ -112,6 +112,7 @@ module Knit.Effect.AtomicCache
   , ignoreCacheTime
   , ignoreCacheTimeM
   , cacheTime
+  , liftActionWithCacheTime
     -- ** Utilities
   , wctMapAction
   , wctBind
@@ -335,6 +336,9 @@ ignoreCacheTimeM = joinActionOnlyQ
 cacheTime :: WithCacheTime m a -> TimeM
 cacheTime = toTimeM . monoidOnlyQ
 {-# INLINEABLE cacheTime #-}
+
+liftActionWithCacheTime :: forall e r a . ActionWithCacheTime r a -> ActionWithCacheTime (e ': r) a
+liftActionWithCacheTime = wctApplyNat P.raise
 
 -- | Key/Value store effect requiring its implementation to return values with time-stamps.
 data Cache k v m a where
