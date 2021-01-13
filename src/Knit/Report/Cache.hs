@@ -253,7 +253,7 @@ type StreamWithCacheTime a = C.WithCacheTime (Streamly.SerialT KStreamly.Streaml
 mapCachedStream :: (Streamly.SerialT KStreamly.StreamlyM a -> Streamly.SerialT KStreamly.StreamlyM b)
                 -> StreamWithCacheTime a
                 -> StreamWithCacheTime b
-mapCachedStream f swct = C.withCacheTime (C.cacheTime swct) (f $ C.ignoreCacheTime swct)
+mapCachedStream = C.wctMapAction --C.withCacheTime (C.cacheTime swct) (f $ C.ignoreCacheTime swct)
 {-# INLINEABLE mapCachedStream #-}
 
 -- | Use a function from a @Stream StreamlyM a@  to @StreamlyM b@ to map from a stream action to a plain action, then lift into Sem.
