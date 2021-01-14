@@ -67,6 +67,9 @@ module Knit.Report.Cache
   , oldestUnit
     -- * Re-Exports
   , UTCTime
+  -- * temp
+  , actionWCT2StreamWCT
+  , knitSerialize
   )
 where
 
