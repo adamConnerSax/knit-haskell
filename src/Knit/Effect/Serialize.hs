@@ -66,6 +66,8 @@ module Knit.Effect.Serialize
 
     -- * Errors
   , SerializationError(..)
+  -- * temp
+  , streamlySerializeF
   )
 where
 

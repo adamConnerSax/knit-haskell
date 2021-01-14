@@ -70,6 +70,7 @@ module Knit.Report.Cache
   -- * temp
   , actionWCT2StreamWCT
   , knitSerialize
+  , knitSerializeStream
   )
 where
 
