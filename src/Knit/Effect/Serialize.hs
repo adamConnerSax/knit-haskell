@@ -207,16 +207,16 @@ serializeStreamly sdict@(SerializeDict _ _ _ _ bytes) =
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamly #-}
 
---data Accum = Accum { n :: !Int, b :: }
+data Accum b = Accum { count :: !Int, bldr :: !b }
 
 streamlySerializeF :: forall m c a ct.(Monad m, c a)
                    => SerializeDict c ct
                    -> Streamly.Fold.Fold m a ct
 streamlySerializeF (SerializeDict encodeOne _ bldrToCT _ _) = Streamly.Fold.Fold step initial extract where
 --  step :: (Int, bldr) -> a -> m (Int, bldr)
-  step (!n, !b) !a = return (n + 1, b <> encodeOne a)
-  initial = return (0, mempty)
-  extract (!n, !bldr) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> bldr
+  step (Accum n b) !a = return $ Accum (n + 1) (b <> encodeOne a)
+  initial = return $ Accum 0 mempty
+  extract (Accum n b) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> b
 {-# INLINEABLE streamlySerializeF #-}
 
 streamlyDeserialize :: forall a c ct r. (KLog.LogWithPrefixesLE r
