@@ -217,6 +217,7 @@ streamlySerializeF (SerializeDict encodeOne _ bldrToCT _ _) = Streamly.Fold.Fold
   step (!n, !b) !a = return (n + 1, b <> encodeOne a)
   initial = return (0, mempty)
   extract (!n, !bldr) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> bldr
+{-# INLINEABLE streamlySerializeF #-}
 
 streamlyDeserialize :: forall a c ct r. (KLog.LogWithPrefixesLE r
                                         , P.Member (P.Error SerializationError) r

@@ -415,7 +415,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
               cacheUpdate key Nothing
               return Nothing
             Just a -> do
-              K.logLE debugLogSeverity $ "key=" <> show key <> ": Making/Encoding..."
+              K.logLE debugLogSeverity $ "key=" <> show key <> ": Buffering/Encoding..."
               (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
               let nBytes = encBytes ct'
               K.logLE debugLogSeverity $ "key=" <> show key <> ": serialized to " <> show nBytes <> " bytes."
