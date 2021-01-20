@@ -74,9 +74,10 @@ where
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Polysemy.Reader               as PR
-import qualified Data.ByteString.Lazy          as BL
+--import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString               as BS
-import qualified Data.ByteString.Builder       as BB
+--import qualified Data.ByteString.Builder       as BB
+import qualified ByteString.StrictBuilder      as BSB
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
@@ -91,6 +92,7 @@ import qualified Streamly.Internal.Data.Fold   as Streamly.Fold
 import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.Internal.Data.Array  as Streamly.Data.Array
 import qualified Streamly.External.Cereal      as Streamly.Cereal
+import qualified Streamly.External.ByteString  as Streamly.ByteString
 
 import qualified Knit.Utilities.Streamly       as K
 import qualified Knit.Effect.Logger            as KLog
@@ -207,8 +209,9 @@ serializeStreamly sdict@(SerializeDict _ _ _ _ bytes) =
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamly #-}
 
-data Accum b = Accum { count :: !Int, bldr :: !b }
+--data Accum b = Accum { count :: !Int, bldr :: !b }
 
+{-
 streamlySerializeF :: forall m c a ct.(Monad m, c a)
                    => SerializeDict c ct
                    -> Streamly.Fold.Fold m a ct
@@ -218,6 +221,21 @@ streamlySerializeF (SerializeDict encodeOne _ bldrToCT _ _) = Streamly.Fold.Fold
   initial = return $ Accum 0 mempty
   extract (Accum n b) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> b
 {-# INLINEABLE streamlySerializeF #-}
+-}
+
+
+streamlySerializeF :: forall c m a ct.(Monad m, c a)
+                   => SerializeDict c ct
+                   -> Streamly.Fold.Fold m a ct
+streamlySerializeF  (SerializeDict encodeOne _ bldrToCT _ _) =
+  let fBuilder = Streamly.Fold.Fold step initial return where
+        step !b !a = return $ b <> encodeOne a
+        initial = return mempty
+      toCT' bldr n = bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> bldr
+  in toCT' <$> fBuilder <*> Streamly.Fold.length
+--        extract (Accum n b) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> b
+{-# INLINEABLE streamlySerializeF #-}
+
 
 streamlyDeserialize :: forall a c ct r. (KLog.LogWithPrefixesLE r
                                         , P.Member (P.Error SerializationError) r
@@ -253,22 +271,21 @@ handleEitherInStream e = do
 
 -- | type-alias for default in-memory storage type.
 type DefaultCacheData = Streamly.Array.Array Word.Word8
-
+type DefaultSerializer = CerealS
 -- | type-alias for default Serializer
-type DefaultSerializer = S.Serialize
+type CerealS = S.Serialize
 
 -- | Implementation of `SerializeDict` for the cereal serializer,
 -- encoding to/decoding from `Streamly.Memory.Array.Array`
-cerealStreamlyDict :: SerializeDict DefaultSerializer DefaultCacheData
+cerealStreamlyDict :: SerializeDict CerealS DefaultCacheData
 cerealStreamlyDict =
   let bOrd bs = if BS.null bs then Done else Bytes bs
-      strictPut !x = S.execPut $ S.put x
+      strictPut !x = BSB.bytes $! S.runPut $ S.put x
       strictGet !bs = mapLeft (SerializationError . toText) $ second bOrd <$> S.runGetState S.get bs 0
   in SerializeDict
      strictPut
      strictGet
---     (\bs -> mapLeft (SerializationError . toText) $ second bOrd <$> S.runGetState S.get bs 0)
-     (Streamly.Cereal.byteStringToStreamlyArray . BL.toStrict . BB.toLazyByteString)
+     (Streamly.ByteString.toArray . BSB.builderBytes) --  (Streamly.Cereal.byteStringToStreamlyArray . BL.toStrict . BB.toLazyByteString)
      Streamly.Cereal.streamlyArrayToByteString
      (fromIntegral . Streamly.Array.length)
 {-# INLINEABLE cerealStreamlyDict #-}
