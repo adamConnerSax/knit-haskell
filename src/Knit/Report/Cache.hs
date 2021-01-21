@@ -67,10 +67,6 @@ module Knit.Report.Cache
   , oldestUnit
     -- * Re-Exports
   , UTCTime
-  -- * temp
-  , actionWCT2StreamWCT
-  , knitSerialize
-  , knitSerializeStream
   )
 where
 
@@ -337,23 +333,6 @@ retrieveStream k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> show k
     $ C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
 {-# INLINEABLE retrieveStream #-}
 
-{-
-retrieveStream'
-  :: forall sc k ct r a.
-  (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
-  , K.LogWithPrefixesLE r
-  , P.MemberWithError (P.Error Exceptions.SomeException) r
-  , Show k
-  , sc [a])
-  => k                                 -- ^ Key
-  -> Maybe Time.UTCTime                -- ^ Cached item invalidation time.  Supply @Nothing@ to retrieve regardless of time-stamp.
-  -> P.Sem r (ActionWithCacheTime r (Streamly.SerialT KStreamly.StreamlyM a)) -- ^ Time-stamped stream from cache.
-retrieveStream' k newestM =  K.wrapPrefix ("Cache.retrieveStream (key=" <> (T.pack $ show k) <> ")") $ do
-  cacheSD <- KS.getSerializeDict
-  C.retrieveAndDecode (knitSerializeStream cacheSD) k newestM
-{-# INLINEABLE retrieveStream' #-}
--}
-
 -- | Retrieve a Streamly stream of @a@ from the store at key @k@.
 -- If retrieve fails then perform the action and store the resulting stream at key @k@.
 retrieveOrMakeStream
@@ -463,10 +442,4 @@ oldestUnit :: (Foldable f, Functor f, Applicative m) => f (WithCacheTime m w) ->
 oldestUnit cts = withCacheTime t (pure ()) where
 --  t = minimum $ fmap C.cacheTime cts
   t = join $ Foldl.fold Foldl.minimum $ fmap C.cacheTime cts
-
-{-
-  if null cts
-    then Nothing
-    else foldl' (\min x -> if x < min then x else min) Nothing $ fmap C.cacheTime cts
--}
 {-# INLINEABLE oldestUnit #-}

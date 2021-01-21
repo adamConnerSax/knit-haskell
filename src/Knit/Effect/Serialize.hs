@@ -66,17 +66,13 @@ module Knit.Effect.Serialize
 
     -- * Errors
   , SerializationError(..)
-  -- * temp
-  , streamlySerializeF
   )
 where
 
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Polysemy.Reader               as PR
---import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString               as BS
---import qualified Data.ByteString.Builder       as BB
 import qualified ByteString.StrictBuilder      as BSB
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
@@ -209,21 +205,6 @@ serializeStreamly sdict@(SerializeDict _ _ _ _ bytes) =
   in Serialize enc dec bytes
 {-# INLINEABLE serializeStreamly #-}
 
---data Accum b = Accum { count :: !Int, bldr :: !b }
-
-{-
-streamlySerializeF :: forall m c a ct.(Monad m, c a)
-                   => SerializeDict c ct
-                   -> Streamly.Fold.Fold m a ct
-streamlySerializeF (SerializeDict encodeOne _ bldrToCT _ _) = Streamly.Fold.Fold step initial extract where
---  step :: (Int, bldr) -> a -> m (Int, bldr)
-  step (Accum n b) !a = return $ Accum (n + 1) (b <> encodeOne a)
-  initial = return $ Accum 0 mempty
-  extract (Accum n b) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> b
-{-# INLINEABLE streamlySerializeF #-}
--}
-
-
 streamlySerializeF :: forall c m a ct.(Monad m, c a)
                    => SerializeDict c ct
                    -> Streamly.Fold.Fold m a ct
@@ -233,7 +214,6 @@ streamlySerializeF  (SerializeDict encodeOne _ bldrToCT _ _) =
         initial = return mempty
       toCT' bldr n = bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> bldr
   in toCT' <$> fBuilder <*> Streamly.Fold.length
---        extract (Accum n b) = return $ bldrToCT $ encodeOne (fromIntegral @Int @Word.Word64 n) <> b
 {-# INLINEABLE streamlySerializeF #-}
 
 
