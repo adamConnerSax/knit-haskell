@@ -433,7 +433,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
               let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
               let nBytes = encBytes ct
               K.logLE K.Diagnostic $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache."
-              return $ Just $ Q cTimeM (decode ct)
+              return $ Just $ Q cTimeM (K.logLE K.Diagnostic ("Deserializing for key=\"" <> show key <> "\"") >> decode ct)
           Nothing -> Q Nothing $ do
             K.logLE debugLogSeverity $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
             return Nothing
@@ -507,7 +507,7 @@ retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=
   fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key cachedDeps
   case fromCache of
     Just x -> return x
-    Nothing -> P.throw $ OtherCacheError "retrieveOrMake returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
+    Nothing -> P.throw $ OtherCacheError $ "retrieveOrMake (key =" <> show key <> ") returned with Nothing.  Which should be impossible, unless called with action which produced Nothing."
 {-# INLINEABLE retrieveOrMake #-}
 
 -- | Clear the cache at a given key.  Throws an exception if item is not present.
