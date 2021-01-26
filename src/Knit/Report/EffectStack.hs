@@ -44,10 +44,13 @@ module Knit.Report.EffectStack
   , KnitOne
   , KnitMany
   , KnitBase
+
+    -- * Debug/Testing helpers
+  , consumeKnitEffectStack
   )
 where
 
-import qualified Control.Monad.Catch as Exceptions (SomeException, displayException) 
+import qualified Control.Monad.Catch as Exceptions (SomeException, displayException)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
@@ -71,7 +74,7 @@ import qualified Knit.Effect.AtomicCache       as KC
 import qualified Knit.Effect.Serialize         as KS
 
 {- |
-Parameters for knitting. If possible, create this via, e.g., 
+Parameters for knitting. If possible, create this via, e.g.,
 
 @
 myConfig = (defaultKnitConfig $ Just "myCacheDir") { pandocWriterConfig = myConfig }
@@ -115,7 +118,7 @@ defaultKnitConfig cacheDirM =
      (KO.PandocWriterConfig Nothing M.empty id)
      KS.cerealStreamlyDict
      (KC.persistStreamlyByteArray (\t -> toString (cacheDir <> "/" <> t)))
-{-# INLINEABLE defaultKnitConfig #-}                               
+{-# INLINEABLE defaultKnitConfig #-}
 
 -- | Create multiple HTML docs (as Text) from the named sets of pandoc fragments.
 -- In use, you may need a type-application to specify @m@.
@@ -148,7 +151,7 @@ knitHtml
 knitHtml config =
   fmap BH.renderHtml <<$>> consumeKnitEffectStack config
     . KO.pandocWriterToBlazeDocument (pandocWriterConfig config)
-{-# INLINEABLE knitHtml #-}                               
+{-# INLINEABLE knitHtml #-}
 
 -- | Constraints required to knit a document using effects from a base monad m.
 type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
@@ -156,7 +159,7 @@ type KnitBase m effs = (MonadIO m, P.Member (P.Embed m) effs)
 -- | lift an action in a base monad into a Polysemy monad.  This is just a renaming of `P.embed` for convenience.
 liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
-{-# INLINE liftKnit #-}                               
+{-# INLINE liftKnit #-}
 
 -- | Constraint alias for the effects we need (and run)
 -- when calling 'knitHtml' or 'knitHtmls'.
@@ -166,13 +169,13 @@ type KnitEffects r = (KPM.PandocEffects r
                      , P.Members [ KUI.UnusedId
                                  , KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
-                                 , P.Async                                 
+                                 , P.Async
                                  , PE.Error KC.CacheError
                                  , PE.Error Exceptions.SomeException
                                  , PE.Error PA.PandocError
                                  , P.Embed IO] r
                      )
-                     
+
 -- | Constraint alias for the effects we need to use the cache.
 type CacheEffects c ct k r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r)
 
@@ -185,7 +188,7 @@ type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
 -- | Constraint alias for the effects we need to knit multiple documents.
 type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
--- From here down is unexported.  
+-- From here down is unexported.
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
 type KnitEffectStack c ct k m
@@ -249,7 +252,7 @@ consumeKnitEffectStack config =
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO
-  . KPM.interpretTemplateIO    
+  . KPM.interpretTemplateIO
   . KUI.runUnusedId
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
@@ -271,7 +274,7 @@ consumeKnitEffectStack config =
   . KLog.filteredLogEntriesToIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
-  . KPM.interpretInIO -- PA.PandocIO        
+  . KPM.interpretInIO -- PA.PandocIO
   . KUI.runUnusedId
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #endif
@@ -287,5 +290,5 @@ cacheErrorToPandocError e = PA.PandocSomeError (KPM.textToPandocText ("CacheErro
 {-# INLINEABLE cacheErrorToPandocError #-}
 
 someExceptionToPandocError :: Exceptions.SomeException -> KPM.PandocError
-someExceptionToPandocError = PA.PandocSomeError . KPM.textToPandocText . toText . Exceptions.displayException 
+someExceptionToPandocError = PA.PandocSomeError . KPM.textToPandocText . toText . Exceptions.displayException
 {-# INLINEABLE someExceptionToPandocError #-}
