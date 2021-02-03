@@ -10,7 +10,7 @@
 module Main where
 
 import qualified Knit.Report                   as Knit
-import qualified Knit.Utilities.Streamly       as Knit.Streamly
+--import qualified Knit.Utilities.Streamly       as Knit.Streamly
 
 import qualified Streamly.Prelude as Streamly
 
@@ -42,7 +42,7 @@ main = do
         { Knit.outerLogPrefix = Just "CacheExample3.Main"
         , Knit.logIf = Knit.logAll
         , Knit.pandocWriterConfig = pandocWriterConfig
-        }                                               
+        }
   resE <- Knit.knitHtml knitConfig makeDoc
 
   case resE of
@@ -61,73 +61,42 @@ md1 = [here|
 
 makeDoc :: forall r.(Knit.KnitOne r, Knit.CacheEffectsD r) => Knit.Sem r ()
 makeDoc = Knit.wrapPrefix "makeDoc" $ do
-  
-  Knit.logLE Knit.Info "Clearing \"cacheExample/test4.bin\" from cache..."  
+
+  Knit.logLE Knit.Info "Clearing \"cacheExample/test4.bin\" from cache..."
   Knit.clearIfPresent "cacheExample/test4.bin"
   Knit.logLE Knit.Info $ "retrieveOrMake list of data the first time.  Should make. But not deserialize upon use since the actual data is returned in the cache object.."
   testList1_C <- listLoaderWC
   Knit.logLE Knit.Info $ "retrieveOrMake list of data the second time.  Should load from disk. But not deserialize until use."
   testList2_C <- listLoaderWC
   Knit.logLE Knit.Info "Using first list via show"
-  Knit.ignoreCacheTime testList1_C >>= MonadIO.liftIO . putStrLn . show 
+  Knit.ignoreCacheTime testList1_C >>= MonadIO.liftIO . putStrLn . show
   Knit.logLE Knit.Info "Using second list via show"
-  Knit.ignoreCacheTime testList2_C >>= MonadIO.liftIO . putStrLn . show 
-  Knit.logLE Knit.Info "Clearing \"cacheExample/test3.sbin\" from cache..."
+  Knit.ignoreCacheTime testList2_C >>= MonadIO.liftIO . putStrLn . show
 
-  Knit.clearIfPresent "cacheExample/test3.sbin"
-  Knit.logLE Knit.Info $ "retrieveOrMake stream of data the first time.  Should make. But not deserialize upon use since the actual data is returned in the cache object.."
-  testStream1_C <- streamLoaderWC
-  Knit.logLE Knit.Info $ "retrieveOrMake stream of data the second time.  Should load form disk. But not deserialize until use."
-  testStream2_C <- streamLoaderWC
-  Knit.logLE Knit.Info "Using first stream via show"
-  Knit.ignoreCacheTime (Knit.runCachedStream Streamly.toList testStream1_C) >>= MonadIO.liftIO . putStrLn . show 
-  Knit.logLE Knit.Info "Using second  stream via show"
-  Knit.ignoreCacheTime (Knit.runCachedStream Streamly.toList testStream2_C) >>= MonadIO.liftIO . putStrLn . show
-{-
-  Knit.logLE Knit.Info $ "retrieve stream directly"
-  testStream3_C <- Knit.retrieveStream  "cacheExample/test3.sbin" Nothing
-
-  let streamAction = Knit.ignoreCacheTime testStream3_C
-      
-  Knit.logLE Knit.Info "Using third stream via show"
-  streamList :: [Int] <- streamAction >>= Knit.Streamly.streamlyToKnit . Streamly.toList
-  MonadIO.liftIO . putStrLn . show  $ streamList
--}
-  Knit.logLE Knit.Info $ "retrieve stream without conversion to StreamWithCacheTime"
-  testStream4_C <- Knit.retrieveStream  "cacheExample/test3.sbin" Nothing
-  let stream = Knit.ignoreCacheTime testStream4_C -- P.Sem r (Streamly.SerialT KStreamly.StreamlyM a)  
-  Knit.logLE Knit.Info "running stream (via toList)"
-  asList :: [Int] <- Knit.Streamly.streamlyToKnit $ Streamly.toList stream
-  MonadIO.liftIO . putStrLn $ show asList
   return ()
 
-streamLoader :: (Knit.KnitEffects q, Knit.CacheEffectsD q) => Knit.Sem q [Int]
-streamLoader = Knit.runCachedStreamM Streamly.toList streamLoaderWC
-
-streamLoaderWC :: (Knit.KnitEffects q, Knit.CacheEffectsD q)
-               => Knit.Sem q (Knit.StreamWithCacheTime Int)
-streamLoaderWC = Knit.wrapPrefix "streamLoaderWC" $ do
-  Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
-  Knit.retrieveOrMakeStream "cacheExample/test3.sbin" (pure ()) $ const $ do               
-    Streamly.yieldM $ Knit.Streamly.logStreamly Knit.Diagnostic "Making test data"
-    Streamly.fromList  [1,10,100]
-
+listLoader :: (Knit.KnitEffects q, Knit.CacheEffectsD q) => Knit.Sem q [Int]
+listLoader = Knit.ignoreCacheTimeM listLoaderWC
 
 listLoaderWC :: (Knit.KnitEffects q, Knit.CacheEffectsD q)
                => Knit.Sem q (Knit.ActionWithCacheTime q [Int])
 listLoaderWC = Knit.wrapPrefix "listLoaderWC" $ do
-  Knit.logLE Knit.Diagnostic $ "streamLoaderWC called"
-  Knit.retrieveOrMake "cacheExample/test4.bin" (pure ()) $ const $ return [5, 7 ,9]
-    
+  Knit.logLE Knit.Diagnostic $ "listLoaderWC called"
+  Knit.retrieveOrMake "cacheExample/test.bin" (pure ()) $ const $ do
+    Knit.logLE Knit.Diagnostic "Waiting to make..."
+    Knit.liftKnit $ CC.threadDelay 1000000
+    Knit.logLE Knit.Diagnostic "Making test data"
+    return  [1,10,100]
 
-streamLoader2 ::(Knit.KnitEffects q, Knit.CacheEffectsD q)
+
+listLoader2 ::(Knit.KnitEffects q, Knit.CacheEffectsD q)
               => Knit.Sem q [Int]
-streamLoader2 =  Knit.runCachedStreamM Streamly.toList $ do
-  cachedStream <- Knit.streamAsAction <$> streamLoaderWC
-  Knit.retrieveOrMakeStream "cacheExample/test2.sbin" cachedStream $ \sInt -> do
-    Streamly.map (*2) sInt
-               
--- example using HVega  
+listLoader2 =  Knit.ignoreCacheTimeM $ do
+  cachedList <- listLoaderWC
+  Knit.retrieveOrMake "cacheExample/test2.bin" cachedList $ \lInt -> do
+    return $ fmap (*2) lInt
+
+-- example using HVega
 exampleVis :: V.VegaLite
 exampleVis =
   let cars =
@@ -174,4 +143,3 @@ logAxis = P.r2Axis Knit.&~ do
   P.yAxis P.&= do
     P.logScale Knit..= P.LogAxis
     P.majorTicksFunction Knit..= P.logMajorTicks 5 -- <> pure [1]
-

@@ -46,6 +46,7 @@ module Knit.Report.Cache
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
+{-
     -- * Streamly-Based
     -- ** Dependency Tracking
   , StreamWithCacheTime
@@ -60,7 +61,8 @@ module Knit.Report.Cache
   , retrieveStream
   , retrieveOrMakeStream
   , retrieveOrMakeTransformedStream
-    -- * Utilities
+-}
+  -- * Utilities
   , fileDependency
   , updateIf
   , loadOrMakeFile
@@ -143,6 +145,7 @@ mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =
      (f . decode)
      encBytes
 
+{-
 -- | Serialize a Streamly stream of Serializable structures to the CacheData type.
 knitSerializeStream :: (sc a
                        , P.Member (P.Embed IO) r
@@ -153,7 +156,7 @@ knitSerializeStream :: (sc a
                        -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
 knitSerializeStream = mapSerializationErrorsStreamly . KS.serializeStreamly --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerializeStream #-}
-
+-}
 -- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
 store
   :: forall sc ct k r a.
@@ -227,6 +230,7 @@ retrieveOrMakeTransformed toSerializable fromSerializable k newestM toMake =
   $ fromSerializable <<$>> retrieveOrMake k newestM (fmap toSerializable . toMake)
 {-# INLINEABLE retrieveOrMakeTransformed #-}
 
+{-
 --
 -- | Store a Streamly stream of @a@ at key k. Throw @PandocIOError@ on 'IOError'.
 storeStream
@@ -376,7 +380,7 @@ retrieveOrMakeTransformedStream toSerializable fromSerializable k cachedDeps toM
   K.wrapPrefix ("retrieveOrMakeTransformedStream (key=" <> show k <> ")")
   $ C.wctMapAction (Streamly.map fromSerializable) <$> retrieveOrMakeStream k cachedDeps (Streamly.map toSerializable . toMake)
 {-# INLINEABLE retrieveOrMakeTransformedStream #-}
-
+-}
 
 -- | Create a cached (), (@ActionWithCacheTime r ()@) to use as a dependency from a FilePath.
 -- If the file does not exist, the cache time will be Nothing, which will cause anything

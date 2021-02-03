@@ -47,13 +47,13 @@ module Knit.Effect.Serialize
   (
     -- * Types
     SerializeDict(..)
-  , BytesOrDone(..)
+--  , BytesOrDone(..)
   , Serialize(..)
   , SerializeEnv
 
     -- * Deploy Implementations
   , serializeOne
-  , serializeStreamly
+--  , serializeStreamly
 
     -- * Implementations
   , DefaultCacheData
@@ -112,17 +112,18 @@ a non-default serializer as long as it serializes to @ByteStream@
 (or, less likely, @Streamly.Memory.Array.Array@)
 -}
 
-data BytesOrDone bytes = Bytes !bytes | Done
+--data BytesOrDone bytes = Bytes !bytes | Done
 
 data SerializeDict (c :: Type -> Constraint) (ct :: Type) where
-  SerializeDict :: forall c ct bldr bytes. (Monoid bldr, c Word.Word64)
-                => (forall a. c a => a -> bldr) -- ^ encode a into a builder
-                -> (forall a. c a => bytes -> Either SerializationError (a, BytesOrDone bytes)) -- ^ decode some bytes into a, returning remainder/done
-                -> (bldr -> ct) -- ^ turn builder into the type stored in the cache
+  SerializeDict :: forall c ct bytes.
+                   (forall a. c a => a -> bytes) -- ^ encode a
+                -> (forall a. c a => bytes -> Either SerializationError a) -- ^ decode bytes into a
+                -> (bytes -> ct) -- ^ turn builder into the type stored in the cache
                 -> (ct -> bytes) -- ^ turn the cache type into bytes for deserialization
                 -> (ct -> Int64) -- ^ size (in Bytes) of something of the cache type
                 -> SerializeDict c ct
 
+{-
 parseAll :: (bytes -> Either SerializationError (a, BytesOrDone bytes))
          -> bytes
          -> Either SerializationError a
@@ -130,6 +131,7 @@ parseAll parseOne b = parseOne b >>= oneToAll where
   oneToAll (a, bOrD) = case bOrD of
     Done -> Right a
     Bytes _ -> Left $ SerializationError "Bytes remaining after decode in serializeOne.decode)"
+-}
 
 -- | Make the dictionary available within effect stacks
 type SerializeEnv c ct = PR.Reader (SerializeDict c ct)
@@ -155,7 +157,7 @@ In many cases, we will just return the input in that slot.
 -}
 data Serialize e r a ct where
   Serialize :: (P.MemberWithError (P.Error e) r)
-            => (a -> P.Sem r (ct, a)) -- ^ Encode
+            => (a -> P.Sem r (ct, a)) -- ^ Encode and provide a "cheap" copy (for things like streams)
             -> (ct -> P.Sem r a)      -- ^ Decode
             -> (ct -> Int64)          -- ^ Size (in Bytes)
             -> Serialize e r a ct
@@ -167,19 +169,19 @@ serializeOne :: (c a
                 , P.MemberWithError (P.Error SerializationError) r)
              => SerializeDict c ct
              -> Serialize SerializationError r a ct
-serializeOne (SerializeDict encOne parseOne builderToCT ctToBytes ctBytes) =
-  let enc a = return (builderToCT $ encOne a, a)
+serializeOne (SerializeDict encode decode bytesToCT ctToBytes ctBytes) =
+  let enc a = return (bytesToCT $ encode a, a)
       {-# INLINEABLE enc #-}
       dec x = KLog.wrapPrefix "serializeOne.dec" $ do
         KLog.logLE KLog.Diagnostic "deserializing..."
-        a <- P.fromEither @SerializationError $ parseAll parseOne $ ctToBytes x -- NB: should check for empty bs in return
+        a <- P.fromEither @SerializationError $ decode $ ctToBytes x -- NB: should check for empty bs in return
         KLog.logLE KLog.Diagnostic "deserializing complete."
         return a
       {-# INLINEABLE dec #-}
   in Serialize enc dec ctBytes
 {-# INLINEABLE serializeOne #-}
 
-
+{-
 -- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c a@, produce
 -- the 'Serialize' record-of-functions to encode/decode @Streamly.SerialT (P.Sem r) a@,
 -- by mapping the stream to a (lazy) list, and encoding that and
@@ -239,7 +241,7 @@ streamlyDeserialize (SerializeDict _ parseOne _ ctToBytes _) ct = do
   return $ do
     Streamly.yieldM (K.logStreamly KLog.Diagnostic "deserializing stream")
     Streamly.unfoldrM unfoldOne bs
-
+-}
 
 handleEitherInStream :: Either SerializationError (Streamly.SerialT K.StreamlyM a) -> Streamly.SerialT K.StreamlyM a
 handleEitherInStream e = do
@@ -259,6 +261,16 @@ type CerealS = S.Serialize
 -- encoding to/decoding from `Streamly.Memory.Array.Array`
 cerealStreamlyDict :: SerializeDict CerealS DefaultCacheData
 cerealStreamlyDict =
+  SerializeDict
+  S.encode
+  (first (SerializationError . toText) . S.decode)
+  Streamly.ByteString.toArray
+  Streamly.ByteString.fromArray
+  (fromIntegral . Streamly.Array.length)
+
+{-
+cerealStreamlyDict :: SerializeDict CerealS DefaultCacheData
+cerealStreamlyDict =
   let bOrd bs = if BS.null bs then Done else Bytes bs
       strictPut !x = BSB.bytes $! S.runPut $ S.put x
       strictGet !bs = mapLeft (SerializationError . toText) $ second bOrd <$> S.runGetState S.get bs 0
@@ -269,6 +281,7 @@ cerealStreamlyDict =
      Streamly.Cereal.streamlyArrayToByteString
      (fromIntegral . Streamly.Array.length)
 {-# INLINEABLE cerealStreamlyDict #-}
+-}
 
 -- | Map the left side of an Either
 mapLeft :: (a -> b) -> Either a c -> Either b c

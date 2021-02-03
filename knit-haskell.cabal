@@ -111,7 +111,7 @@ library
     , transformers-base >=0.4.5 && <0.5
   mixins:  base hiding (Prelude)
          , relude (Relude as Prelude
-                   , Relude.Extra)
+         , Relude.Extra)
   hs-source-dirs:
       src
   default-language: Haskell2010
@@ -132,7 +132,11 @@ test-suite AsyncExample
     , plots
     , polysemy
     , polysemy-plugin
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite CacheExample
@@ -151,8 +155,12 @@ test-suite CacheExample
     , plots
     , polysemy
     , polysemy-plugin
+    , relude
     , streamly
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite CacheExample2
@@ -172,9 +180,13 @@ test-suite CacheExample2
     , plots
     , polysemy
     , polysemy-plugin
+    , relude
     , store
     , streamly
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite CacheExample3
@@ -194,9 +206,13 @@ test-suite CacheExample3
     , plots
     , polysemy
     , polysemy-plugin
+    , relude
     , store
     , streamly
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite ErrorExample
@@ -214,7 +230,11 @@ test-suite ErrorExample
     , knit-haskell
     , polysemy
     , polysemy-plugin
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite Index
@@ -230,7 +250,11 @@ test-suite Index
     , knit-haskell
     , polysemy
     , polysemy-plugin
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite MtlExample
@@ -249,7 +273,11 @@ test-suite MtlExample
     , mtl
     , polysemy
     , polysemy-plugin
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite MultiDocExample
@@ -267,7 +295,11 @@ test-suite MultiDocExample
     , knit-haskell
     , polysemy
     , polysemy-plugin
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite RandomExample
@@ -291,7 +323,11 @@ test-suite RandomExample
     , polysemy-plugin
     , random-fu >=0.2.7.3 && <0.3
     , random-source >=0.3.0.6
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite SimpleExample
@@ -310,5 +346,9 @@ test-suite SimpleExample
     , plots
     , polysemy
     , polysemy-plugin
+    , relude
     , text
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
