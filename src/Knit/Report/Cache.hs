@@ -87,7 +87,7 @@ import qualified Knit.Effect.Serialize         as KS
 import qualified Knit.Effect.Logger            as K
 import qualified Knit.Utilities.Streamly       as KStreamly
 
-import qualified Control.Monad.Catch.Pure      as Exceptions
+--import qualified Control.Monad.Catch.Pure      as Exceptions
 import qualified Control.Exception as EX
 
 import qualified Data.Time.Clock               as Time
@@ -97,7 +97,7 @@ import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
 import qualified Streamly
-import qualified Streamly.Prelude              as Streamly
+--import qualified Streamly.Prelude              as Streamly
 
 import qualified System.Directory as System
 import qualified System.IO.Error as SE
@@ -399,6 +399,21 @@ fileDependency fp = do
   return $ withCacheTime modTimeM (return ())
 {-# INLINEABLE fileDependency #-}
 
+-- | Create a cached (), (@ActionWithCacheTime r ()@) to use as a dependency from a
+-- foldable of FilePaths, using the semigroup instance of @ActionWithCacheTime@
+
+-- If any of the files do not exist, the cache time will be Nothing, which will cause anything
+-- using this as a dependency to rebuild.
+-- This is intended for use when some function should be re-run when when some file,
+-- presumably a side-effect of that function, is older than some dependency.
+filesDependency :: (Foldable f, P.Member (P.Embed IO) r)
+               => f FilePath
+               -> P.Sem r (ActionWithCacheTime r ())
+filesDependency fps = do
+  fileDeps <- traverse fileDependency $ Foldl.fold Foldl.list fps
+  return $ fromMaybe (pure ()) $ fmap sconcat $ nonEmpty fileDeps
+{-# INLINEABLE filesDependency #-}
+-- TODO: Check what happens if a file is missing!
 
 -- | Given a time-tagged @a@ and time-tagged @b@ and an effectful function
 -- producing @b@ from @a@, return the given @b@ or run the function with the
