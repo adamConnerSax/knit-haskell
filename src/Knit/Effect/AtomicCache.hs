@@ -191,6 +191,15 @@ instance (Monoid w, Applicative t) => Applicative (Q w t) where
   (Q w1 t1) <*> (Q w2 t2) = Q (w1 <> w2) (t1 <*> t2)
   {-# INLINE (<*>) #-}
 
+
+instance Foldable t => Foldable (Q w t) where
+  foldMap f (Q _ ta) = foldMap f ta
+  foldr f b (Q _ ta) = foldr f b ta
+
+instance Traversable t => Traversable (Q w t) where
+  traverse g (Q w ta) = Q w <$> traverse g ta
+  sequenceA (Q w fta) = Q w <$> sequenceA fta
+
 -- | Map one type of action to another via a natural transformation.
 -- Specifically useful for mapping from @Q w Identity a@
 -- to @Q w m a@
