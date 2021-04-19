@@ -45,6 +45,7 @@ module Knit.Report
   , module Knit.Report.Input.Html.Blaze
   , module Knit.Report.Input.Html.Lucid
   , module Knit.Report.Input.Latex
+  , module Knit.Report.Input.RST
   , module Knit.Report.Input.Visualization.Hvega
   , module Knit.Report.Input.Visualization.Diagrams
 
@@ -116,6 +117,7 @@ import           Knit.Report.Input.Html         ( addStrictTextHtml
 import           Knit.Report.Input.Html.Blaze   ( addBlaze )
 import           Knit.Report.Input.Html.Lucid   ( addLucid )
 import           Knit.Report.Input.Latex        ( addLatex )
+import           Knit.Report.Input.RST          ( addRST )
 import           Knit.Report.Input.Visualization.Hvega
                                                 ( addHvega )
 import           Knit.Report.Input.Visualization.Diagrams
