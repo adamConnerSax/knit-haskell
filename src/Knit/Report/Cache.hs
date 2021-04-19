@@ -39,6 +39,7 @@ module Knit.Report.Cache
   , withCacheTime
   , onlyCacheTime
   , liftActionWithCacheTime
+  , wctBind
     -- * Cache Combinators
   , store
   , clear
@@ -81,6 +82,7 @@ import           Knit.Effect.AtomicCache        (clear
                                                 , ignoreCacheTime
                                                 , ignoreCacheTimeM
                                                 , liftActionWithCacheTime
+                                                , wctBind
                                                 , ActionWithCacheTime
                                                 , onlyCacheTime)
 import qualified Knit.Effect.Serialize         as KS
