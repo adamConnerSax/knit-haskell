@@ -50,6 +50,7 @@ library
       Knit.Report.Input.Html.Blaze
       Knit.Report.Input.Latex
       Knit.Report.Input.MarkDown.PandocMarkDown
+      Knit.Report.Input.RST
       Knit.Report.Input.Visualization.Hvega
       Knit.Report.Input.Visualization.Diagrams
       Knit.Report.Output

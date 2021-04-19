@@ -72,8 +72,6 @@ where
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 import qualified Polysemy.Reader               as PR
-import qualified Data.ByteString               as BS
-import qualified ByteString.StrictBuilder      as BSB
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
@@ -83,11 +81,7 @@ import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
 
 import qualified Streamly
 import qualified Streamly.Prelude              as Streamly
-import qualified Streamly.Data.Fold            as Streamly.Fold
-import qualified Streamly.Internal.Data.Fold   as Streamly.Fold
 import qualified Streamly.Memory.Array         as Streamly.Array
-import qualified Streamly.Internal.Data.Array  as Streamly.Data.Array
-import qualified Streamly.External.Cereal      as Streamly.Cereal
 import qualified Streamly.External.ByteString  as Streamly.ByteString
 
 import qualified Knit.Utilities.Streamly       as K

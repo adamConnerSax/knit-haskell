@@ -1,10 +1,7 @@
 v0.10.0.0
-* Fixed encode and decode types for serialization to operate via ByteString to simplify writing efficient stream serializers and deserializers
-independent of the type used to store things in cache. In particular, we can now serialize streamly streams without using a list as an
-intermediate step.  The serialized bytes should be exactly the same, but we can void the list as an intermediary in the Haskell side.  The list
-was likely fused away but better to avoid it in the first place.
-* Added a Knit.Effect.WorkQueue to allow use of async but with a bounded number of available capabilities.
 * Added Foldable and Traversable instances to CacheTime
+* Added explicit RST support
+* Removed separate support for serializing streamly streams. More confusing than helpful.
 
 v0.9.0.0
 * Improved the types underlying the cache system to make the structure clearer and in preparation for adding
