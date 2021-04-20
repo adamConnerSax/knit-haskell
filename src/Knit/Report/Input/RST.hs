@@ -1,9 +1,11 @@
-{-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds     #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs         #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeOperators #-}
+
 {-|
 Module      : Knit.Report.Input.RST
 Description : Functions to RST fragments to a Pandoc
@@ -22,6 +24,8 @@ module Knit.Report.Input.RST
     -- * functions to add various thing to the current Pandoc
   , addRST
   , addRSTWithOptions
+  , addRSTFromFile
+  , addRSTFromFileWithOptions
   )
 where
 
@@ -64,3 +68,14 @@ addRST
   => T.Text
   -> P.Sem effs ()
 addRST = addRSTWithOptions rstReaderOptions
+
+addRSTFromFileWithOptions :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
+  => PA.ReaderOptions
+  -> FilePath
+  -> P.Sem effs ()
+addRSTFromFileWithOptions opts fp = addRSTWithOptions opts (".. include:: " <> toText fp <> "\n")
+
+addRSTFromFile :: (PM.PandocEffects effs, P.Member PE.ToPandoc effs)
+  => FilePath
+  -> P.Sem effs ()
+addRSTFromFile = addRSTFromFileWithOptions rstReaderOptions
