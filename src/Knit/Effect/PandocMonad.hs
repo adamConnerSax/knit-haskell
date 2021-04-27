@@ -28,7 +28,7 @@ Polysemy PandocMonad effect.
 Allows a polysemy monad to handle
 actions with a PandocMonad contraint via
 polysemy effects and IO.
-Has an "absorber" to convert functions with a @PandocMonad@ constraint. 
+Has an "absorber" to convert functions with a @PandocMonad@ constraint.
 -}
 module Knit.Effect.PandocMonad
   (
@@ -60,12 +60,12 @@ module Knit.Effect.PandocMonad
     -- * Pandoc <2.8 compatibility
   , textToPandocText
   , pandocTextToText
-#if   MIN_VERSION_pandoc(2,8,0) 
+#if   MIN_VERSION_pandoc(2,8,0)
   , absorbTemplateMonad
   , Template
   , interpretTemplateIO
-#endif  
-  
+#endif
+
     -- * Interpreters
   , interpretInPandocMonad
   , interpretInIO
@@ -81,7 +81,7 @@ module Knit.Effect.PandocMonad
   )
 where
 
-import Prelude hiding (takeWhile, dropWhile,drop, trace)
+import Prelude hiding (takeWhile, dropWhile, drop, trace, lookupEnv)
 import qualified Knit.Effect.Logger            as Log
 import qualified Paths_knit_haskell            as Paths
 
@@ -167,7 +167,7 @@ stringToPandocText = toText
 pandocTextToBS :: PandocText -> BS.ByteString
 pandocTextToBS = UTF8.fromText
 
-stripPrefix :: T.Text -> T.Text -> Maybe T.Text 
+stripPrefix :: T.Text -> T.Text -> Maybe T.Text
 stripPrefix = T.stripPrefix
 
 takeWhile :: (Char -> Bool) -> T.Text -> T.Text
@@ -197,7 +197,7 @@ stringToPandocText = id
 pandocTextToBS :: PandocText -> BS.ByteString
 pandocTextToBS = UTF8.fromString
 
-stripPrefix :: String -> String -> Maybe String 
+stripPrefix :: String -> String -> Maybe String
 stripPrefix = L.stripPrefix
 
 takeWhile :: (Char -> Bool) -> String -> String
@@ -271,7 +271,7 @@ instance (Monad m, P.Reifies s' (TemplateDict m)) => DT.TemplateMonad (TemplateA
   getPartial = TemplateAction . getPartial_ (P.reflect $ P.Proxy @s')
 
 #endif
-  
+
 -- we handle logging within the existing effect system
 -- | Map pandoc severities to our logging system.
 pandocSeverity :: PA.LogMessage -> Log.LogSeverity
@@ -303,7 +303,7 @@ type PandocEffects effs
     , P.Member Log.PrefixLog effs
     , P.Member (Log.Logger Log.LogEntry) effs
     )
-#endif    
+#endif
 -- absorption gear
 -- | absorb a @PandocMonad@ constraint into
 --  @Members [Pandoc, Error PandocError] r => Sem r@
@@ -335,7 +335,7 @@ absorbPandocMonad = P.absorbWithSem @PA.PandocMonad @Action
   )
   (P.Sub P.Dict)
 
--- | wrapper for the PandocMonad constrained action 
+-- | wrapper for the PandocMonad constrained action
 newtype Action m s' a = Action
     { action :: m a
     } deriving (Functor, Applicative, Monad)
@@ -400,7 +400,7 @@ instance (Monad m
 -- | Constraint helper for using this set of effects in IO.
 type PandocEffectsIO effs = (PandocEffects effs, P.Member (P.Embed IO) effs)
 
--- | Interpret the Pandoc effect using @IO@, @Knit.Effect.Logger@ and @PolySemy.Error PandocError@ 
+-- | Interpret the Pandoc effect using @IO@, @Knit.Effect.Logger@ and @PolySemy.Error PandocError@
 interpretInIO
   :: forall effs a
    . ( P.Member (Log.Logger Log.LogEntry) effs

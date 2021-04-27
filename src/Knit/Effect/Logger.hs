@@ -63,6 +63,7 @@ module Knit.Effect.Logger
   )
 where
 
+import Prelude hiding (hFlush)
 import qualified Polysemy                      as P
 
 import           Polysemy.Internal              ( send )
@@ -94,7 +95,7 @@ import qualified Say                           as S
 data LogSeverity =
   -- | Most detailed levels of logging.  Int argument can be used adding fine distinctions between debug levels.
   Debug Int
-  -- | Minimal details about effects and what is being called. 
+  -- | Minimal details about effects and what is being called.
   | Diagnostic
   -- | Informational messages about progress of compuation or document knitting.
   | Info
@@ -134,7 +135,7 @@ logDebug l (Debug n) = n <= l
 logDebug _ _         = True
 {-# INLINEABLE logDebug #-}
 
--- | The Logger effect (the same as the 'Polysemy.Output' effect). 
+-- | The Logger effect (the same as the 'Polysemy.Output' effect).
 data Logger a m r where
   Log :: a -> Logger a m ()
 
@@ -174,7 +175,7 @@ removePrefix :: P.Member PrefixLog effs => P.Sem effs ()
 removePrefix = send RemovePrefix
 {-# INLINEABLE removePrefix #-}
 
--- | Get current prefix 
+-- | Get current prefix
 getPrefix :: P.Member PrefixLog effs => P.Sem effs T.Text
 getPrefix = send GetPrefix
 {-# INLINEABLE getPrefix #-}
@@ -303,4 +304,3 @@ type LogWithPrefixes a effs = P.Members (PrefixedLogEffects a) effs --(P.Member 
 
 -- | Constraint helper for @LogEntry@ type with prefixes
 type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
-

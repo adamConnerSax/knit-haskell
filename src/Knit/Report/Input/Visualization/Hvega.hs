@@ -80,7 +80,7 @@ placeVisualization idText captionTextM svg vl =
           <> "vegaEmbed(\'#"
           <> idText
           <> "\',vlSpec"
-          <> if svg then ",{\"renderer\": \"svg\"}" else  ",{\"renderer\": \"canvas\"}"
+          <> (if svg then ",{\"renderer\": \"svg\"}" else  ",{\"renderer\": \"canvas\"}")
           <> ");"
   in  BH.figure BH.! BHA.id (BH.toValue idText) $ do
         BH.script BH.! BHA.type_ "text/javascript" $ BH.preEscapedToHtml script
