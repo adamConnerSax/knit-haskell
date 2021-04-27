@@ -120,5 +120,5 @@ import           Knit.Report.Input.Latex        ( addLatex )
 import           Knit.Report.Input.RST          ( addRST
                                                 , addRSTFromFile)
 import           Knit.Report.Input.Visualization.Hvega
-                                                ( addHvega )
+                                                ( addHvega, addHvega' )
 import           Knit.Report.Input.Visualization.Diagrams
