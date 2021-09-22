@@ -1,5 +1,6 @@
 v0.10.1.0
 * Changes for streamly-0.8.0: removed deprecated Knit.Utilities.Streamly.streamlyToKnitS
+* Bumped polysemy, doctemplates and pandoc upper bounds
 * Removed Streamly.External.Cereal since we now handle this in Knit.Effect.Serialize
 
 v0.10.0.0
