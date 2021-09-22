@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveFunctor       #-}
@@ -47,14 +48,11 @@ module Knit.Effect.Serialize
   (
     -- * Types
     SerializeDict(..)
---  , BytesOrDone(..)
   , Serialize(..)
   , SerializeEnv
 
     -- * Deploy Implementations
   , serializeOne
---  , serializeStreamly
-
     -- * Implementations
   , DefaultCacheData
   , DefaultSerializer
@@ -79,10 +77,16 @@ import qualified Data.Word                     as Word
 import qualified Control.Exception as X
 import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
 
+#if MIN_VERSION_streamly(0,8,0)
+import qualified Streamly.Prelude              as Streamly
+import qualified Streamly.Data.Array.Foreign   as Streamly.Array
+#else
 import qualified Streamly
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Memory.Array         as Streamly.Array
+#endif
 import qualified Streamly.External.ByteString  as Streamly.ByteString
+
 
 import qualified Knit.Utilities.Streamly       as K
 import qualified Knit.Effect.Logger            as KLog
@@ -239,10 +243,15 @@ streamlyDeserialize (SerializeDict _ parseOne _ ctToBytes _) ct = do
 
 handleEitherInStream :: Either SerializationError (Streamly.SerialT K.StreamlyM a) -> Streamly.SerialT K.StreamlyM a
 handleEitherInStream e = do
+#if MIN_VERSION_streamly(0,8,0)
+  let fromEffect = Streamly.fromEffect
+#else
+  let fromEffect = Streamly.yieldM
+#endif
   case e of
     Left err -> MonadIO.liftIO $ X.throwIO err
     Right a -> do
-      Streamly.yieldM $ K.logStreamly KLog.Diagnostic "Deserializing stream..."
+      fromEffect $ K.logStreamly KLog.Diagnostic "Deserializing stream..."
       a
 
 -- | type-alias for default in-memory storage type.

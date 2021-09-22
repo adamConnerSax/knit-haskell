@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveFunctor       #-}
@@ -156,7 +157,11 @@ import qualified Data.Word                     as Word
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 
+#if MIN_VERSION_streamly(0,8,0)
+import qualified Streamly.Internal.Data.Array.Foreign    as Streamly.Array
+#else
 import qualified Streamly.Internal.Memory.Array    as Streamly.Array
+#endif
 import qualified Streamly.Internal.FileSystem.File as Streamly.File
 
 import qualified System.Directory              as System

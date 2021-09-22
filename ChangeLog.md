@@ -1,3 +1,7 @@
+v0.10.1.0
+* Changes for streamly-0.8.0: removed deprecated Knit.Utilities.Streamly.streamlyToKnitS
+* Removed Streamly.External.Cereal since we now handle this in Knit.Effect.Serialize
+
 v0.10.0.0
 * Added Foldable and Traversable instances to CacheTime
 * Added explicit RST support

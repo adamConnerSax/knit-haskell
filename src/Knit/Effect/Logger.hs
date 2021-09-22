@@ -71,8 +71,8 @@ import qualified Polysemy.State                as P
 
 import qualified Data.List                     as List
 import qualified Data.Text                     as T
-import qualified Data.Text.Prettyprint.Doc     as PP
-import qualified Data.Text.Prettyprint.Doc.Render.Text
+import qualified Prettyprinter     as PP
+import qualified Prettyprinter.Render.Text
                                                as PP
 import           Data.Data (Data)
 

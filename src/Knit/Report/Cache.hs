@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveFunctor        #-}
 {-# LANGUAGE FlexibleContexts     #-}
@@ -47,22 +48,6 @@ module Knit.Report.Cache
   , retrieve
   , retrieveOrMake
   , retrieveOrMakeTransformed
-{-
-    -- * Streamly-Based
-    -- ** Dependency Tracking
-  , StreamWithCacheTime
-  , mapCachedStream
-  , runCachedStream
-  , runCachedStreamM
-    -- ** Interoperation with non-stream actions
-  , streamToAction
-  , streamAsAction
-    -- ** Cache Combinators
-  , storeStream
-  , retrieveStream
-  , retrieveOrMakeStream
-  , retrieveOrMakeTransformedStream
--}
   -- * Utilities
   , fileDependency
   , updateIf
@@ -98,8 +83,11 @@ import           Data.Time.Clock                (UTCTime)
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
+#if MIN_VERSION_streamly(0,8,0)
+import qualified Streamly.Prelude as Streamly
+#else
 import qualified Streamly
---import qualified Streamly.Prelude              as Streamly
+#endif
 
 import qualified System.Directory as System
 import qualified System.IO.Error as SE

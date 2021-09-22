@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -13,17 +14,23 @@ module Knit.Utilities.Streamly
     StreamlyM
   , StreamlyEffects(..)
   , streamlyToKnit
+#if MIN_VERSION_streamly(0,8,0)
+#else
   , streamlyToKnitS
-  , logStreamly  
+#endif
+  , logStreamly
   )
 where
 
 import qualified Knit.Effect.Logger as Knit.Logger
 
+
+#if MIN_VERSION_streamly(0,8,0)
+#else
 import qualified Streamly
 import qualified Streamly.Internal.Prelude as Streamly
-
-import qualified Polysemy 
+#endif
+import qualified Polysemy
 
 import qualified Control.Monad.Primitive as Prim
 
@@ -56,11 +63,13 @@ streamlyToKnit :: (Polysemy.Member (Polysemy.Embed IO) r
   => StreamlyM a -> Polysemy.Sem r a
 streamlyToKnit sa = do
   curPrefix <- Knit.Logger.getPrefix
-  let logFunction = Knit.Logger.logWithPrefixToIO 
+  let logFunction = Knit.Logger.logWithPrefixToIO
       se = StreamlyEffects (\ls lmsg -> logFunction curPrefix (Knit.Logger.LogEntry ls lmsg))
   Polysemy.embed $ runReaderT (unStreamlyM sa) se
 {-# INLINEABLE streamlyToKnit #-}
 
+#if MIN_VERSION_streamly(0,8,0)
+#else
 {-# DEPRECATED streamlyToKnitS "This is mysteriously slow so will be removed.  Run all streams in the StreamlyM monad. Then lift using @streamlyToKnit@" #-}
 -- | Serial streams work fine over Sem, so we can lift the effectful serial stream into @Sem r@ without running.
 streamlyToKnitS :: (Polysemy.Member (Polysemy.Embed IO) r
@@ -69,3 +78,4 @@ streamlyToKnitS :: (Polysemy.Member (Polysemy.Embed IO) r
                 => Streamly.SerialT StreamlyM a -> Streamly.SerialT (Polysemy.Sem r) a
 streamlyToKnitS = Streamly.hoist streamlyToKnit
 {-# INLINEABLE streamlyToKnitS #-}
+#endif
