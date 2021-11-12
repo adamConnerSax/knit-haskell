@@ -60,6 +60,8 @@ module Knit.Effect.Logger
   , LogWithPrefixes
   , LogWithPrefixesLE
   , LogWithPrefixIO
+  -- * Library logging
+  , khDebugLog
   )
 where
 
@@ -105,6 +107,8 @@ data LogSeverity =
   | Error
   deriving (Show, Eq, Ord, Typeable, Data)
 
+
+
 -- NB: Cribbed from monad-logger.  Thanks ocharles!
 -- TODO: add colors for ansi-terminal output
 instance PP.Pretty LogSeverity where
@@ -135,6 +139,7 @@ logDebug l (Debug n) = n <= l
 logDebug _ _         = True
 {-# INLINEABLE logDebug #-}
 
+
 -- | The Logger effect (the same as the 'Polysemy.Output' effect).
 data Logger a m r where
   Log :: a -> Logger a m ()
@@ -149,6 +154,11 @@ logLE
   :: P.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> P.Sem effs ()
 logLE ls lm = log (LogEntry ls lm)
 {-# INLINEABLE logLE #-}
+
+-- | logging level for debugging messages from the library itself.
+khDebugLog :: P.Member (Logger LogEntry) effs => Text -> P.Sem effs ()
+khDebugLog = logLE (Debug 3)
+{-# INLINEABLE khDebugLog #-}
 
 -- | Type-alias for handler functions (unexported).
 type Handler m msg = msg -> m ()

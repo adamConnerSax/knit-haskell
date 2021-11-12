@@ -171,9 +171,9 @@ serializeOne (SerializeDict encode decode bytesToCT ctToBytes ctBytes) =
   let enc a = return (bytesToCT $ encode a, a)
       {-# INLINEABLE enc #-}
       dec x = KLog.wrapPrefix "serializeOne.dec" $ do
-        KLog.logLE KLog.Diagnostic "deserializing..."
+        KLog.khDebugLog "deserializing..."
         a <- P.fromEither @SerializationError $ decode $ ctToBytes x -- NB: should check for empty bs in return
-        KLog.logLE KLog.Diagnostic "deserializing complete."
+        KLog.khDebugLog "deserializing complete."
         return a
       {-# INLINEABLE dec #-}
   in Serialize enc dec ctBytes
@@ -251,7 +251,7 @@ handleEitherInStream e = do
   case e of
     Left err -> MonadIO.liftIO $ X.throwIO err
     Right a -> do
-      fromEffect $ K.logStreamly KLog.Diagnostic "Deserializing stream..."
+      fromEffect $ K.logStreamly (KLog.Debug 3) "Deserializing stream..."
       a
 
 -- | type-alias for default in-memory storage type.
