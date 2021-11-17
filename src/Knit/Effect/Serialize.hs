@@ -154,7 +154,7 @@ we can return a "buffered" stream which just unfolds from a memory buffer.
 In many cases, we will just return the input in that slot.
 -}
 data Serialize e r a ct where
-  Serialize :: (P.MemberWithError (P.Error e) r)
+  Serialize :: (P.Member (P.Error e) r)
             => (a -> P.Sem r (ct, a)) -- ^ Encode and provide a "cheap" copy (for things like streams)
             -> (ct -> P.Sem r a)      -- ^ Decode
             -> (ct -> Int64)          -- ^ Size (in Bytes)
@@ -164,7 +164,7 @@ data Serialize e r a ct where
 -- produce the (trivial) 'Serialize' record-of-functions to encode/decode a single @a@.
 serializeOne :: (c a
                 , KLog.LogWithPrefixesLE r
-                , P.MemberWithError (P.Error SerializationError) r)
+                , P.Member (P.Error SerializationError) r)
              => SerializeDict c ct
              -> Serialize SerializationError r a ct
 serializeOne (SerializeDict encode decode bytesToCT ctToBytes ctBytes) =
@@ -185,7 +185,7 @@ serializeOne (SerializeDict encode decode bytesToCT ctToBytes ctBytes) =
 -- by mapping the stream to a (lazy) list, and encoding that and
 -- decoding as a list and creating the stream from that.
 serializeStreamly ::
-  (P.MemberWithError (P.Error SerializationError) r
+  (P.Member (P.Error SerializationError) r
   , KLog.LogWithPrefixesLE r
   , P.Member (P.Embed IO) r
   , c a

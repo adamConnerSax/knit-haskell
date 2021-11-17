@@ -101,7 +101,7 @@ serializationToCacheError :: KS.SerializationError -> C.CacheError
 serializationToCacheError (KS.SerializationError msg) = C.DeSerializationError msg
 
 mapSerializationErrorsOne ::
-  P.MemberWithError (P.Error C.CacheError) r
+  P.Member (P.Error C.CacheError) r
   => KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) a ct
   -> KS.Serialize C.CacheError r a ct
 mapSerializationErrorsOne (KS.Serialize encode decode encBytes) =
@@ -116,7 +116,7 @@ knitSerialize
   :: ( sc a
      , P.Member (P.Embed IO) r
      , K.LogWithPrefixesLE r
-     , P.MemberWithError (P.Error C.CacheError) r
+     , P.Member (P.Error C.CacheError) r
      )
   => KS.SerializeDict sc ct
   -> KS.Serialize C.CacheError r a ct
@@ -124,7 +124,7 @@ knitSerialize = mapSerializationErrorsOne . KS.serializeOne --KS.cerealStreamlyD
 {-# INLINEABLE knitSerialize #-}
 
 mapSerializationErrorsStreamly ::
-  P.MemberWithError (P.Error C.CacheError) r
+  P.Member (P.Error C.CacheError) r
   => KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.SerialT KStreamly.StreamlyM a) ct
   -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
 mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =

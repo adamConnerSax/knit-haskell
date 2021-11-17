@@ -101,7 +101,7 @@ data KnitConfig sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
                                      , pandocWriterConfig :: KO.PandocWriterConfig
                                      , serializeDict :: KS.SerializeDict sc ct
                                      , persistCache :: forall r. (P.Member (P.Embed IO) r
-                                                                 , P.MemberWithError (PE.Error KC.CacheError) r
+                                                                 , P.Member (PE.Error KC.CacheError) r
                                                                  , KLog.LogWithPrefixesLE r)
                                                     => P.InterpreterFor (KC.Cache k ct) r
                                      }

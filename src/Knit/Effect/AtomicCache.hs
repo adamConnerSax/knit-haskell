@@ -461,7 +461,7 @@ retrieveAndDecode
   :: forall ct k r a .
      (P.Member (Cache k ct) r
      , P.Member (P.Embed IO) r
-     , P.MemberWithError (P.Error CacheError) r
+     , P.Member (P.Error CacheError) r
      , K.LogWithPrefixesLE r
      , Show k
      )
@@ -483,7 +483,7 @@ lookupAndDecode
    . ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
-     , P.MemberWithError (P.Error CacheError) r
+     , P.Member (P.Error CacheError) r
      , Show k
      )
   => KS.Serialize CacheError r a ct            -- ^ Record-Of-Functions for serialization/deserialization
@@ -505,7 +505,7 @@ retrieveOrMake
      ( P.Member (Cache k ct) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
-     , P.MemberWithError (P.Error CacheError) r
+     , P.Member (P.Error CacheError) r
      , Show k
      )
   => KS.Serialize CacheError r a ct      -- ^ Record-Of-Functions for serialization/deserialization
@@ -529,7 +529,7 @@ clear k = cacheUpdate k Nothing
 {-# INLINEABLE clear #-}
 
 -- | Clear the cache at a given key.  Doesn't throw if item is missing.
-clearIfPresent :: (P.Member (Cache k ct) r, P.MemberWithError (P.Error CacheError) r) => k -> P.Sem r ()
+clearIfPresent :: (P.Member (Cache k ct) r, P.Member (P.Error CacheError) r) => k -> P.Sem r ()
 clearIfPresent k = cacheUpdate k Nothing `P.catch` (\(_ :: CacheError) -> pass)
 {-# INLINEABLE clearIfPresent #-}
 
@@ -712,7 +712,7 @@ backedAtomicInMemoryCache cache =
 runPersistenceBackedAtomicInMemoryCache :: (Ord k
                                            , Show k
                                            , P.Member (P.Embed IO) r
-                                           , P.MemberWithError (P.Error CacheError) r
+                                           , P.Member (P.Error CacheError) r
                                            , K.LogWithPrefixesLE r
                                            )
                                         => P.InterpreterFor (Cache k ct) r -- persistence layer interpreter
@@ -726,7 +726,7 @@ runPersistenceBackedAtomicInMemoryCache runPersistentCache cache = runPersistent
 runPersistenceBackedAtomicInMemoryCache' :: (Ord k
                                             , Show k
                                             , P.Member (P.Embed IO) r
-                                            , P.MemberWithError (P.Error CacheError) r
+                                            , P.Member (P.Error CacheError) r
                                             , K.LogWithPrefixesLE r
                                             )
                                         => P.InterpreterFor (Cache k ct) r
@@ -738,7 +738,7 @@ runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
 
 -- | Interpreter for Cache via persistence to disk as a Streamly Memory.Array (Contiguous storage of Storables) of Bytes (Word8)
 persistStreamlyByteArray
-  :: (Show k, P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r)
+  :: (Show k, P.Member (P.Embed IO) r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k (Streamly.Array.Array Word.Word8)) r
 persistStreamlyByteArray keyToFilePath =
@@ -764,7 +764,7 @@ persistStreamlyByteArray keyToFilePath =
 
 -- | Interpreter for Cache via persistence to disk as a strict ByteString
 persistStrictByteString
-  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r, Show k)
+  :: (P.Members '[P.Embed IO] r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r, Show k)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k BS.ByteString) r
 persistStrictByteString keyToFilePath =
@@ -789,7 +789,7 @@ persistStrictByteString keyToFilePath =
 
 -- | Interpreter for Cache via persistence to disk as a lazy ByteString
 persistLazyByteString
-  :: (P.Members '[P.Embed IO] r, P.MemberWithError (P.Error CacheError) r, K.LogWithPrefixesLE r, Show k)
+  :: (P.Members '[P.Embed IO] r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r, Show k)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k BL.ByteString) r
 persistLazyByteString keyToFilePath =
@@ -833,7 +833,7 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
 
 
 getContentsWithCacheTime :: (P.Members '[P.Embed IO] r
-                            , P.MemberWithError (P.Error CacheError) r
+                            , P.Member (P.Error CacheError) r
                             , K.LogWithPrefixesLE r)
                          => (FilePath -> IO a)
                          -> FilePath
@@ -859,6 +859,6 @@ fileNotFoundToMaybe x = fmap Just x `Exception.catch` f where
 {-# INLINEABLE fileNotFoundToMaybe #-}
 
 
-rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.MemberWithError (P.Error CacheError) r) => IO a -> P.Sem r a
+rethrowIOErrorAsCacheError :: (P.Member (P.Embed IO) r, P.Member (P.Error CacheError) r) => IO a -> P.Sem r a
 rethrowIOErrorAsCacheError = P.fromExceptionVia (\(e :: IO.Error.IOError) -> PersistError $ "IOError: " <> show e)
 {-# INLINEABLE rethrowIOErrorAsCacheError #-}
