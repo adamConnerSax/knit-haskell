@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveFunctor        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE Rank2Types           #-}
@@ -97,15 +98,17 @@ import qualified System.IO.Error as SE
 -- | AtomicCache with 'T.Text' keys and using 'Streamly.Array.Array Word.Word8' to store serialized data in memory.
 --type KnitCache ct = C.Cache T.Text ct
 
-serializationToCacheError :: KS.SerializationError -> C.CacheError
-serializationToCacheError (KS.SerializationError msg) = C.DeSerializationError msg
+serializationToCacheError :: forall k.Show k => k -> KS.SerializationError -> C.CacheError
+serializationToCacheError key (KS.SerializationError msg) = C.DeSerializationError $ "(key=" <> show key <> "): " <> msg
 
 mapSerializationErrorsOne ::
-  P.Member (P.Error C.CacheError) r
-  => KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) a ct
+  forall r k a ct.(P.Member (P.Error C.CacheError) r, Show k)
+  => k
+  -> KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) a ct
   -> KS.Serialize C.CacheError r a ct
-mapSerializationErrorsOne (KS.Serialize encode decode encBytes) =
-  let f = P.mapError serializationToCacheError
+mapSerializationErrorsOne key (KS.Serialize encode decode encBytes) =
+  let f :: P.Sem (P.Error KS.SerializationError ': r) x -> P.Sem r x
+      f = P.mapError (serializationToCacheError key)
   in KS.Serialize
   (f . encode)
   (f . decode)
@@ -117,18 +120,22 @@ knitSerialize
      , P.Member (P.Embed IO) r
      , K.LogWithPrefixesLE r
      , P.Member (P.Error C.CacheError) r
+     , Show k
      )
-  => KS.SerializeDict sc ct
+  => k
+  -> KS.SerializeDict sc ct
   -> KS.Serialize C.CacheError r a ct
-knitSerialize = mapSerializationErrorsOne . KS.serializeOne --KS.cerealStreamlyDict
+knitSerialize key = mapSerializationErrorsOne key . KS.serializeOne --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerialize #-}
 
 mapSerializationErrorsStreamly ::
-  P.Member (P.Error C.CacheError) r
-  => KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.SerialT KStreamly.StreamlyM a) ct
+  forall r k a ct.(P.Member (P.Error C.CacheError) r, Show k)
+  => k
+  -> KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.SerialT KStreamly.StreamlyM a) ct
   -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
-mapSerializationErrorsStreamly (KS.Serialize encode decode encBytes) =
-  let f =  P.mapError serializationToCacheError
+mapSerializationErrorsStreamly key (KS.Serialize encode decode encBytes) =
+  let f :: P.Sem (P.Error KS.SerializationError ': r) x -> P.Sem r x
+      f =  P.mapError (serializationToCacheError key)
   in KS.Serialize
      (f . encode)
      (f . decode)
@@ -148,7 +155,7 @@ store
 store k a = K.wrapPrefix ("Knit.store (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
   K.khDebugLog $ "Called with k=" <> show k
-  C.encodeAndStore (knitSerialize cacheSD) k a
+  C.encodeAndStore (knitSerialize k cacheSD) k a
 {-# INLINEABLE store #-}
 
 -- | Retrieve an @a@ from the store at key. Throw if not found or I/O Error.
@@ -162,7 +169,7 @@ retrieve
   -> P.Sem r (C.ActionWithCacheTime r a) -- ^ Time-stamped return from cache.
 retrieve k =  K.wrapPrefix ("Cache.retrieve (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
-  C.retrieveAndDecode (knitSerialize cacheSD) k Nothing
+  C.retrieveAndDecode (knitSerialize k cacheSD) k Nothing
 {-# INLINEABLE retrieve #-}
 
 -- | Retrieve an a from the store at key k.
@@ -181,7 +188,7 @@ retrieveOrMake
 retrieveOrMake k cachedDeps toMake =
   K.wrapPrefix ("Cache.retrieveOrMake (key=" <> show k <> ")") $ do
    cacheSD <- KS.getSerializeDict
-   C.retrieveOrMake (knitSerialize cacheSD) k cachedDeps toMake
+   C.retrieveOrMake (knitSerialize k cacheSD) k cachedDeps toMake
 {-# INLINEABLE retrieveOrMake #-}
 
 -- | Retrieve an a from the store at key k.
