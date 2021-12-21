@@ -759,7 +759,11 @@ persistStreamlyByteArray keyToFilePath =
           _ <- createDirIfNecessary dirPath
           K.khDebugLog  "Writing serialization to disk."
           K.khDebugLog $ keyText <> "Writing " <> show (Streamly.Array.length ct) <> " bytes to disk."
+#if MIN_VERSION_streamly(0,8,1)
+          rethrowIOErrorAsCacheError $ Streamly.File.putChunk filePath ct
+#else
           rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
+#endif
 {-# INLINEABLE persistStreamlyByteArray #-}
 
 -- | Interpreter for Cache via persistence to disk as a strict ByteString
