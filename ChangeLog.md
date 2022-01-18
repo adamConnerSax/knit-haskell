@@ -1,3 +1,6 @@
+v0.10.1.1
+* Bumped Pandoc upper bound to 3
+
 v0.10.1.0
 * Changes for streamly-0.8.0: removed deprecated Knit.Utilities.Streamly.streamlyToKnitS
 * Bumped polysemy, doctemplates and pandoc upper bounds
