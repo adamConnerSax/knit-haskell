@@ -1,6 +1,6 @@
 v0.10.2.0
 * Added key to Serialization errors.
-* Bumped Pandoc upper bound to 3
+* Bumped Pandoc upper bound to 3, lucid, polysemy and text upper bounds.
 
 v0.10.1.0
 * Changes for streamly-0.8.0: removed deprecated Knit.Utilities.Streamly.streamlyToKnitS
