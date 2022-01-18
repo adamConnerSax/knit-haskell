@@ -1,4 +1,5 @@
-v0.10.1.1
+v0.10.2.0
+* Added key to Serialization errors.
 * Bumped Pandoc upper bound to 3
 
 v0.10.1.0

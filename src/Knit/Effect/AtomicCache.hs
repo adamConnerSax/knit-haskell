@@ -445,7 +445,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
             cacheACT' = do
               let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
               let nBytes = encBytes ct
-              K.logLE K.Diagnostic $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache."
+              K.logLE K.Diagnostic $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache. Decoding..."
               return $ Just $ Q cTimeM (K.logLE debugLogSeverity ("Deserializing for key=\"" <> show key <> "\"") >> decode ct)
           Nothing -> Q Nothing $ do
             K.logLE K.Error $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
@@ -759,7 +759,11 @@ persistStreamlyByteArray keyToFilePath =
           _ <- createDirIfNecessary dirPath
           K.khDebugLog  "Writing serialization to disk."
           K.khDebugLog $ keyText <> "Writing " <> show (Streamly.Array.length ct) <> " bytes to disk."
+#if MIN_VERSION_streamly(0,8,1)
+          rethrowIOErrorAsCacheError $ Streamly.File.putChunk filePath ct
+#else
           rethrowIOErrorAsCacheError $ Streamly.File.writeArray filePath ct
+#endif
 {-# INLINEABLE persistStreamlyByteArray #-}
 
 -- | Interpreter for Cache via persistence to disk as a strict ByteString
