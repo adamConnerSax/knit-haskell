@@ -420,7 +420,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
       tryIfMissingACT = promoteQ tryIfMissing' loggedDepsA where
         tryIfMissing' :: b -> P.Sem r (Maybe (ActionWithCacheTime r a))
         tryIfMissing' b = do
-          K.khDebugLog $ "key=" <> show key <> ": making new item."
+          K.logLE K.Diagnostic $ "key=" <> show key <> ": making new item."
           ma <- tryIfMissing b
           case ma of
             Nothing -> do
@@ -445,7 +445,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
             cacheACT' = do
               let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
               let nBytes = encBytes ct
-              K.logLE K.Diagnostic $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache. Decoding..."
+              K.khDebugLog $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache. Decoding..."
               return $ Just $ Q cTimeM (K.logLE debugLogSeverity ("Deserializing for key=\"" <> show key <> "\"") >> decode ct)
           Nothing -> Q Nothing $ do
             K.logLE K.Error $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
