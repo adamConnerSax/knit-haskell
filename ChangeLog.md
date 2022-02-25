@@ -1,3 +1,7 @@
+v0.10.3.0
+* Added color in logging output
+* Added ```ReadStdinStrict``` function to PandocMonad setup (from Pandoc >= 2.15)
+
 v0.10.2.0
 * Added key to Serialization errors.
 * Bumped Pandoc upper bound to 3, lucid, polysemy and text upper bounds.

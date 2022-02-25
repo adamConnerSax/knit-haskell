@@ -221,6 +221,9 @@ data Pandoc m r where
   OpenURL :: PandocText -> Pandoc m (BS.ByteString, Maybe PA.MimeType)
   ReadFileLazy :: FilePath -> Pandoc m LBS.ByteString
   ReadFileStrict ::FilePath -> Pandoc m BS.ByteString
+#if   MIN_VERSION_pandoc(2,15,0)
+  ReadStdinStrict :: Pandoc m BS.ByteString
+#endif
   Glob ::String -> Pandoc m [FilePath]
   FileExists :: FilePath -> Pandoc m Bool
   GetDataFileName :: FilePath -> Pandoc m FilePath
@@ -320,6 +323,9 @@ absorbPandocMonad = P.absorbWithSem @PA.PandocMonad @Action
               openURL
               readFileLazy
               readFileStrict
+#if MIN_VERSION_pandoc(2,15,0)
+              readStdinStrict
+#endif
               glob
               fileExists
               getDataFileName
@@ -354,6 +360,9 @@ data PandocDict m = PandocDict
   , openURL_ :: PandocText ->  m (BS.ByteString, Maybe PA.MimeType)
   , readFileLazy_ :: FilePath ->  m LBS.ByteString
   , readFileStrict_ :: FilePath ->  m BS.ByteString
+#if MIN_VERSION_pandoc(2,15,0)
+  , readStdinStrict_ ::  m BS.ByteString
+#endif
   , glob_ :: String ->  m [FilePath]
   , fileExists_ :: FilePath ->  m Bool
   , getDataFileName_ :: FilePath ->  m FilePath
@@ -386,6 +395,9 @@ instance (Monad m
   openURL             = Action . openURL_ (P.reflect $ P.Proxy @s')
   readFileLazy        = Action . readFileLazy_ (P.reflect $ P.Proxy @s')
   readFileStrict      = Action . readFileStrict_ (P.reflect $ P.Proxy @s')
+#if MIN_VERSION_pandoc(2,15,0)
+  readStdinStrict     = Action $ readStdinStrict_ (P.reflect $ P.Proxy @s')
+#endif
   glob                = Action . glob_ (P.reflect $ P.Proxy @s')
   fileExists          = Action . fileExists_ (P.reflect $ P.Proxy @s')
   getDataFileName     = Action . getDataFileName_ (P.reflect $ P.Proxy @s')
@@ -422,6 +434,9 @@ interpretInIO = fmap snd . stateful f PA.def
   f (OpenURL         url) cs = openURLWithState cs url
   f (ReadFileLazy    fp ) cs = liftPair (cs, liftIOError readFileLBS fp)
   f (ReadFileStrict  fp ) cs = liftPair (cs, liftIOError readFileBS fp)
+#if MIN_VERSION_pandoc(2,15,0)
+  f ReadStdinStrict       cs = liftPair (cs, liftIO $ BS.getContents)
+#endif
   f (Glob            s  ) cs = liftPair (cs, liftIOError IO.glob s)
   f (FileExists fp) cs = liftPair (cs, liftIOError Directory.doesFileExist fp)
   f (GetDataFileName s  ) cs = liftPair (cs, liftIOError getDataFileName' s)
@@ -457,6 +472,9 @@ interpretInPandocMonad = P.interpret
     OpenURL             s  -> P.embed @m $ PA.openURL s
     ReadFileLazy        fp -> P.embed @m $ PA.readFileLazy fp
     ReadFileStrict      fp -> P.embed @m $ PA.readFileStrict fp
+#if MIN_VERSION_pandoc(2,15,0)
+    ReadStdinStrict        -> P.embed @m $ PA.readStdinStrict
+#endif
     Glob                fp -> P.embed @m $ PA.glob fp
     FileExists          fp -> P.embed @m $ PA.fileExists fp
     GetDataFileName     fp -> P.embed @m $ PA.getDataFileName fp

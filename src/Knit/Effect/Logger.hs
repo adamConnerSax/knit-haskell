@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE InstanceSigs          #-}
+--{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -76,6 +76,7 @@ import qualified Data.Text                     as T
 import qualified Prettyprinter     as PP
 import qualified Prettyprinter.Render.Text
                                                as PP
+import qualified Text.Colour                   as TC
 import           Data.Data (Data)
 
 import           System.IO                      ( hFlush ) -- relude claims to export this but seems not to?
@@ -269,6 +270,15 @@ logToIO asText a = liftIO $ do
   hFlush stdout
 {-# INLINEABLE logToIO #-}
 
+-- | Simple handler, uses a function from message to Text and then outputs all messages in 'IO'.
+-- Uses "Say" to insure messages issued from each thread are output coherently.
+-- Can be used as base for any other handler that gives @Text@.
+logToColorizedIO :: MonadIO m => (a -> [TC.Chunk]) -> Handler m a
+logToColorizedIO asChunks a = liftIO $ do
+  TC.putChunksWith TC.With24BitColours $ asChunks a
+  hFlush stdout
+{-# INLINEABLE logToColorizedIO #-}
+
 
 -- | '(a -> Text)' function for prefixedLogEntries
 prefixedLogEntryToText :: WithPrefix LogEntry -> T.Text
@@ -277,10 +287,24 @@ prefixedLogEntryToText =
     (renderLogEntry PP.pretty)
 {-# INLINEABLE prefixedLogEntryToText #-}
 
+-- | '(a -> Text)' function for prefixedLogEntries
+prefixedLogEntryToColorizedChunks :: WithPrefix LogEntry -> [TC.Chunk]
+prefixedLogEntryToColorizedChunks = undefined
+--  PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
+--    (renderLogEntry PP.pretty)
+{-# INLINEABLE prefixedLogEntryToColorizedChunks #-}
+
+
 -- | log prefixed entries directly to IO
 prefixedLogEntryToIO :: MonadIO m => Handler m (WithPrefix LogEntry)
 prefixedLogEntryToIO = logToIO prefixedLogEntryToText
 {-# INLINEABLE prefixedLogEntryToIO #-}
+
+-- | log prefixed entries directly to IO
+prefixedLogEntryToColorizedIO :: MonadIO m => Handler m (WithPrefix LogEntry)
+prefixedLogEntryToColorizedIO = logToColorizedIO prefixedLogEntryToColorizedChunks
+{-# INLINEABLE prefixedLogEntryToColorizedIO #-}
+
 
 -- | This function can be used to log directly to IO, bypassing the effect.
 -- It's here to allow logging from within functions that must be run under more
@@ -302,6 +326,18 @@ filteredLogEntriesToIO lsF mx = do
   let f a = lsF (severity $ discardPrefix a)
   logAndHandlePrefixed (filterLog f prefixedLogEntryToIO) mx
 {-# INLINEABLE filteredLogEntriesToIO #-}
+
+-- | Run the 'Logger' and 'PrefixLog' effects in 'IO': filtered via the severity of the message and formatted using "prettyprinter".
+filteredLogEntriesToColorizedIO
+  :: MonadIO (P.Sem r)
+  => (LogSeverity -> Bool)
+  -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
+  -> P.Sem r x
+filteredLogEntriesToColorizedIO lsF mx = do
+  let f a = lsF (severity $ discardPrefix a)
+  logAndHandlePrefixed (filterLog f prefixedLogEntryToColorizedIO) mx
+{-# INLINEABLE filteredLogEntriesToColorizedIO #-}
+
 
 -- | List of Logger effects for a prefixed log of type @a@
 type PrefixedLogEffects a = [PrefixLog, Logger a]
