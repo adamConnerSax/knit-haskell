@@ -302,10 +302,10 @@ prefixedLogEntryToColorizedChunks x =
             Info -> TC.fore TC.green $ TC.chunk "Info"
             Diagnostic -> TC.fore TC.cyan $ TC.chunk "Diagnostic"
             Debug n -> TC.fore TC.black $ TC.chunk $ "Debug " <> show n
-      sevChunks = TC.chunk "[" <> sevChunk <> TC.chunk "]"
-      prefixChunks = [TC.fore TC.black $ TC.chunk $ "(" <> prefix <> ")"]
+      sevChunks = [TC.chunk "[",  sevChunk, TC.chunk "]"]
+      prefixChunk = TC.fore TC.black $ TC.chunk $ "(" <> prefix <> ")"
       msgChunk = TC.back TC.white $ TC.fore TC.black $ TC.chunk msg
-  in sevChunks <> [plainChunk " "] <> prefixChunks <> [plainChunk " "] <> [msgChunk]
+  in sevChunks <> [plainChunk " "] <> [prefixChunk] <> [plainChunk " "] <> [msgChunk]
 
 --  PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
 --    (renderLogEntry PP.pretty)
