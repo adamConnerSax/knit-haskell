@@ -287,9 +287,26 @@ prefixedLogEntryToText =
     (renderLogEntry PP.pretty)
 {-# INLINEABLE prefixedLogEntryToText #-}
 
--- | '(a -> Text)' function for prefixedLogEntries
+-- | '(a -> [TC.Chunk])' function for prefixedLogEntries
 prefixedLogEntryToColorizedChunks :: WithPrefix LogEntry -> [TC.Chunk]
-prefixedLogEntryToColorizedChunks = undefined
+prefixedLogEntryToColorizedChunks x =
+  let prefix = msgPrefix x
+      sev = severity $ discardPrefix x
+      msg = message $ discardPrefix x
+      plainChunk = TC.back TC.white . TC.fore TC.black . TC.chunk
+      sevChunk =
+        TC.back TC.white
+        $ case sev of
+            Error -> TC.fore TC.brightMagenta $ TC.bold $ TC.chunk "Error"
+            Warning -> TC.fore TC.brightYellow $ TC.bold $ TC.chunk "Warning"
+            Info -> TC.fore TC.green $ TC.chunk "Info"
+            Diagnostic -> TC.fore TC.cyan $ TC.chunk "Diagnostic"
+            Debug n -> TC.fore TC.black $ TC.chunk $ "Debug " <> show n
+      sevChunks = TC.chunk "[" <> sevChunk <> TC.chunk "]"
+      prefixChunks = [TC.fore TC.black $ TC.chunk $ "(" <> prefix <> ")"]
+      msgChunk = TC.back TC.white $ TC.fore TC.black $ TC.chunk msg
+  in sevChunks <> [plainChunk " "] <> prefixChunks <> [plainChunk " "] <> [msgChunk]
+
 --  PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
 --    (renderLogEntry PP.pretty)
 {-# INLINEABLE prefixedLogEntryToColorizedChunks #-}
