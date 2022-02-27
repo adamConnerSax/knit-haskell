@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
---{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -47,6 +46,7 @@ module Knit.Effect.Logger
 
   -- * Interpreters
   , filteredLogEntriesToIO
+  , filteredLogEntriesToColorizedIO
 
   -- * Subsets for filtering
   , logAll
@@ -139,7 +139,6 @@ logDebug :: Int -> LogSeverity -> Bool
 logDebug l (Debug n) = n <= l
 logDebug _ _         = True
 {-# INLINEABLE logDebug #-}
-
 
 -- | The Logger effect (the same as the 'Polysemy.Output' effect).
 data Logger a m r where
@@ -293,19 +292,17 @@ prefixedLogEntryToColorizedChunks x =
   let prefix = msgPrefix x
       sev = severity $ discardPrefix x
       msg = message $ discardPrefix x
-      plainChunk = TC.back TC.white . TC.fore TC.black . TC.chunk
-      sevChunk =
-        TC.back TC.white
-        $ case sev of
+      plainChunk = TC.chunk
+      sevChunk = case sev of
             Error -> TC.fore TC.brightMagenta $ TC.bold $ TC.chunk "Error"
             Warning -> TC.fore TC.brightYellow $ TC.bold $ TC.chunk "Warning"
             Info -> TC.fore TC.green $ TC.chunk "Info"
             Diagnostic -> TC.fore TC.cyan $ TC.chunk "Diagnostic"
-            Debug n -> TC.fore TC.black $ TC.chunk $ "Debug " <> show n
+            Debug n -> TC.chunk $ "Debug " <> show n
       sevChunks = [TC.chunk "[",  sevChunk, TC.chunk "]"]
-      prefixChunk = TC.fore TC.black $ TC.chunk $ "(" <> prefix <> ")"
-      msgChunk = TC.back TC.white $ TC.fore TC.black $ TC.chunk msg
-  in sevChunks <> [plainChunk " "] <> [prefixChunk] <> [plainChunk " "] <> [msgChunk]
+      prefixChunk = TC.chunk $ "(" <> prefix <> ")"
+      msgChunk = TC.chunk msg
+  in sevChunks <> [plainChunk " "] <> [prefixChunk] <> [plainChunk " "] <> [msgChunk] <> [TC.chunk "\n"]
 
 --  PP.renderStrict . PP.layoutPretty PP.defaultLayoutOptions . renderWithPrefix
 --    (renderLogEntry PP.pretty)

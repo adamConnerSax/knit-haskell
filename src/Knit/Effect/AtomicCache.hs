@@ -420,7 +420,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
       tryIfMissingACT = promoteQ tryIfMissing' loggedDepsA where
         tryIfMissing' :: b -> P.Sem r (Maybe (ActionWithCacheTime r a))
         tryIfMissing' b = do
-          K.logLE K.Diagnostic $ "key=" <> show key <> ": making new item."
+          K.logLE K.Diagnostic $ "key=" <> show key <> ": Out of date or missing. Making new item."
           ma <- tryIfMissing b
           case ma of
             Nothing -> do

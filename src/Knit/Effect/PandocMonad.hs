@@ -288,7 +288,7 @@ logPandocMessage
   :: P.Member (Log.Logger Log.LogEntry) effs => PA.LogMessage -> P.Sem effs ()
 logPandocMessage lm = send $ Log.Log $ Log.LogEntry
   (pandocSeverity lm)
-  (pandocTextToText . PA.showLogMessage $ lm)
+  ("PANDOC: " <> (pandocTextToText $ PA.showLogMessage $ lm))
 
 -- | Constraint helper for using this set of effects in IO.
 #if MIN_VERSION_pandoc(2,8,0)
