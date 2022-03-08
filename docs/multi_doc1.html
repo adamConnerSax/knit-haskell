@@ -46,24 +46,30 @@
             <section id="some-example-markdown" class="level2">
             <h2>Some example markdown</h2>
             <ul>
-            <li><a href="https://pandoc.org/MANUAL.html#pandocs-markdown">Markdown</a> is a nice way to write formatted notes with a minimum of code.</li>
-            <li>It supports links and tables and some <em>styling</em> information.</li>
+            <li><a
+            href="https://pandoc.org/MANUAL.html#pandocs-markdown">Markdown</a>
+            is a nice way to write formatted notes with a minimum of
+            code.</li>
+            <li>It supports links and tables and some <em>styling</em>
+            information.</li>
             </ul>
             </section>
             <section id="some-example-latex-doc-1" class="level2">
             <h2>Some example latex (Doc 1)</h2>
-            <p>Overused favorite equation: <span class="math inline">\(e^{i\pi} + 1 = 0\)</span></p>
+            <p>Overused favorite equation: <span
+            class="math inline">\(e^{i\pi} + 1 = 0\)</span></p>
             </section>
-            <section id="an-example-hvega-visualization-doc-1" class="level2">
+            <section id="an-example-hvega-visualization-doc-1"
+            class="level2">
             <h2>An example hvega visualization (Doc 1)</h2>
             <figure id="figure_1">
             <script type="text/javascript">var vlSpec=
             {
-                "mark": "circle",
+                "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
+                "background": "rgba(0, 0, 0, 0.05)",
                 "data": {
                     "url": "https://vega.github.io/vega-datasets/data/cars.json"
                 },
-                "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
                 "encoding": {
                     "color": {
                         "field": "Origin",
@@ -78,9 +84,9 @@
                         "type": "quantitative"
                     }
                 },
-                "background": "rgba(0, 0, 0, 0.05)"
+                "mark": "circle"
             };
-            vegaEmbed('#figure_1',vlSpec);</script>
+            vegaEmbed('#figure_1',vlSpec,{"renderer": "canvas"});</script>
             </figure>
             </section>
             </div>

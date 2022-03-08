@@ -56,24 +56,28 @@ table td {
 <section id="some-example-markdown" class="level2">
 <h2>Some example markdown</h2>
 <ul>
-<li><a href="https://pandoc.org/MANUAL.html#pandocs-markdown">Markdown</a> is a nice way to write formatted notes with a minimum of code.</li>
-<li>It supports links and tables and some <em>styling</em> information.</li>
+<li><a
+href="https://pandoc.org/MANUAL.html#pandocs-markdown">Markdown</a> is a
+nice way to write formatted notes with a minimum of code.</li>
+<li>It supports links and tables and some <em>styling</em>
+information.</li>
 </ul>
 </section>
 <section id="some-example-latex" class="level2">
 <h2>Some example latex</h2>
-<p>Overused favorite equation: <span class="math inline">\(e^{i\pi} + 1 = 0\)</span></p>
+<p>Overused favorite equation: <span class="math inline">\(e^{i\pi} + 1
+= 0\)</span></p>
 </section>
 <section id="an-example-hvega-visualization" class="level2">
 <h2>An example hvega visualization</h2>
 <figure id="figure_1">
 <script type="text/javascript">var vlSpec=
 {
-    "mark": "circle",
+    "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
+    "background": "rgba(0, 0, 0, 0.05)",
     "data": {
         "url": "https://vega.github.io/vega-datasets/data/cars.json"
     },
-    "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
     "encoding": {
         "color": {
             "field": "Origin",
@@ -88,200 +92,112 @@ table td {
             "type": "quantitative"
         }
     },
-    "background": "rgba(0, 0, 0, 0.05)"
+    "mark": "circle"
 };
-vegaEmbed('#figure_1',vlSpec);</script>
+vegaEmbed('#figure_1',vlSpec,{"renderer": "canvas"});</script>
 </figure>
 </section>
-<section id="an-example-of-getting-env-from-a-base-monad-and-time-from-the-pandoc-effects." class="level2">
-<h2>An example of getting env from a base monad, and time from the Pandoc Effects.</h2>
+<section
+id="an-example-of-getting-env-from-a-base-monad-and-time-from-the-pandoc-effects."
+class="level2">
+<h2>An example of getting env from a base monad, and time from the
+Pandoc Effects.</h2>
 <p>This is from the MyApp environment.</p>
-<p>2021-02-02 21:44:46.951035 UTC</p>
+<p>2022-03-08 00:33:29.395988 UTC</p>
 </section>
-<section id="an-example-of-using-the-randomfu-effect-to-get-random-numbers-and-using-colonnade-to-make-tables." class="level2">
-<h2>An example of using the RandomFu effect to get random numbers and using Colonnade to make tables.</h2>
+<section
+id="an-example-of-using-the-randomfu-effect-to-get-random-numbers-and-using-colonnade-to-make-tables."
+class="level2">
+<h2>An example of using the RandomFu effect to get random numbers and
+using Colonnade to make tables.</h2>
 <p>some std normal draws:</p>
 <table style="border: 1px solid black; border-collapse: collapse">
 <thead>
 <tr class="header">
-<th>#</th>
-<th>Draw</th>
+<th style="border: 1px solid black">#</th>
+<th style="border: 1px solid black">Draw</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>1</td>
-<td>2.553273569023227</td>
+<td style="border: 1px solid black">1</td>
+<td style="border: 1px solid black">-0.2683739438964337</td>
 </tr>
 <tr class="even">
-<td>2</td>
-<td>0.4440732901110185</td>
+<td style="border: 1px solid black">2</td>
+<td style="border: 1px solid black">-0.9058983354650197</td>
 </tr>
 <tr class="odd">
-<td>3</td>
-<td>5.265139909640842e-3</td>
+<td style="border: 1px solid black">3</td>
+<td style="border: 1px solid black">0.19079124069497425</td>
 </tr>
 <tr class="even">
-<td>4</td>
-<td>-6.414342099019588e-2</td>
+<td style="border: 1px solid black">4</td>
+<td style="border: 1px solid black">-0.6303482484396334</td>
 </tr>
 <tr class="odd">
-<td>5</td>
-<td>0.645699251582521</td>
+<td style="border: 1px solid black">5</td>
+<td style="border: 1px solid black">-6.787139871894414e-2</td>
 </tr>
 <tr class="even">
-<td>6</td>
-<td>-0.7792159128710546</td>
+<td style="border: 1px solid black">6</td>
+<td style="border: 1px solid black">0.46376496558639907</td>
 </tr>
 <tr class="odd">
-<td>7</td>
-<td>-1.0546764200563334</td>
+<td style="border: 1px solid black">7</td>
+<td style="border: 1px solid black">-0.7439412186617232</td>
 </tr>
 <tr class="even">
-<td>8</td>
-<td>1.1779918928855344e-2</td>
+<td style="border: 1px solid black">8</td>
+<td style="border: 1px solid black">1.518055813081017</td>
 </tr>
 <tr class="odd">
-<td>9</td>
-<td>-0.11737165885665578</td>
+<td style="border: 1px solid black">9</td>
+<td style="border: 1px solid black">-0.13237202202210546</td>
 </tr>
 <tr class="even">
-<td>10</td>
-<td>1.5558499729680177</td>
+<td style="border: 1px solid black">10</td>
+<td style="border: 1px solid black">-4.004187710426167e-2</td>
 </tr>
 <tr class="odd">
-<td>11</td>
-<td>-0.8430799505352415</td>
+<td style="border: 1px solid black">11</td>
+<td style="border: 1px solid black">0.21554782082028948</td>
 </tr>
 <tr class="even">
-<td>12</td>
-<td>-1.2874050618771573</td>
+<td style="border: 1px solid black">12</td>
+<td style="border: 1px solid black">-1.5989912634527699</td>
 </tr>
 <tr class="odd">
-<td>13</td>
-<td>0.19600771963980707</td>
+<td style="border: 1px solid black">13</td>
+<td style="border: 1px solid black">1.287119170099165</td>
 </tr>
 <tr class="even">
-<td>14</td>
-<td>1.0509777154947788</td>
+<td style="border: 1px solid black">14</td>
+<td style="border: 1px solid black">0.9786966631905026</td>
 </tr>
 <tr class="odd">
-<td>15</td>
-<td>2.7634592350009046</td>
+<td style="border: 1px solid black">15</td>
+<td style="border: 1px solid black">1.3996882122170249</td>
 </tr>
 <tr class="even">
-<td>16</td>
-<td>-1.511367914615965</td>
+<td style="border: 1px solid black">16</td>
+<td style="border: 1px solid black">-0.6171428465903391</td>
 </tr>
 <tr class="odd">
-<td>17</td>
-<td>0.4307768400575413</td>
+<td style="border: 1px solid black">17</td>
+<td style="border: 1px solid black">0.1898622459371253</td>
 </tr>
 <tr class="even">
-<td>18</td>
-<td>-4.428759899149108e-2</td>
+<td style="border: 1px solid black">18</td>
+<td style="border: 1px solid black">1.2500125773331137</td>
 </tr>
 <tr class="odd">
-<td>19</td>
-<td>5.013373746093034e-2</td>
+<td style="border: 1px solid black">19</td>
+<td style="border: 1px solid black">0.7496420188371719</td>
 </tr>
 <tr class="even">
-<td>20</td>
-<td>-0.3574582880833568</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="this-time-using-absorbmonadrandom-to-interoperate-with-a-function-using-the-monadrandom-constraint." class="level2">
-<h2>This time, using absorbMonadRandom to interoperate with a function using the MonadRandom constraint.</h2>
-<p>some std normal draws:</p>
-<table style="border: 1px solid black; border-collapse: collapse">
-<thead>
-<tr class="header">
-<th>#</th>
-<th>Draw</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>1</td>
-<td>0.36926358454012087</td>
-</tr>
-<tr class="even">
-<td>2</td>
-<td>0.17487895860005603</td>
-</tr>
-<tr class="odd">
-<td>3</td>
-<td>1.3297461216004471</td>
-</tr>
-<tr class="even">
-<td>4</td>
-<td>-1.2740098333664228e-2</td>
-</tr>
-<tr class="odd">
-<td>5</td>
-<td>-0.8862391776290458</td>
-</tr>
-<tr class="even">
-<td>6</td>
-<td>-1.0326302504736078</td>
-</tr>
-<tr class="odd">
-<td>7</td>
-<td>-0.8480362297890907</td>
-</tr>
-<tr class="even">
-<td>8</td>
-<td>-1.2465452435738942</td>
-</tr>
-<tr class="odd">
-<td>9</td>
-<td>1.4362604968317028</td>
-</tr>
-<tr class="even">
-<td>10</td>
-<td>4.3190152460230204e-2</td>
-</tr>
-<tr class="odd">
-<td>11</td>
-<td>0.6698172172293293</td>
-</tr>
-<tr class="even">
-<td>12</td>
-<td>-1.621338692171586</td>
-</tr>
-<tr class="odd">
-<td>13</td>
-<td>1.1564241183627972</td>
-</tr>
-<tr class="even">
-<td>14</td>
-<td>-0.8910578861273886</td>
-</tr>
-<tr class="odd">
-<td>15</td>
-<td>0.5162599955787897</td>
-</tr>
-<tr class="even">
-<td>16</td>
-<td>0.2986449312269392</td>
-</tr>
-<tr class="odd">
-<td>17</td>
-<td>-0.4383128738805686</td>
-</tr>
-<tr class="even">
-<td>18</td>
-<td>1.6014787047176644</td>
-</tr>
-<tr class="odd">
-<td>19</td>
-<td>6.387022262428037e-2</td>
-</tr>
-<tr class="even">
-<td>20</td>
-<td>0.9614361162456494</td>
+<td style="border: 1px solid black">20</td>
+<td style="border: 1px solid black">2.4545179464074454</td>
 </tr>
 </tbody>
 </table>

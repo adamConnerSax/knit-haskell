@@ -46,24 +46,29 @@
             <section id="some-example-markdown" class="level2">
             <h2>Some example markdown</h2>
             <ul>
-            <li>This is some more markdown! Now for document 2. It's still a nice way to write formatted notes with a minimum of code.</li>
-            <li>It supports links and tables and some <em>styling</em> information.</li>
+            <li>This is some more markdown! Now for document 2. It's
+            still a nice way to write formatted notes with a minimum of
+            code.</li>
+            <li>It supports links and tables and some <em>styling</em>
+            information.</li>
             </ul>
             </section>
             <section id="some-example-latex-doc-2" class="level2">
             <h2>Some example latex (Doc 2)</h2>
-            <p>A different equation: <span class="math inline">\(a^2 + b^2 = c^2\)</span></p>
+            <p>A different equation: <span class="math inline">\(a^2 +
+            b^2 = c^2\)</span></p>
             </section>
-            <section id="an-example-hvega-visualization-doc-2" class="level2">
+            <section id="an-example-hvega-visualization-doc-2"
+            class="level2">
             <h2>An example hvega visualization (Doc 2)</h2>
             <figure id="figure_2">
             <script type="text/javascript">var vlSpec=
             {
-                "mark": "circle",
+                "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
+                "background": "rgba(0, 0, 0, 0.05)",
                 "data": {
                     "url": "https://vega.github.io/vega-datasets/data/cars.json"
                 },
-                "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
                 "encoding": {
                     "color": {
                         "field": "Origin",
@@ -78,9 +83,9 @@
                         "type": "quantitative"
                     }
                 },
-                "background": "rgba(0, 0, 0, 0.05)"
+                "mark": "circle"
             };
-            vegaEmbed('#figure_2',vlSpec);</script>
+            vegaEmbed('#figure_2',vlSpec,{"renderer": "canvas"});</script>
             </figure>
             </section>
             </div>

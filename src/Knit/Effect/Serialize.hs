@@ -140,7 +140,7 @@ getSerializeDict = PR.ask
 {-# INLINEABLE getSerializeDict #-}
 
 -- | run the SerializeEnv effect by giving it the dictionary for use by the cache functions
-runSerializeEnv :: SerializeDict c ct -> P.InterpreterFor (SerializeEnv c ct) r
+runSerializeEnv :: SerializeDict c ct -> P.Sem (SerializeEnv c ct : r) a -> P.Sem r a --P.InterpreterFor (SerializeEnv c ct) r
 runSerializeEnv = PR.runReader
 {-# INLINEABLE runSerializeEnv #-}
 

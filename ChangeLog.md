@@ -1,3 +1,6 @@
+v0.10.3.1
+* Removed the ConstraintAbsorber example in RandomExample because it’s not clear what that means in random-1.2
+
 v0.10.3.0
 * Added color in logging output
 * Added ```ReadStdinStrict``` function to PandocMonad setup (from Pandoc >= 2.15)

@@ -1,6 +1,6 @@
 cabal-version: 2.2
 name:           knit-haskell
-version:        0.10.3.0
+version:        0.10.3.1
 synopsis:       a minimal Rmarkdown sort-of-thing for haskell, by way of Pandoc
 description:    knit-haskell is a beginning attempt at bringing some of the benefits of Rmarkdown to Haskell. It includes an effects stack (using <https://github.com/isovector/polysemy#readme polysemy> rather than mtl) which includes logging, a simplified interface to Pandoc and various writer-like effects to intersperse document building with regular code. Also included is a cache (in-memory and persisted to disk) to make caching results of long running computations simple. The cache provides tools for basic dependency tracking. Various helper functions are provided to simplify common operations, making it especially straightforward to build an HTML document from bits of markdown, latex and <http://hackage.haskell.org/package/lucid Lucid> or <http://hackage.haskell.org/package/blaze-html Blaze> html. Support is also included for including <http://hackage.haskell.org/package/hvega hvega> visualizations and diagrams from the <https://archives.haskell.org/projects.haskell.org/diagrams/ diagrams> package. More information is available in the <https://github.com/adamConnerSax/knit-haskell/blob/master/Readme.md readme>.
 bug-reports:    https://github.com/adamConnerSax/knit-haskell/issues
@@ -321,7 +321,7 @@ test-suite RandomExample
     , mtl >=2.2.2
     , plots >=0.1.1.0 && <=0.2
     , polysemy
-    , polysemy-RandomFu >=0.4.0 && <0.5
+    , polysemy-RandomFu >=0.4.0 && <0.6
     , polysemy-plugin
     , random-fu >=0.2.7.3 && <0.3
     , random-source >=0.3.0.6

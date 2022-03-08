@@ -1,26 +1,56 @@
-packages: ./ 
-          
+packages: ./ ~/Development/haskell/polysemy-extra/polysemy-RandomFu
+
 -- ghc-8.10, the base allow-newer is for svg-builder, etc.
-allow-newer: base
+--allow-newer: base
+-- ghc 9.2.2
+allow-newer: base, ghc-prim, bytestring, polysemy-zoo:constraints, plots:lens, random-fu
+
+-- ghc 9.2.2
+source-repository-package
+  type: git
+  location: https://github.com/srid/validity
+  tag: f7982549b95d0ab727950dc876ca06b1862135ba
+  subdir: validity
+
+source-repository-package
+  type: git
+  location: https://github.com/tfausak/hs-memory
+  tag: 3cf661a8a9a8ac028df77daa88e8d65c55a3347a
+
+source-repository-package
+  type: git
+  location: https://github.com/sullyj3/relude
+  tag: 8f7e3a3be033fe11dbd00ebcf5cd7b00d1e459b6
+
+source-repository-package
+  type: git
+  location: https://github.com/josephcsible/cryptonite
+  tag: 0d04e90dc33b6aeaf8a5686921d6999599429fb0
+
+source-repository-package
+  type: git
+  location: https://github.com/adamConnerSax/polysemy-zoo
+  tag: 0e67a55971c74589319df3e23cb8ba9f07b33cef
+
+source-repository-package
+  type: git
+  location: https://github.com/adamConnerSax/random-fu
+  tag: a21105b269c77266bd74ec4a31e0924f7000e69a
+  subdir: random-source
+
+source-repository-package
+  type: git
+  location: https://github.com/adamConnerSax/random-fu
+  tag: a21105b269c77266bd74ec4a31e0924f7000e69a
+  subdir: random-fu
+
+source-repository-package
+  type: git
+  location: https://github.com/cchalmers/plots
+  tag: bfac22838abdf78134e2dac38cdad418fb4a7269
 
 --source-repository-package
 --  type: git
---  location: https://github.com/adamConnerSax/polysemy-zoo
---  tag: f66744f0382e0969fce060df709a173d3b5e04d2
-
---source-repository-package
---  type: git
---  location: https://github.com/polysemy-research/polysemy-zoo
---  tag: fd7eb2b9934d15d233fb4e75acb7fbff80d149bf
-
-
-  
--- fails with GHC panic. No good.
---source-repository-package
---  type: git
---  location: https://github.com/polysemy-research/polysemy
---  tag: 4eece51af611e86fd24f2b1c50cfe352b61ff1f5
---  subdir: polysemy-plugin
-
--- end ghc 8.10
-                  
+--  location: https://github.com/adamConnerSax/polysemy-Extra
+--  tag: 092efc7e5681a39ed7f66ba8732a414ba7fb54f0
+--  subdir: polysemy-RandomFu

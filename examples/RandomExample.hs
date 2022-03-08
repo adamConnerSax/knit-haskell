@@ -1,9 +1,10 @@
-{-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications           #-}
 module Main where
 
 import qualified Knit.Report                   as K
@@ -19,10 +20,11 @@ import qualified Data.Text                     as T
 import           Data.String.Here               ( here )
 import qualified Graphics.Vega.VegaLite        as V
 
-import           Data.Random                    ( MonadRandom
-                                                , sample
+import           Data.Random                    ( sample
                                                 , stdNormal
+                                                , StatefulGen
                                                 )
+import           Data.Random.Source             (MonadRandom)
 import           Data.Random.Source.PureMT      ( newPureMT )
 
 import           Control.Monad.Reader           ( ReaderT
@@ -38,7 +40,7 @@ templateVars = M.fromList
 --  , ("tufte","True")
   ]
 
--- A demo application stack 
+-- A demo application stack
 newtype MyApp env a = MyStack { unMyApp :: ReaderT env IO a } deriving (Functor, Applicative, Monad, MonadIO)
 
 type ExampleApp = MyApp T.Text
@@ -59,7 +61,7 @@ main = do
         { K.outerLogPrefix = Just "RandomExample.Main"
         , K.logIf = K.logAll
         , K.pandocWriterConfig = pandocWriterConfig
-        }                                             
+        }
   pureMTSource <- newPureMT
   resE         <-
     runExampleApp "This is from the MyApp environment."
@@ -116,6 +118,7 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
       <> C.headed "Draw" (T.pack . show . snd)
       )
     $ zip [1 .. nDraws] someNormalDoubles
+{-
   moreNormalDoubles <- PR.absorbMonadRandom (monadRandomFunction nDraws)
   K.addMarkDown
     "## This time, using absorbMonadRandom to interoperate with a function using the MonadRandom constraint."
@@ -125,10 +128,10 @@ makeDoc = K.wrapPrefix "makeDoc" $ do
       <> C.headed "Draw" (T.pack . show . snd)
       )
     $ zip [1 .. nDraws] moreNormalDoubles
+-}
 
-
-monadRandomFunction :: MonadRandom m => Int -> m [Double]
-monadRandomFunction = sample . flip replicateM (stdNormal @Double)
+--monadRandomFunction :: MonadRandom m => Int -> m [Double]
+--monadRandomFunction = sample . flip replicateM (stdNormal @Double)
 
 exampleVis :: V.VegaLite
 exampleVis =
