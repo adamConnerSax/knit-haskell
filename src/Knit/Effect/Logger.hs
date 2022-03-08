@@ -298,7 +298,7 @@ prefixedLogEntryToColorizedChunks x =
             Warning -> TC.fore TC.brightYellow $ TC.bold $ TC.chunk "Warning"
             Info -> TC.fore TC.green $ TC.chunk "Info"
             Diagnostic -> TC.fore TC.cyan $ TC.chunk "Diagnostic"
-            Debug n -> TC.chunk $ "Debug " <> show n
+            Debug n -> TC.fore TC.blue $ TC.chunk $ "Debug " <> show n
       sevChunks = [TC.chunk "[",  sevChunk, TC.chunk "]"]
       prefixChunk = TC.chunk $ "(" <> prefix <> ")"
       msgChunk = TC.chunk msg
