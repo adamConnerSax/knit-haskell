@@ -117,6 +117,8 @@ module Knit.Effect.AtomicCache
     -- ** Utilities
   , wctMapAction
   , wctBind
+  , wctMerge
+  , wctMergeM
     -- ** Cache Actions
   , encodeAndStore
   , retrieveAndDecode
@@ -230,6 +232,16 @@ joinActionOnlyQ :: Monad m => m (Q w m a) -> m a
 joinActionOnlyQ = (actionOnlyQ =<<)
 {-# INLINEABLE joinActionOnlyQ #-}
 
+mergeQ :: (Monad m, Semigroup w) => Q w m (Q w m a) -> m (Q w m a)
+mergeQ (Q w mQ) = do
+  (Q w' ma) <- mQ
+  return $ Q (w <> w') ma
+{-# INLINEABLE mergeQ #-}
+
+mergeQM :: (Monad m, Semigroup w) => m (Q w m (Q w m a)) -> m (Q w m a)
+mergeQM  x = x >>= mergeQ
+{-# INLINEABLE mergeQM #-}
+
 promoteQ :: Monad m => (a -> m b) -> Q w m a -> Q w m b
 promoteQ f (Q w ma) = Q w (ma >>= f)
 {-# INLINEABLE promoteQ #-}
@@ -323,6 +335,14 @@ wctMapAction = morphQ
 wctBind :: Monad m => (a -> m b) -> WithCacheTime m a -> WithCacheTime m b
 wctBind = promoteQ
 {-# INLINEABLE wctBind #-}
+
+wctMerge :: Monad m => WithCacheTime m (WithCacheTime m a) -> m (WithCacheTime m a)
+wctMerge = mergeQ
+{-# INLINEABLE wctMerge #-}
+
+wctMergeM :: Monad m => m (WithCacheTime m (WithCacheTime m a)) -> m (WithCacheTime m a)
+wctMergeM = mergeQM
+{-# INLINEABLE wctMergeM #-}
 
 
 -- | natural transformation which is useful for interoperation between
