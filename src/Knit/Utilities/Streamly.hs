@@ -14,29 +14,22 @@ module Knit.Utilities.Streamly
     StreamlyM
   , StreamlyEffects(..)
   , streamlyToKnit
-#if MIN_VERSION_streamly(0,8,0)
-#else
-  , streamlyToKnitS
-#endif
   , logStreamly
   )
 where
 
 import qualified Knit.Effect.Logger as Knit.Logger
 
-
-#if MIN_VERSION_streamly(0,8,0)
-#else
-import qualified Streamly
-import qualified Streamly.Internal.Prelude as Streamly
-#endif
 import qualified Polysemy
 
+#if MIN_VERSION_streamly(0,9,0)
+#else
 import qualified Control.Monad.Primitive as Prim
-
-import           Control.Monad.Catch  (MonadThrow, MonadCatch)
 import Control.Monad.Base (MonadBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
+#endif
+
+import           Control.Monad.Catch  (MonadThrow, MonadCatch)
 
 import qualified Data.Text as Text
 
@@ -51,10 +44,17 @@ logStreamly ls t = do
   liftIO $ logFunction ls t
 {-# INLINEABLE logStreamly #-}
 
+
 -- | IO with a ReaderT layer we can use to expose effects we need.  For now just logging.
+#if MIN_VERSION_streamly(0,9,0)
+newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
+  deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
+  deriving (MonadThrow, MonadCatch, MonadIO) via (ReaderT StreamlyEffects IO)
+#else
 newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
   deriving (MonadThrow, MonadCatch, MonadIO, Prim.PrimMonad, MonadBase IO, MonadBaseControl IO) via (ReaderT StreamlyEffects IO)
+#endif
 
 -- | lift a 'StreamlyM' computation into a 'Knit.Sem' computation
 streamlyToKnit :: (Polysemy.Member (Polysemy.Embed IO) r
@@ -67,15 +67,3 @@ streamlyToKnit sa = do
       se = StreamlyEffects (\ls lmsg -> logFunction curPrefix (Knit.Logger.LogEntry ls lmsg))
   Polysemy.embed $ runReaderT (unStreamlyM sa) se
 {-# INLINEABLE streamlyToKnit #-}
-
-#if MIN_VERSION_streamly(0,8,0)
-#else
-{-# DEPRECATED streamlyToKnitS "This is mysteriously slow so will be removed.  Run all streams in the StreamlyM monad. Then lift using @streamlyToKnit@" #-}
--- | Serial streams work fine over Sem, so we can lift the effectful serial stream into @Sem r@ without running.
-streamlyToKnitS :: (Polysemy.Member (Polysemy.Embed IO) r
-                  , Knit.Logger.LogWithPrefixesLE r
-                  )
-                => Streamly.SerialT StreamlyM a -> Streamly.SerialT (Polysemy.Sem r) a
-streamlyToKnitS = Streamly.hoist streamlyToKnit
-{-# INLINEABLE streamlyToKnitS #-}
-#endif

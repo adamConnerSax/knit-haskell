@@ -77,7 +77,10 @@ import qualified Data.Word                     as Word
 import qualified Control.Exception as X
 import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
 
-#if MIN_VERSION_streamly(0,8,0)
+#if MIN_VERSION_streamly(0,9,0)
+import qualified Streamly.Data.Stream  as Streamly
+import qualified Streamly.Data.Array   as Streamly.Array
+#elif MIN_VERSION_streamly(0,8,0)
 import qualified Streamly.Prelude              as Streamly
 import qualified Streamly.Data.Array.Foreign   as Streamly.Array
 #else
@@ -241,6 +244,13 @@ streamlyDeserialize (SerializeDict _ parseOne _ ctToBytes _) ct = do
     Streamly.unfoldrM unfoldOne bs
 -}
 
+#if MIN_VERSION_streamly(0,9,0)
+handleEitherInStream :: Either SerializationError (Streamly.Stream K.StreamlyM a) -> Streamly.Stream K.StreamlyM a
+handleEitherInStream e = case e of
+    Left err -> Streamly.fromEffect $ MonadIO.liftIO $ X.throwIO err
+    Right a -> Streamly.before (K.logStreamly (KLog.Debug 3) "Deserializing stream...") a
+
+#else
 handleEitherInStream :: Either SerializationError (Streamly.SerialT K.StreamlyM a) -> Streamly.SerialT K.StreamlyM a
 handleEitherInStream e = do
 #if MIN_VERSION_streamly(0,8,0)
@@ -253,6 +263,7 @@ handleEitherInStream e = do
     Right a -> do
       fromEffect $ K.logStreamly (KLog.Debug 3) "Deserializing stream..."
       a
+#endif
 
 -- | type-alias for default in-memory storage type.
 type DefaultCacheData = Streamly.Array.Array Word.Word8

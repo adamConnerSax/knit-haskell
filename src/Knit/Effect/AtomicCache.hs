@@ -159,7 +159,10 @@ import qualified Data.Word                     as Word
 import qualified Control.Concurrent.STM        as C
 import qualified Control.Exception             as Exception
 
-#if MIN_VERSION_streamly(0,8,0)
+#if MIN_VERSION_streamly(0,9,0)
+import qualified Streamly.Data.Array    as Streamly.Array
+import qualified Streamly.Internal.Data.Array as Streamly.Array
+#elif MIN_VERSION_streamly(0,8,0)
 import qualified Streamly.Internal.Data.Array.Foreign    as Streamly.Array
 #else
 import qualified Streamly.Internal.Memory.Array    as Streamly.Array
@@ -765,7 +768,11 @@ persistStreamlyByteArray keyToFilePath =
   P.interpret $ \case
     CacheLookup k -> K.wrapPrefix "persistAsByteArray.CacheLookup" $ do
       let filePath = keyToFilePath k
+#if MIN_VERSION_streamly(0,9,0)
+      getContentsWithCacheTime (Streamly.Array.fromStream . Streamly.File.read) filePath
+#else
       getContentsWithCacheTime (Streamly.Array.fromStream . Streamly.File.toBytes) filePath
+#endif
     CacheUpdate k mct -> K.wrapPrefix "persistAsByteStreamly.CacheUpdate" $ do
       let keyText = "key=" <> show k <> ": "
       case mct of

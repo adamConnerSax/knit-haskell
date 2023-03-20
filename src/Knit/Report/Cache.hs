@@ -83,7 +83,9 @@ import           Data.Time.Clock                (UTCTime)
 import qualified Polysemy                      as P
 import qualified Polysemy.Error                as P
 
-#if MIN_VERSION_streamly(0,8,0)
+#if MIN_VERSION_streamly(0,9,0)
+import qualified Streamly.Data.Stream as Streamly
+#elif MIN_VERSION_streamly(0,8,0)
 import qualified Streamly.Prelude as Streamly
 #else
 import qualified Streamly
@@ -91,6 +93,7 @@ import qualified Streamly
 
 import qualified System.Directory as System
 import qualified System.IO.Error as SE
+
 
 -- | type used by the AtomicCache for in-memory storage.
 -- type CacheData = Streamly.Array.Array Word.Word8
@@ -128,11 +131,19 @@ knitSerialize
 knitSerialize key = mapSerializationErrorsOne key . KS.serializeOne --KS.cerealStreamlyDict
 {-# INLINEABLE knitSerialize #-}
 
+#if MIN_VERSION_streamly(0,9,0)
+mapSerializationErrorsStreamly ::
+  forall r k a ct.(P.Member (P.Error C.CacheError) r, Show k)
+  => k
+  -> KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.Stream KStreamly.StreamlyM a) ct
+  -> KS.Serialize C.CacheError r (Streamly.Stream KStreamly.StreamlyM a) ct
+#else
 mapSerializationErrorsStreamly ::
   forall r k a ct.(P.Member (P.Error C.CacheError) r, Show k)
   => k
   -> KS.Serialize KS.SerializationError (P.Error KS.SerializationError ': r) (Streamly.SerialT KStreamly.StreamlyM a) ct
   -> KS.Serialize C.CacheError r (Streamly.SerialT KStreamly.StreamlyM a) ct
+#endif
 mapSerializationErrorsStreamly key (KS.Serialize encode decode encBytes) =
   let f :: P.Sem (P.Error KS.SerializationError ': r) x -> P.Sem r x
       f =  P.mapError (serializationToCacheError key)
@@ -140,6 +151,7 @@ mapSerializationErrorsStreamly key (KS.Serialize encode decode encBytes) =
      (f . encode)
      (f . decode)
      encBytes
+{-# INLINEABLE mapSerializationErrorsStreamly #-}
 
 -- | Store an @a@ (serialized) at key k. Throw PandocIOError on IOError.
 store
