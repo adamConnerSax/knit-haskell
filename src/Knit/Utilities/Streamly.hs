@@ -44,7 +44,7 @@ logStreamly ls t = do
 #if MIN_VERSION_streamly(0,9,0)
 newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
-  deriving (MonadThrow, MonadCatch, MonadIO, Prim.PrimMonad) via (ReaderT StreamlyEffects IO)
+  deriving (MonadThrow, MonadCatch, MonadIO, Prim.PrimMonad, MonadBase IO, MonadBaseControl IO) via (ReaderT StreamlyEffects IO)
 #else
 newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
