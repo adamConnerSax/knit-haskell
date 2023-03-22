@@ -4,7 +4,8 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
-{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -50,11 +51,13 @@ module Knit.Report.EffectStack
   )
 where
 
+import qualified Control.Concurrent.Async as A
 import qualified Control.Monad.Catch as Exceptions (SomeException, displayException)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import qualified Polysemy                      as P
+import qualified Polysemy.Final                as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
 import qualified Polysemy.IO                   as PI
@@ -189,6 +192,21 @@ type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
 type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.
+{-
+asyncToFinal :: (P.Member (P.Final m) r, MonadIO m)
+               => P.Sem (P.Async ': r) a
+               -> P.Sem r a
+asyncToFinal = P.interpretFinal $ \case
+  P.Async m -> do
+    ins <- P.getInspectorS
+    m'  <- P.runS m
+    P.liftS $ liftIO $ A.async $ (P.inspect ins <$> m')
+  P.Await a -> P.liftS (liftIO $ A.wait a)
+  P.Cancel a -> P.liftS (liftIO $ A.cancel a)
+{-# INLINE asyncToFinal #-}
+-}
+
+
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
 type KnitEffectStack c ct k m
@@ -247,7 +265,7 @@ consumeKnitEffectStack config =
   . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
-  . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+  . P.asyncToIOFinal -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToColorizedIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
@@ -270,7 +288,7 @@ consumeKnitEffectStack config =
   . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
-  . P.asyncToIO -- this has to run after (above) the log, partly so that the prefix state is thread-local.
+  . P.asyncToIOFinal -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToColorizedIO (logIf config)
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
