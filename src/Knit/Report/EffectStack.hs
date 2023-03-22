@@ -51,16 +51,13 @@ module Knit.Report.EffectStack
   )
 where
 
-import qualified Control.Concurrent.Async as A
 import qualified Control.Monad.Catch as Exceptions (SomeException, displayException)
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import qualified Polysemy                      as P
-import qualified Polysemy.Final                as P
 import qualified Polysemy.Async                as P
 import qualified Polysemy.Error                as PE
-import qualified Polysemy.IO                   as PI
 import qualified System.IO.Error               as IE
 
 import qualified Text.Pandoc                   as PA
@@ -128,10 +125,10 @@ defaultKnitConfig cacheDirM =
 -- This allows use of any underlying monad to handle the Pandoc effects.
 -- NB: Resulting documents are *Lazy* Text, as produced by the Blaze render function.
 knitHtmls
-  :: (MonadIO m, Ord k, Show k)
+  :: (Ord k, Show k)
   => KnitConfig c ct k -- ^ configuration
-  -> P.Sem (KnitEffectDocsStack c ct k m) () -- ^ computation producing a list of documents
-  -> m (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text]) -- ^ Resulting docs or error, in base monad, usually IO.
+  -> P.Sem (KnitEffectDocsStack c ct k) () -- ^ computation producing a list of documents
+  -> IO (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text]) -- ^ Resulting docs or error, in base monad, usually IO.
 knitHtmls config =
   let KO.PandocWriterConfig mFP tv oF = pandocWriterConfig config
   in  consumeKnitEffectStack config . KD.toDocListWithM
@@ -147,10 +144,10 @@ knitHtmls config =
 -- This allows use of any underlying monad to handle the Pandoc effects.
 -- NB: Resulting document is *Lazy* Text, as produced by the Blaze render function.
 knitHtml
-  :: (MonadIO m, Ord k, Show k)
+  :: (Ord k, Show k)
   => KnitConfig c ct k -- ^ configuration
-  -> P.Sem (KnitEffectDocStack c ct k m) () -- ^ computation producing a single document
-  -> m (Either PA.PandocError TL.Text) -- ^ Resulting document or error, in base monad.  Usually IO.
+  -> P.Sem (KnitEffectDocStack c ct k) () -- ^ computation producing a single document
+  -> IO (Either PA.PandocError TL.Text) -- ^ Resulting document or error, in base monad.  Usually IO.
 knitHtml config =
   fmap BH.renderHtml <<$>> consumeKnitEffectStack config
     . KO.pandocWriterToBlazeDocument (pandocWriterConfig config)
@@ -209,7 +206,7 @@ asyncToFinal = P.interpretFinal $ \case
 
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
-type KnitEffectStack c ct k m
+type KnitEffectStack c ct k
   = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
@@ -223,10 +220,10 @@ type KnitEffectStack c ct k m
      , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
      , P.Embed IO
-     , P.Embed m
-     , P.Final m]
+--     , P.Embed m
+     , P.Final IO]
 #else
-type KnitEffectStack c ct k m
+type KnitEffectStack c ct k
   = '[ KUI.UnusedId
      , KPM.Pandoc
      , KS.SerializeEnv c ct
@@ -239,28 +236,28 @@ type KnitEffectStack c ct k m
      , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
      , P.Embed IO
-     , P.Embed m
-     , P.Final m]
+--     , P.Embed m
+     , P.Final IO]
 #endif
 
 -- | Add a Multi-doc writer to the front of the effect list
-type KnitEffectDocsStack c ct k m = (KP.Pandocs ': KnitEffectStack c ct k m)
+type KnitEffectDocsStack c ct k = (KP.Pandocs ': KnitEffectStack c ct k)
 
 -- | Add a single-doc writer to the front of the effect list
-type KnitEffectDocStack c ct k m = (KP.ToPandoc ': KnitEffectStack c ct k m)
+type KnitEffectDocStack c ct k = (KP.ToPandoc ': KnitEffectStack c ct k)
 
 -- | run all knit-effects in @KnitEffectStack m@
 #if MIN_VERSION_pandoc(2,8,0)
 consumeKnitEffectStack
-  :: forall c ct k m a
-   . (MonadIO m, Ord k, Show k)
+  :: forall c ct k a
+   . (Ord k, Show k)
   => KnitConfig c ct k
-  -> P.Sem (KnitEffectStack c ct k m) a
-  -> m (Either PA.PandocError a)
+  -> P.Sem (KnitEffectStack c ct k) a
+  -> IO (Either PA.PandocError a)
 consumeKnitEffectStack config =
   P.runFinal
   . P.embedToFinal
-  . PI.embedToMonadIO @m -- interpret (Embed IO) using m
+--  . PI.embedToMonadIO @IO -- interpret (Embed IO) using m
   . PE.runError @KPM.PandocError
   . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
@@ -275,15 +272,15 @@ consumeKnitEffectStack config =
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
 consumeKnitEffectStack
-  :: forall c ct k m a
-   . (MonadIO m, Ord k, Show k)
+  :: forall c ct k a
+   . (Ord k, Show k)
   => KnitConfig c ct k
-  -> P.Sem (KnitEffectStack c ct k m) a
-  -> m (Either PA.PandocError a)
+  -> P.Sem (KnitEffectStack c ct k) a
+  -> IO (Either PA.PandocError a)
 consumeKnitEffectStack config =
   P.runFinal
   . P.embedToFinal
-  . PI.embedToMonadIO @m -- interpret (Embed IO) using m
+--  . PI.embedToMonadIO @m -- interpret (Embed IO) using m
   . PE.runError
   . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError

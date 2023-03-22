@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
@@ -274,7 +275,11 @@ logToIO asText a = liftIO $ do
 -- Can be used as base for any other handler that gives @Text@.
 logToColorizedIO :: MonadIO m => (a -> [TC.Chunk]) -> Handler m a
 logToColorizedIO asChunks a = liftIO $ do
+#if MIN_VERSION_streamly(0,9,0)
+  TC.putChunksLocaleWith TC.With24BitColours $ asChunks a
+#else
   TC.putChunksWith TC.With24BitColours $ asChunks a
+#endif
   hFlush stdout
 {-# INLINEABLE logToColorizedIO #-}
 
@@ -333,7 +338,7 @@ type LogWithPrefixIO = T.Text -> LogEntry -> IO ()
 -- | Run the 'Logger' and 'PrefixLog' effects in 'IO': filtered via the severity of the message and formatted using "prettyprinter".
 filteredLogEntriesToIO
   :: MonadIO (P.Sem r)
-  => (LogSeverity -> Bool)
+  =>  (LogSeverity -> Bool)
   -> P.Sem (Logger LogEntry ': (PrefixLog ': r)) x
   -> P.Sem r x
 filteredLogEntriesToIO lsF mx = do
