@@ -22,15 +22,10 @@ import qualified Knit.Effect.Logger as Knit.Logger
 
 import qualified Polysemy
 
-#if MIN_VERSION_streamly(0,9,0)
-#else
-import Control.Monad.Base (MonadBase)
-import Control.Monad.Trans.Control (MonadBaseControl)
-#endif
-
 import           Control.Monad.Catch  (MonadThrow, MonadCatch)
 import qualified Control.Monad.Primitive as Prim
-
+import Control.Monad.Base (MonadBase)
+import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Text as Text
 
 -- | record-of-functions to hold access to effects we want to have available in this
