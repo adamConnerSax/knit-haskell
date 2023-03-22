@@ -100,11 +100,11 @@ library
     , network >=2.8.0.0 && <3.2
     , network-uri >=2.6.1.0 && <2.8
     , pandoc >=2.7.2 && <3.2
-    , polysemy >=1.3.0 && <1.8
+    , polysemy >=1.3.0 && <1.10
     , polysemy-plugin >=0.2.0.0 && <0.5
     , polysemy-zoo >=0.6.0 && <0.9
     , prettyprinter >= 1.7.0 && <1.8
-    , primitive >=0.7.0 && <0.8
+    , primitive >=0.7.0 && <0.9
     , random >=1.1 && <1.3
     , relude >= 1.0.0 && <1.3
     , safe-coloured-text >= 0.1 && <0.3
