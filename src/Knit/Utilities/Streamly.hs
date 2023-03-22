@@ -24,12 +24,12 @@ import qualified Polysemy
 
 #if MIN_VERSION_streamly(0,9,0)
 #else
-import qualified Control.Monad.Primitive as Prim
 import Control.Monad.Base (MonadBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
 #endif
 
 import           Control.Monad.Catch  (MonadThrow, MonadCatch)
+import qualified Control.Monad.Primitive as Prim
 
 import qualified Data.Text as Text
 
@@ -49,7 +49,7 @@ logStreamly ls t = do
 #if MIN_VERSION_streamly(0,9,0)
 newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
-  deriving (MonadThrow, MonadCatch, MonadIO) via (ReaderT StreamlyEffects IO)
+  deriving (MonadThrow, MonadCatch, MonadIO, Prim.PrimMonad) via (ReaderT StreamlyEffects IO)
 #else
 newtype StreamlyM a = StreamlyM { unStreamlyM :: ReaderT StreamlyEffects IO a }
   deriving newtype (Functor, Applicative, Monad, MonadReader StreamlyEffects)
