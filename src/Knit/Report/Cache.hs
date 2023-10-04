@@ -51,6 +51,7 @@ module Knit.Report.Cache
   , retrieveOrMakeTransformed
   -- * Utilities
   , fileDependency
+  , fileWithCacheTime
   , updateIf
   , loadOrMakeFile
   , oldestUnit
