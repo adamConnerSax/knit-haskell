@@ -259,6 +259,12 @@ filesDependency fps = do
 {-# INLINEABLE filesDependency #-}
 -- TODO: Check what happens if a file is missing!
 
+-- for files which are externally managed but are dependencies
+fileWithCacheTime :: P.Member (P.Embed IO) r => Text -> P.Sem r (ActionWithCacheTime m Text)
+fileWithCacheTime fpT = do
+  modTime <- P.embed $ System.getModificationTime $ toString fpT
+  return $ C.withCacheTime (Just modTime) (pure fpT)
+
 -- | Given a time-tagged @a@ and time-tagged @b@ and an effectful function
 -- producing @b@ from @a@, return the given @b@ or run the function with the
 -- given @a@, depending on the time-stamps of the given @a@ and @b@.
