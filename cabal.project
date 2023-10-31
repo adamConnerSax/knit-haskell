@@ -1,3 +1,27 @@
 packages: ./
 
-allow-newer: polysemy-zoo:ghc-prim, polysemy-zoo:text, bytestring
+--ghc 9.4.X
+--allow-newer: polysemy-zoo:ghc-prim, polysemy-zoo:text, bytestring
+
+--ghc 9.6.X
+allow-newer: base, ghc-prim
+           , streamly-bytestring:bytestring
+           , knit-haskell:streamly, knit-haskell:streamly-bytestring
+           , streamly-bytestring:streamly-core
+
+-- for 9.6
+source-repository-package
+  type: git
+  location: https://github.com/composewell/streamly
+  tag: 763460b1b64c456b3328a5b92cfd87edb46b662e
+
+source-repository-package
+  type: git
+  location: https://github.com/composewell/streamly
+  tag: 763460b1b64c456b3328a5b92cfd87edb46b662e
+  subdir: core
+
+source-repository-package
+  type: git
+  location: https://github.com/psibi/streamly-bytestring
+  tag: 94920f7c1ed4221fc4e829c8362243107a3c2d63
