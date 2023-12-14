@@ -12,16 +12,5 @@ allow-newer: base, ghc-prim
 -- for 9.6
 source-repository-package
   type: git
-  location: https://github.com/composewell/streamly
-  tag: 763460b1b64c456b3328a5b92cfd87edb46b662e
-
-source-repository-package
-  type: git
-  location: https://github.com/composewell/streamly
-  tag: 763460b1b64c456b3328a5b92cfd87edb46b662e
-  subdir: core
-
-source-repository-package
-  type: git
   location: https://github.com/psibi/streamly-bytestring
-  tag: 94920f7c1ed4221fc4e829c8362243107a3c2d63
+  tag: f5f73ebc0208370f7969635ddc34493ebd224fce
