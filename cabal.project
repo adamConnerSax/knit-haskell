@@ -10,7 +10,7 @@ allow-newer: base, ghc-prim
            , streamly-bytestring:streamly-core
 
 -- for 9.6
-source-repository-package
-  type: git
-  location: https://github.com/psibi/streamly-bytestring
-  tag: f5f73ebc0208370f7969635ddc34493ebd224fce
+--source-repository-package
+--  type: git
+--  location: https://github.com/psibi/streamly-bytestring
+--  tag: f5f73ebc0208370f7969635ddc34493ebd224fce

@@ -1,3 +1,6 @@
+v0.10.4
+* Added splitQ :: Q w m (a, b) -> m (Q w a, Q w b) to Knit.Effect.AtomicCache
+
 v0.10.3.1
 * Removed the ConstraintAbsorber example in RandomExample because it’s not clear what that means in random-1.2
 

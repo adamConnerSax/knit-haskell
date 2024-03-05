@@ -16,6 +16,7 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 {-# OPTIONS_GHC -O2 -fdicts-strict -fspec-constr-recursive=16 -fmax-worker-args=16 #-} -- for Streamly
+{-# OPTIONS_GHC -fplugin=Polysemy.Plugin #-}
 {-|
 Module      : Knit.Effect.AtomicCache
 Description : Effect for managing a persistent cache of serializable things to avoid redoing computations
@@ -119,6 +120,7 @@ module Knit.Effect.AtomicCache
   , wctBind
   , wctMerge
   , wctMergeM
+  , wctSplit
     -- ** Cache Actions
   , encodeAndStore
   , retrieveAndDecode
@@ -270,6 +272,12 @@ zipWithQ f bFromA dFromC depsAC = do
   promoteQ (uncurry f) bdQ
 {-# INLINEABLE zipWithQ #-}
 
+
+splitQ :: (Monad m) => Q w m (a, b) -> m (Q w m a, Q w m b)
+splitQ (Q w mab) = do
+  (a, b) <- mab
+  pure (Q w $ pure a, Q w $ pure b)
+{-# INLINEABLE splitQ #-}
 {-
 sumQ :: Monad m => (Q w m a -> Q w m b) -> (Q w m c -> Q w m b) -> Q w m (Either a c) -> Q w m b
 sumQ fromA fromC (Q depT mEither) = Q depT actionB where
@@ -347,6 +355,9 @@ wctMergeM :: Monad m => m (WithCacheTime m (WithCacheTime m a)) -> m (WithCacheT
 wctMergeM = mergeQM
 {-# INLINEABLE wctMergeM #-}
 
+wctSplit :: Monad m => WithCacheTime m (a, b) -> m (WithCacheTime m a, WithCacheTime m b)
+wctSplit = splitQ
+{-# INLINEABLE wctSplit #-}
 
 -- | natural transformation which is useful for interoperation between
 -- the cache storage and the values returned to the user.

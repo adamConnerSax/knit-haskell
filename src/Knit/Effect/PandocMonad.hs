@@ -16,6 +16,7 @@
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -fplugin=Polysemy.Plugin #-}
 {-|
 Module      : Knit.Effect.PandocMonad
 Description : Polysemy PandocMonad effect
