@@ -75,10 +75,10 @@ import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
 
 import qualified Control.Exception as X
-import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
+--import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
 
 #if MIN_VERSION_streamly(0,9,0)
-import qualified Streamly.Data.Stream  as Streamly
+--import qualified Streamly.Data.Stream  as Streamly
 import qualified Streamly.Data.Array   as Streamly.Array
 #elif MIN_VERSION_streamly(0,8,0)
 import qualified Streamly.Prelude              as Streamly
@@ -91,8 +91,9 @@ import qualified Streamly.Memory.Array         as Streamly.Array
 import qualified Streamly.External.ByteString  as Streamly.ByteString
 
 
-import qualified Knit.Utilities.Streamly       as K
+--import qualified Knit.Utilities.Streamly       as K
 import qualified Knit.Effect.Logger            as KLog
+import qualified Knit.Effect.Internal.Logger   as KLog
 
 -- | Error Type for Serialization errors.  Simplifies catching and reporting them.
 newtype SerializationError = SerializationError T.Text deriving (Show)
@@ -114,6 +115,10 @@ a non-default serializer as long as it serializes to @ByteStream@
 -}
 
 --data BytesOrDone bytes = Bytes !bytes | Done
+
+log :: KLog.KHLogWithPrefixesCat r => Text -> P.Sem r ()
+log msg = KLog.logCat KLog.KHSerialize msg
+
 
 data SerializeDict (c :: Type -> Constraint) (ct :: Type) where
   SerializeDict :: forall c ct bytes.
@@ -166,7 +171,8 @@ data Serialize e r a ct where
 -- | Given a @'SerializeDict' c ct@ and @a@ satisfying @c a@,
 -- produce the (trivial) 'Serialize' record-of-functions to encode/decode a single @a@.
 serializeOne :: (c a
-                , KLog.LogWithPrefixesLE r
+--                , KLog.LogWithPrefixesLE r
+                , KLog.KHLogWithPrefixesCat r
                 , P.Member (P.Error SerializationError) r)
              => SerializeDict c ct
              -> Serialize SerializationError r a ct
@@ -174,9 +180,9 @@ serializeOne (SerializeDict encode decode bytesToCT ctToBytes ctBytes) =
   let enc a = return (bytesToCT $ encode a, a)
       {-# INLINEABLE enc #-}
       dec x = KLog.wrapPrefix "serializeOne.dec" $ do
-        KLog.khDebugLog "deserializing..."
+        log "deserializing..."
         a <- P.fromEither @SerializationError $ decode $ ctToBytes x -- NB: should check for empty bs in return
-        KLog.khDebugLog "deserializing complete."
+        log "deserializing complete."
         return a
       {-# INLINEABLE dec #-}
   in Serialize enc dec ctBytes
@@ -243,7 +249,7 @@ streamlyDeserialize (SerializeDict _ parseOne _ ctToBytes _) ct = do
     Streamly.yieldM (K.logStreamly KLog.Diagnostic "deserializing stream")
     Streamly.unfoldrM unfoldOne bs
 -}
-
+{-
 #if MIN_VERSION_streamly(0,9,0)
 handleEitherInStream :: Either SerializationError (Streamly.Stream K.StreamlyM a) -> Streamly.Stream K.StreamlyM a
 handleEitherInStream e = case e of
@@ -264,7 +270,7 @@ handleEitherInStream e = do
       fromEffect $ K.logStreamly (KLog.Debug 3) "Deserializing stream..."
       a
 #endif
-
+-}
 -- | type-alias for default in-memory storage type.
 type DefaultCacheData = Streamly.Array.Array Word.Word8
 type DefaultSerializer = CerealS

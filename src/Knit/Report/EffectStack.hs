@@ -69,6 +69,7 @@ import qualified Knit.Effect.Docs              as KD
 import qualified Knit.Effect.Pandoc            as KP
 import qualified Knit.Effect.PandocMonad       as KPM
 import qualified Knit.Effect.Logger            as KLog
+import qualified Knit.Effect.Internal.Logger   as KLog
 import qualified Knit.Effect.UnusedId          as KUI
 import qualified Knit.Effect.AtomicCache       as KC
 import qualified Knit.Effect.Serialize         as KS
@@ -96,25 +97,33 @@ the cache. See 'Knit.AtomicCache' for examples of persistence layers.
 If you want to use a different serializer ("binary" or "store") and/or a different type to hold cached
 values in-memory, you can set these fields accordingly.
 -}
-data KnitConfig sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
-                                     , logIf :: KLog.LogSeverity -> Bool
-                                     , pandocWriterConfig :: KO.PandocWriterConfig
-                                     , serializeDict :: KS.SerializeDict sc ct
-                                     , persistCache :: forall r. (P.Member (P.Embed IO) r
-                                                                 , P.Member (PE.Error KC.CacheError) r
-                                                                 , KLog.LogWithPrefixesLE r)
-                                                    => P.InterpreterFor (KC.Cache k ct) r
-                                     }
+data KnitConfig lc sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
+                                        , logIf :: KLog.LogSeverity -> Bool
+                                        , lcSeverity :: lc -> KLog.LogSeverity
+                                        , lcText :: lc -> Text
+                                        , pandocWriterConfig :: KO.PandocWriterConfig
+                                        , serializeDict :: KS.SerializeDict sc ct
+                                        , persistCache :: forall r. (P.Member (P.Embed IO) r
+                                                                    , P.Member (PE.Error KC.CacheError) r
+                                                                    , KLog.LogWithPrefixesLE r
+                                                                    , KLog.KHLogWithPrefixesCat r
+                                                                    )
+                                                       => P.InterpreterFor (KC.Cache k ct) r
+                                        }
 
 
 -- | Sensible defaults for a knit configuration.
-defaultKnitConfig :: Maybe T.Text -- ^ Optional cache-directory.  Defaults to ".knit-haskell-cache".
-                  -> KnitConfig KS.DefaultSerializer KS.DefaultCacheData T.Text -- ^ configuration
-defaultKnitConfig cacheDirM =
+defaultKnitConfig :: (lc -> KLog.LogSeverity) -- ^ default severity levels for logging categories
+                  -> (lc -> Text) -- ^ how to print logging categories
+                  -> Maybe T.Text -- ^ Optional cache-directory.  Defaults to ".knit-haskell-cache".
+                  -> KnitConfig lc KS.DefaultSerializer KS.DefaultCacheData T.Text -- ^ configuration
+defaultKnitConfig  lcs lct cacheDirM =
   let cacheDir = fromMaybe ".knit-haskell-cache" cacheDirM
   in KnitConfig
      (Just "knit-haskell")
      KLog.nonDiagnostic
+     lcs
+     lct
      (KO.PandocWriterConfig Nothing M.empty id)
      KS.cerealStreamlyDict
      (KC.persistStreamlyByteArray (\t -> toString (cacheDir <> "/" <> t)))
@@ -126,8 +135,8 @@ defaultKnitConfig cacheDirM =
 -- NB: Resulting documents are *Lazy* Text, as produced by the Blaze render function.
 knitHtmls
   :: (Ord k, Show k)
-  => KnitConfig c ct k -- ^ configuration
-  -> P.Sem (KnitEffectDocsStack c ct k) () -- ^ computation producing a list of documents
+  => KnitConfig lc c ct k -- ^ configuration
+  -> P.Sem (KnitEffectDocsStack lc c ct k) () -- ^ computation producing a list of documents
   -> IO (Either PA.PandocError [KP.DocWithInfo KP.PandocInfo TL.Text]) -- ^ Resulting docs or error, in base monad, usually IO.
 knitHtmls config =
   let KO.PandocWriterConfig mFP tv oF = pandocWriterConfig config
@@ -145,8 +154,8 @@ knitHtmls config =
 -- NB: Resulting document is *Lazy* Text, as produced by the Blaze render function.
 knitHtml
   :: (Ord k, Show k)
-  => KnitConfig c ct k -- ^ configuration
-  -> P.Sem (KnitEffectDocStack c ct k) () -- ^ computation producing a single document
+  => KnitConfig lc c ct k -- ^ configuration
+  -> P.Sem (KnitEffectDocStack lc c ct k) () -- ^ computation producing a single document
   -> IO (Either PA.PandocError TL.Text) -- ^ Resulting document or error, in base monad.  Usually IO.
 knitHtml config =
   fmap BH.renderHtml <<$>> consumeKnitEffectStack config
@@ -161,20 +170,54 @@ liftKnit :: P.Member (P.Embed m) r => m a -> P.Sem r a
 liftKnit = P.embed
 {-# INLINE liftKnit #-}
 
+{-
+data LogCategory c = KH KHLogCategory | OuterCategory c
+
+logCategorySeverity :: (c -> KLog.LogSeverity) -> LogCategory c -> KLog.LogSeverity
+logCategorySeverity _ (KH x) = khLogCategorySeverity x
+logCategorySeverity f (OuterCategory c) = f c
+{-# INLINEABLE logCategorySeverity #-}
+
+logCategoryText :: (c -> Text) -> LogCategory c -> Text
+logCategoryText _ (KH x) = khLogCategoryText x
+logCategoryText f (OuterCategory c) = f c
+{-# INLINEABLE logCategoryText #-}
+
+adjOuterCatSeverity :: Eq lc => P.Member (CatSevEffect (LogCategory lc)) r => lc -> LogSeverity -> P.Sem r (lc -> LogSeverity)
+adjOuterCatSeverity c  = KLog.adjCatSeverity (OuterCategory c)
+{-# INLINEABLE adjOuterCatSeverity #-}
+
+withOuterCatSeverity :: Eq lc => P.Member (CatSevEffect (LogCategory lc)) r => lc -> LogSeverity -> P.Sem r x -> P.Sem r x
+withOuterCatSeverity c = KLog.withCatSeverity (OuterCategory c)
+{-# INLINEABLE withOuterCatSeverity #-}
+
+adjKHCatSeverity :: P.Member (CatSevEffect (LogCategory lc)) r => KHLogCategory -> LogSeverity -> P.Sem r (lc -> LogSeverity)
+adjKHCatSeverity c  = KLog.adjCatSeverity (KHCategory c)
+{-# INLINEABLE adjOuterCatSeverity #-}
+
+withKHCatSeverity :: Eq lc => P.Member (CatSevEffect (LogCategory lc)) r => KHLogCategory -> LogSeverity -> P.Sem r x -> P.Sem r x
+withKHCatSeverity c = KLog.withCatSeverity (KHCategory c)
+{-# INLINEABLE withOuterCatSeverity #-}
+-}
+
 -- | Constraint alias for the effects we need (and run)
 -- when calling 'knitHtml' or 'knitHtmls'.
 -- Anything inside a call to Knit can use any of these effects.
 -- Any other effects added to this stack will need to be run before @knitHtml(s)@
-type KnitEffects r = (KPM.PandocEffects r
-                     , P.Members [ KUI.UnusedId
-                                 , KLog.Logger KLog.LogEntry
-                                 , KLog.PrefixLog
-                                 , P.Async
-                                 , PE.Error KC.CacheError
-                                 , PE.Error Exceptions.SomeException
-                                 , PE.Error PA.PandocError
-                                 , P.Embed IO] r
-                     )
+type KnitEffects lc r = (KPM.PandocEffects r
+                        , P.Members [ KUI.UnusedId
+                                    , KLog.Logger KLog.LogEntry
+                                    , KLog.PrefixLog
+                                    , KLog.CatSeverityState lc
+                                    , KLog.Logger lc
+                                    , KLog.CatSeverityState KLog.KHLogCategory
+                                    , KLog.Logger KLog.KHLogCategory
+                                    , P.Async
+                                    , PE.Error KC.CacheError
+                                    , PE.Error Exceptions.SomeException
+                                    , PE.Error PA.PandocError
+                                    , P.Embed IO] r
+                        )
 
 -- | Constraint alias for the effects we need to use the cache.
 type CacheEffects c ct k r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r)
@@ -183,10 +226,10 @@ type CacheEffects c ct k r = (P.Members [KS.SerializeEnv c ct, KC.Cache k ct] r)
 type CacheEffectsD r = CacheEffects KS.DefaultSerializer KS.DefaultCacheData T.Text r
 
 -- | Constraint alias for the effects we need to knit one document.
-type KnitOne r = (KnitEffects r, P.Member KP.ToPandoc r)
+type KnitOne lc r = (KnitEffects lc r, P.Member KP.ToPandoc r)
 
 -- | Constraint alias for the effects we need to knit multiple documents.
-type KnitMany r = (KnitEffects r, P.Member KP.Pandocs r)
+type KnitMany lc r = (KnitEffects lc r, P.Member KP.Pandocs r)
 
 -- From here down is unexported.
 {-
@@ -206,12 +249,16 @@ asyncToFinal = P.interpretFinal $ \case
 
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
-type KnitEffectStack c ct k
+type KnitEffectStack lc c ct k
   = '[ KUI.UnusedId
      , KPM.Template
      , KPM.Pandoc
      , KS.SerializeEnv c ct
      , KC.Cache k ct
+     , KLog.Logger (KLog.LogCat KLog.KHLogCategory)
+     , KLog.CatSeverityState KLog.KHLogCategory
+     , KLog.Logger (KLog.LogCat lc)
+     , KLog.CatSeverityState lc
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -223,11 +270,15 @@ type KnitEffectStack c ct k
 --     , P.Embed m
      , P.Final IO]
 #else
-type KnitEffectStack c ct k
+type KnitEffectStack lc  c ct k
   = '[ KUI.UnusedId
      , KPM.Pandoc
      , KS.SerializeEnv c ct
      , KC.Cache k ct
+     , KLog.Logger (KLog.LogCat KLog.KHLogCategory)
+     , KLog.CatSeverityState KLog.KHLogCategory
+     , KLog.Logger (KLog.LogCat lc)
+     , KLog.CatSeverity lc
      , KLog.Logger KLog.LogEntry
      , KLog.PrefixLog
      , P.Async
@@ -241,18 +292,18 @@ type KnitEffectStack c ct k
 #endif
 
 -- | Add a Multi-doc writer to the front of the effect list
-type KnitEffectDocsStack c ct k = (KP.Pandocs ': KnitEffectStack c ct k)
+type KnitEffectDocsStack lc c ct k = (KP.Pandocs ': KnitEffectStack lc c ct k)
 
 -- | Add a single-doc writer to the front of the effect list
-type KnitEffectDocStack c ct k = (KP.ToPandoc ': KnitEffectStack c ct k)
+type KnitEffectDocStack lc c ct k = (KP.ToPandoc ': KnitEffectStack lc c ct k)
 
 -- | run all knit-effects in @KnitEffectStack m@
 #if MIN_VERSION_pandoc(2,8,0)
 consumeKnitEffectStack
-  :: forall c ct k a
+  :: forall lc c ct k a
    . (Ord k, Show k)
-  => KnitConfig c ct k
-  -> P.Sem (KnitEffectStack c ct k) a
+  => KnitConfig lc c ct k
+  -> P.Sem (KnitEffectStack lc c ct k) a
   -> IO (Either PA.PandocError a)
 consumeKnitEffectStack config =
   P.runFinal
@@ -264,6 +315,10 @@ consumeKnitEffectStack config =
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIOFinal -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToColorizedIO (logIf config)
+  . KLog.interpretCatSeverityState (lcSeverity config)
+  . KLog.interpretLogCatWithLogLE  (lcText config)
+  . KLog.interpretCatSeverityState KLog.khLogCategorySeverity
+  . KLog.interpretLogCatWithLogLE  KLog.khLogCategoryText
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO
@@ -272,10 +327,10 @@ consumeKnitEffectStack config =
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
 consumeKnitEffectStack
-  :: forall c ct k a
+  :: forall lc c ct k a
    . (Ord k, Show k)
-  => KnitConfig c ct k
-  -> P.Sem (KnitEffectStack c ct k) a
+  => KnitConfig lc c ct k
+  -> P.Sem (KnitEffectStack lc c ct k) a
   -> IO (Either PA.PandocError a)
 consumeKnitEffectStack config =
   P.runFinal
@@ -287,6 +342,10 @@ consumeKnitEffectStack config =
   . PE.mapError ioErrorToPandocError -- (\e -> PA.PandocSomeError ("Exceptions.Exception thrown: " <> (T.pack $ show e)))
   . P.asyncToIOFinal -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToColorizedIO (logIf config)
+  . KLog.interpretCatSeverityState (lcSeverity config)
+  . KLog.logCatToLogLE (lcText config)
+  . KLog.interpretCatSeverityState KLog.khLogCategorySeverity
+  . KLog.interpretLogCatWithLogLE  KLog.khLogCategoryText
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO

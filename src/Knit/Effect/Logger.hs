@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
@@ -33,21 +34,28 @@ module Knit.Effect.Logger
     -- * Logging Types
     LogSeverity(..)
   , LogEntry(..)
+  , LogCat(..)
 
   -- * Effects
   , Logger(..)
   , PrefixLog
+  , CatSeverityState
 
   -- * Actions
   , log
   , logLE
+  , logCat
   , wrapPrefix
   , getPrefix
   , logWithPrefixToIO
+  , adjCatSeverity
+  , withCatSeverity
 
   -- * Interpreters
   , filteredLogEntriesToIO
   , filteredLogEntriesToColorizedIO
+  , interpretLogCatWithLogLE
+  , interpretCatSeverityState
 
   -- * Subsets for filtering
   , logAll
@@ -60,9 +68,10 @@ module Knit.Effect.Logger
   , PrefixedLogEffectsLE
   , LogWithPrefixes
   , LogWithPrefixesLE
+  , LogWithPrefixesCat
   , LogWithPrefixIO
   -- * Library logging
-  , khDebugLog
+--  , khDebugLog
   )
 where
 
@@ -70,8 +79,10 @@ import Prelude hiding (hFlush)
 import qualified Polysemy                      as P
 
 import           Polysemy.Internal              ( send )
-import qualified Polysemy.State                as P
+import qualified Polysemy.AtomicState          as P
+import qualified Polysemy.State          as P
 
+import qualified Data.IORef                    as IORef
 import qualified Data.List                     as List
 import qualified Data.Text                     as T
 import qualified Prettyprinter     as PP
@@ -103,13 +114,13 @@ data LogSeverity =
   | Diagnostic
   -- | Informational messages about progress of compuation or document knitting.
   | Info
+  -- | Informational but likely resulting from a specially set severity for debugging one component
+  | Special
   -- | Messages intended to alert the user to an issue in the computation or document production.
   | Warning
   -- | Likely unrecoverable issue in computation or document production.
   | Error
   deriving (Show, Eq, Ord, Typeable, Data)
-
-
 
 -- NB: Cribbed from monad-logger.  Thanks ocharles!
 -- TODO: add colors for ansi-terminal output
@@ -117,7 +128,11 @@ instance PP.Pretty LogSeverity where
   pretty = PP.pretty @Text . show
 
 -- | A basic log entry with a severity and a ('Text') message
-data LogEntry = LogEntry { severity :: LogSeverity, message :: T.Text }
+data LogEntry = LogEntry { severity :: !LogSeverity, message :: !T.Text }
+
+-- | log with a category we can map to a severity
+data LogCat c = LogCat { logCategory :: !c, lcMessage :: !T.Text }
+
 
 -- | log everything.
 logAll :: LogSeverity -> Bool
@@ -141,7 +156,7 @@ logDebug l (Debug n) = n <= l
 logDebug _ _         = True
 {-# INLINEABLE logDebug #-}
 
--- | The Logger effect (the same as the 'Polysemy.Output' effect).
+-- | The Logger effect (the same as the 'Polysemy.Output' effect). But adds a stored map of keyed severities for shifting log levels of components.
 data Logger a m r where
   Log :: a -> Logger a m ()
 
@@ -150,16 +165,34 @@ log :: P.Member (Logger a) effs => a -> P.Sem effs ()
 log = send . Log
 {-# INLINEABLE log #-}
 
+
+--type CatSeverity c = c -> LogSeverity
+type CatSeverityState c = P.AtomicState (c -> LogSeverity)
+
+adjCatSeverity :: forall c r . Eq c => P.Member (CatSeverityState c) r => c -> LogSeverity -> P.Sem r (c -> LogSeverity)
+adjCatSeverity c ls = do
+  oldF <- P.atomicGet
+  let newF c' = if c == c' then ls else oldF c'
+  P.atomicPut newF
+  pure oldF
+
+withCatSeverity :: forall c r x . Eq c => P.Member (CatSeverityState c) r => c -> LogSeverity -> P.Sem r x -> P.Sem r x
+withCatSeverity c ls mx = do
+  oldF <- adjCatSeverity c ls
+  x <- mx
+  P.atomicPut oldF
+  pure x
+
 -- | Add one log-entry of the @LogEntry@ type.
-logLE
-  :: P.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> P.Sem effs ()
+logLE :: P.Member (Logger LogEntry) effs => LogSeverity -> T.Text -> P.Sem effs ()
 logLE ls lm = log (LogEntry ls lm)
 {-# INLINEABLE logLE #-}
 
--- | logging level for debugging messages from the library itself.
-khDebugLog :: P.Member (Logger LogEntry) effs => Text -> P.Sem effs ()
-khDebugLog = logLE (Debug 3)
-{-# INLINEABLE khDebugLog #-}
+-- | Add one log-entry of the @LogEntry@ type with severity keyed by the given category
+logCat :: P.Member (Logger (LogCat c)) effs => c -> T.Text -> P.Sem effs ()
+logCat cat msg = log (LogCat cat msg)
+{-# INLINEABLE logCat #-}
+
 
 -- | Type-alias for handler functions (unexported).
 type Handler m msg = msg -> m ()
@@ -357,6 +390,34 @@ filteredLogEntriesToColorizedIO lsF mx = do
   logAndHandlePrefixed (filterLog f prefixedLogEntryToColorizedIO) mx
 {-# INLINEABLE filteredLogEntriesToColorizedIO #-}
 
+-- | interpret a LogCat effect in terms of a LogEntry effect given the category to severity ands category to Text functions
+interpretLogCatWithLogLE :: (P.Members [CatSeverityState c, Logger LogEntry] r)
+                         => (c -> Text)
+                         -> P.InterpreterFor (Logger (LogCat c)) r
+interpretLogCatWithLogLE catText = P.interpret $ \case
+  Log (LogCat c msg) -> do
+    ls <- ($ c) <$> P.atomicGet
+    logLE ls $ catText c <> ": " <> msg
+{-# INLINEABLE interpretLogCatWithLogLE #-}
+
+interpretCatSeverityState :: P.Member (P.Embed IO) r
+                          => (c -> LogSeverity) -> P.InterpreterFor (CatSeverityState c) r
+interpretCatSeverityState catLS mx = do
+    ioRef <- P.embed $ IORef.newIORef catLS
+    P.runAtomicStateIORef ioRef mx
+
+
+{-
+logCatToLogLE
+  :: forall c r . P.Members [P.Embed IO, Logger LogEntry] r
+  => (c -> LogSeverity)
+  -> (c -> Text)
+  -> P.InterpreterFor (Logger (LogCat c)) r
+logCatToLogLE catLS catText mx = do
+  ioRef <- P.embed $ IORef.newIORef catLS
+  P.runAtomicStateIORef ioRef $ interpretLogCatWithLogLE catText $ P.raiseUnder mx
+{-# INLINEABLE logCatToLogLE #-}
+-}
 
 -- | List of Logger effects for a prefixed log of type @a@
 type PrefixedLogEffects a = [PrefixLog, Logger a]
@@ -364,8 +425,14 @@ type PrefixedLogEffects a = [PrefixLog, Logger a]
 -- | List of Logger effects for a prefixed log of type @LogEntry@
 type PrefixedLogEffectsLE = PrefixedLogEffects LogEntry
 
+-- | List of Logger effects for a prefixed log of type @LogEntry@
+type PrefixedLogEffectsCat c = [PrefixLog, Logger (LogCat c), CatSeverityState c]
+
 -- | Constraint helper for logging with prefixes
 type LogWithPrefixes a effs = P.Members (PrefixedLogEffects a) effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
 
 -- | Constraint helper for @LogEntry@ type with prefixes
 type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
+
+-- | Constraint helper for @LogEntry@ type with prefixes
+type LogWithPrefixesCat c effs = P.Members (PrefixedLogEffectsCat c) effs

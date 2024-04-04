@@ -76,6 +76,7 @@ import           Knit.Effect.AtomicCache        (clear
                                                 , onlyCacheTime)
 import qualified Knit.Effect.Serialize         as KS
 import qualified Knit.Effect.Logger            as K
+import qualified Knit.Effect.Internal.Logger   as K
 import qualified Knit.Utilities.Streamly       as KStreamly
 
 import qualified Control.Exception as EX
@@ -125,6 +126,7 @@ knitSerialize
   :: ( sc a
      , P.Member (P.Embed IO) r
      , K.LogWithPrefixesLE r
+     , K.KHLogWithPrefixesCat r
      , P.Member (P.Error C.CacheError) r
      , Show k
      )
@@ -161,6 +163,7 @@ store
   :: forall sc ct k r a.
      ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
      , K.LogWithPrefixesLE r
+     , K.KHLogWithPrefixesCat r
      , Show k
      , sc a
      )
@@ -169,7 +172,7 @@ store
   -> P.Sem r ()
 store k a = K.wrapPrefix ("Knit.store (key=" <> show k <> ")") $ do
   cacheSD <- KS.getSerializeDict
-  K.khDebugLog $ "Called with k=" <> show k
+  C.cacheLog k "Called"
   C.encodeAndStore (knitSerialize k cacheSD) k a
 {-# INLINEABLE store #-}
 
@@ -178,6 +181,7 @@ retrieve
   :: forall sc ct k r a.
   (P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   ,  K.LogWithPrefixesLE r
+  , K.KHLogWithPrefixesCat r
   , Show k
   , sc a)
   => k                                   -- ^ Key
@@ -193,6 +197,7 @@ retrieveOrMake
   :: forall sc ct k r a b.
   ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
+  , K.KHLogWithPrefixesCat r
   , Show k
   , sc a
   )
@@ -215,6 +220,7 @@ retrieveOrMakeTransformed
   :: forall sc ct k r a b c.
   ( P.Members '[KS.SerializeEnv sc ct, C.Cache k ct, P.Error C.CacheError, P.Embed IO] r
   , K.LogWithPrefixesLE r
+  , K.KHLogWithPrefixesCat r
   , Show k
   , sc b
   )

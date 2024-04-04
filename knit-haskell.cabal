@@ -65,6 +65,7 @@ library
       Knit.Utilities.Streamly
   other-modules:
       Knit.Effect.Html
+      Knit.Effect.Internal.Logger
       Knit.Report.EffectStack
       Knit.Report.Error
       Paths_knit_haskell
