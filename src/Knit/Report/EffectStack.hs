@@ -99,7 +99,7 @@ values in-memory, you can set these fields accordingly.
 -}
 data KnitConfig lc sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
                                         , logIf :: KLog.LogSeverity -> Bool
-                                        , lcSeverity :: lc -> KLog.LogSeverity
+                                        , lcSeverity :: lc -> Maybe KLog.LogSeverity
                                         , lcText :: lc -> Text
                                         , pandocWriterConfig :: KO.PandocWriterConfig
                                         , serializeDict :: KS.SerializeDict sc ct
@@ -113,7 +113,7 @@ data KnitConfig lc sc ct k = KnitConfig { outerLogPrefix :: Maybe T.Text
 
 
 -- | Sensible defaults for a knit configuration.
-defaultKnitConfig :: (lc -> KLog.LogSeverity) -- ^ default severity levels for logging categories
+defaultKnitConfig :: (lc -> Maybe KLog.LogSeverity) -- ^ raised severity levels for logging categories
                   -> (lc -> Text) -- ^ how to print logging categories
                   -> Maybe T.Text -- ^ Optional cache-directory.  Defaults to ".knit-haskell-cache".
                   -> KnitConfig lc KS.DefaultSerializer KS.DefaultCacheData T.Text -- ^ configuration

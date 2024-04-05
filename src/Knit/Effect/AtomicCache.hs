@@ -402,7 +402,7 @@ formatLogMsg :: Show k => k -> Text -> Text
 formatLogMsg key msg = "[cache@=" <> show key <> "] " <> msg
 
 cacheLog :: (Show k, K.KHLogWithPrefixesCat r) => k -> Text -> P.Sem r ()
-cacheLog key msg = K.logCat K.KHCache (formatLogMsg key msg)
+cacheLog key msg = K.logCat K.KHCache K.khDebugLogSeverity (formatLogMsg key msg)
 
 --debugLogSeverity :: K.LogSeverity
 --debugLogSeverity  = K.Debug 3
@@ -880,12 +880,12 @@ createDirIfNecessary
   => Text
   -> P.Sem r ()
 createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
-  K.logCat K.KHCache $ "Checking if cache path (\"" <> dir <> "\") exists."
+  K.logCat K.KHCache K.khDebugLogSeverity $ "Checking if cache path (\"" <> dir <> "\") exists."
   existsB <- P.embed $ System.doesDirectoryExist (toString dir)
   if existsB then (do
-    K.logCat K.KHCache $ "\"" <> dir <> "\" exists."
+    K.logCat K.KHCache K.khDebugLogSeverity $ "\"" <> dir <> "\" exists."
     return ()) else (do
-    K.logLE K.Info
+    K.logCat K.KHCache K.Info
       $  "Cache directory (\""
       <> dir
       <> "\") not found. Atttempting to create."
@@ -902,7 +902,7 @@ getContentsWithCacheTime :: (P.Members '[P.Embed IO] r
                          -> FilePath
                          -> P.Sem r (Maybe (WithCacheTime Identity a))
 getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
-  K.logCat K.KHCache "Reading serialization from disk."
+  K.logCat K.KHCache K.khDebugLogSeverity "Reading serialization from disk."
   rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
     ct <- f fp
     cTime <- System.getModificationTime fp

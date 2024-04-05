@@ -16,6 +16,7 @@ module Knit.Effect.Internal.Logger
   , khLogCategorySeverity
   , khLogCategoryText
   , KHLogWithPrefixesCat
+  , khDebugLogSeverity
   , khDebugLog
   )
 where
@@ -26,8 +27,12 @@ import Polysemy as P
 data KHLogCategory = KHCache | KHSerialize | KHOther
   deriving stock (Show, Eq)
 
-khLogCategorySeverity :: KHLogCategory -> KLog.LogSeverity
-khLogCategorySeverity _ = KLog.Debug 3
+khDebugLogSeverity :: KLog.LogSeverity
+khDebugLogSeverity =  (KLog.Debug 3)
+{-# INLINEABLE khDebugLogSeverity #-}
+
+khLogCategorySeverity :: KHLogCategory -> Maybe KLog.LogSeverity
+khLogCategorySeverity = const Nothing
 {-# INLINEABLE khLogCategorySeverity #-}
 
 khLogCategoryText :: KHLogCategory -> Text
@@ -39,5 +44,5 @@ type KHLogWithPrefixesCat effs = LogWithPrefixesCat KHLogCategory effs
 
 -- | logging level for debugging messages from the library itself.
 khDebugLog :: KHLogWithPrefixesCat effs => Text -> P.Sem effs ()
-khDebugLog = KLog.logCat KHOther
+khDebugLog = KLog.logCat KHOther khDebugLogSeverity
 {-# INLINEABLE khDebugLog #-}

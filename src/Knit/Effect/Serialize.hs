@@ -117,7 +117,7 @@ a non-default serializer as long as it serializes to @ByteStream@
 --data BytesOrDone bytes = Bytes !bytes | Done
 
 log :: KLog.KHLogWithPrefixesCat r => Text -> P.Sem r ()
-log msg = KLog.logCat KLog.KHSerialize msg
+log msg = KLog.logCat KLog.KHSerialize KLog.khDebugLogSeverity msg
 
 
 data SerializeDict (c :: Type -> Constraint) (ct :: Type) where

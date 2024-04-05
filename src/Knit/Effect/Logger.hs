@@ -130,8 +130,8 @@ instance PP.Pretty LogSeverity where
 -- | A basic log entry with a severity and a ('Text') message
 data LogEntry = LogEntry { severity :: !LogSeverity, message :: !T.Text }
 
--- | log with a category we can map to a severity
-data LogCat c = LogCat { logCategory :: !c, lcMessage :: !T.Text }
+-- | log with a category and a base severity. We can raise that severity but not lower it
+data LogCat c = LogCat { logCategory :: !c, lcSeverity :: !LogSeverity, lcMessage :: !T.Text }
 
 
 -- | log everything.
@@ -167,12 +167,12 @@ log = send . Log
 
 
 --type CatSeverity c = c -> LogSeverity
-type CatSeverityState c = P.AtomicState (c -> LogSeverity)
+type CatSeverityState c = P.AtomicState (c -> Maybe LogSeverity)
 
-adjCatSeverity :: forall c r . Eq c => P.Member (CatSeverityState c) r => c -> LogSeverity -> P.Sem r (c -> LogSeverity)
+adjCatSeverity :: forall c r . Eq c => P.Member (CatSeverityState c) r => c -> LogSeverity -> P.Sem r (c -> Maybe LogSeverity)
 adjCatSeverity c ls = do
   oldF <- P.atomicGet
-  let newF c' = if c == c' then ls else oldF c'
+  let newF c' = if c == c' then Just ls else oldF c'
   P.atomicPut newF
   pure oldF
 
@@ -189,8 +189,8 @@ logLE ls lm = log (LogEntry ls lm)
 {-# INLINEABLE logLE #-}
 
 -- | Add one log-entry of the @LogEntry@ type with severity keyed by the given category
-logCat :: P.Member (Logger (LogCat c)) effs => c -> T.Text -> P.Sem effs ()
-logCat cat msg = log (LogCat cat msg)
+logCat :: P.Member (Logger (LogCat c)) effs => c -> LogSeverity -> T.Text -> P.Sem effs ()
+logCat cat sev msg = log (LogCat cat sev msg)
 {-# INLINEABLE logCat #-}
 
 
@@ -396,13 +396,14 @@ interpretLogCatWithLogLE :: (P.Members [CatSeverityState c, Logger LogEntry] r)
                          => (c -> Text)
                          -> P.InterpreterFor (Logger (LogCat c)) r
 interpretLogCatWithLogLE catText = P.interpret $ \case
-  Log (LogCat c msg) -> do
-    ls <- ($ c) <$> P.atomicGet
-    logLE ls $ catText c <> ": " <> msg
+  Log (LogCat c sev msg) -> do
+    lsM <- ($ c) <$> P.atomicGet
+    let ls' = fromMaybe sev $ fmap (max sev) lsM
+    logLE ls' $ catText c <> ": " <> msg
 {-# INLINEABLE interpretLogCatWithLogLE #-}
 
 interpretCatSeverityState :: P.Member (P.Embed IO) r
-                          => (c -> LogSeverity) -> P.InterpreterFor (CatSeverityState c) r
+                          => (c -> Maybe LogSeverity) -> P.InterpreterFor (CatSeverityState c) r
 interpretCatSeverityState catLS mx = do
     ioRef <- P.embed $ IORef.newIORef catLS
     P.runAtomicStateIORef ioRef mx
