@@ -209,9 +209,9 @@ type KnitEffects lc r = (KPM.PandocEffects r
                                     , KLog.Logger KLog.LogEntry
                                     , KLog.PrefixLog
                                     , KLog.CatSeverityState lc
-                                    , KLog.Logger lc
+                                    , KLog.Logger (KLog.LogCat lc)
                                     , KLog.CatSeverityState KLog.KHLogCategory
-                                    , KLog.Logger KLog.KHLogCategory
+                                    , KLog.Logger (KLog.LogCat KLog.KHLogCategory)
                                     , P.Async
                                     , PE.Error KC.CacheError
                                     , PE.Error Exceptions.SomeException
