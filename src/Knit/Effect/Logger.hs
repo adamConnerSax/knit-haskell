@@ -335,7 +335,7 @@ prefixedLogEntryToColorizedChunks x =
       sevChunk = case sev of
             Error -> TC.fore TC.brightMagenta $ TC.bold $ TC.chunk "Error"
             Warning -> TC.fore TC.brightYellow $ TC.bold $ TC.chunk "Warning"
-            Special -> TC.fore TC.brightGreen $ TC.bold $ TC.chunk "Special"
+            Special -> TC.fore TC.brightRed $ TC.bold $ TC.chunk "Special"
             Info -> TC.fore TC.green $ TC.chunk "Info"
             Diagnostic -> TC.fore TC.cyan $ TC.chunk "Diagnostic"
             Debug n -> TC.fore TC.blue $ TC.chunk $ "Debug " <> show n
