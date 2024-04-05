@@ -330,7 +330,7 @@ consumeKnitEffectStack config =
   . P.asyncToIOFinal -- this has to run after (above) the log, partly so that the prefix state is thread-local.
   . KLog.filteredLogEntriesToColorizedIO (logIf config)
   . KLog.interpretCatSeverityState (lcSeverity config)
-  . KLog.logCatToLogLE
+  . KLog.interpretLogCatWithLogLE
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO

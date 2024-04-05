@@ -148,7 +148,7 @@ logDiagnostic _         = True
 
 -- | log everything above 'Diagnostic'.
 nonDiagnostic :: LogSeverity -> Bool
-nonDiagnostic ls = ls `elem` [Info, Warning, Error]
+nonDiagnostic ls = ls `elem` [Info, Special, Warning, Error]
 {-# INLINEABLE nonDiagnostic #-}
 
 -- | log debug messages with level lower than or equal to the given @Int@.
