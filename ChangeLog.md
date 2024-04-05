@@ -1,3 +1,6 @@
+v0.10.6
+* Added category based logging. For now interpreted in terms of previous logger. Adds ability to raise logging priority for a category.
+
 v0.10.4
 * Added splitQ :: Q w m (a, b) -> m (Q w a, Q w b) to Knit.Effect.AtomicCache
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds               #-}
 {-# LANGUAGE DerivingStrategies            #-}
-{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# LANGUAGE OverloadedStrings             #-}
 {-|
 Module      : Knit.Effect.Internal.Logger
 Description : Types for logging within knit-haskell itself
@@ -12,11 +12,10 @@ Stability   : experimental
 -}
 module Knit.Effect.Internal.Logger
   (
-    KHLogCategory(..)
-  , khLogCategorySeverity
-  , khLogCategoryText
-  , KHLogWithPrefixesCat
-  , khDebugLogSeverity
+--    KHLogCategory(..)
+--  , khLogCategorySeverity
+--  , khLogCategoryText
+    khDebugLogSeverity
   , khDebugLog
   )
 where
@@ -24,25 +23,11 @@ where
 import Knit.Effect.Logger as KLog
 import Polysemy as P
 
-data KHLogCategory = KHCache | KHSerialize | KHOther
-  deriving stock (Show, Eq)
-
 khDebugLogSeverity :: KLog.LogSeverity
 khDebugLogSeverity =  (KLog.Debug 3)
 {-# INLINEABLE khDebugLogSeverity #-}
 
-khLogCategorySeverity :: KHLogCategory -> Maybe KLog.LogSeverity
-khLogCategorySeverity = const Nothing
-{-# INLINEABLE khLogCategorySeverity #-}
-
-khLogCategoryText :: KHLogCategory -> Text
-khLogCategoryText = show
-{-# INLINEABLE khLogCategoryText #-}
-
--- | Constraint helper for Internal @LogCat@ type with prefixes
-type KHLogWithPrefixesCat effs = LogWithPrefixesCat KHLogCategory effs
-
 -- | logging level for debugging messages from the library itself.
-khDebugLog :: KHLogWithPrefixesCat effs => Text -> P.Sem effs ()
-khDebugLog = KLog.logCat KHOther khDebugLogSeverity
+khDebugLog :: LogWithPrefixesCat effs => Text -> P.Sem effs ()
+khDebugLog = KLog.logCat "KH_Other" khDebugLogSeverity
 {-# INLINEABLE khDebugLog #-}

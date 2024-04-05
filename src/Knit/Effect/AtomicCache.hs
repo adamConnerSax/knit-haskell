@@ -401,8 +401,8 @@ P.makeSem ''Cache
 formatLogMsg :: Show k => k -> Text -> Text
 formatLogMsg key msg = "[cache@=" <> show key <> "] " <> msg
 
-cacheLog :: (Show k, K.KHLogWithPrefixesCat r) => k -> Text -> P.Sem r ()
-cacheLog key msg = K.logCat K.KHCache K.khDebugLogSeverity (formatLogMsg key msg)
+cacheLog :: (Show k, K.LogWithPrefixesCat r) => k -> Text -> P.Sem r ()
+cacheLog key msg = K.logCat "KH_Cache" K.khDebugLogSeverity (formatLogMsg key msg)
 
 --debugLogSeverity :: K.LogSeverity
 --debugLogSeverity  = K.Debug 3
@@ -412,7 +412,7 @@ cacheLog key msg = K.logCat K.KHCache K.khDebugLogSeverity (formatLogMsg key msg
 encodeAndStore
   :: ( Show k
      , P.Member (Cache k ct) r
-     , K.KHLogWithPrefixesCat r
+     , K.LogWithPrefixesCat r
      )
   => KS.Serialize CacheError r a ct -- ^ Record-Of-Functions for serialization/deserialization
   -> k                              -- ^ Key
@@ -442,7 +442,7 @@ encodeAndStore (KS.Serialize encode _ encBytes) k x =
 retrieveOrMakeAndUpdateCache
   :: forall ct k r b a.
      ( P.Members [Cache k ct, P.Embed IO] r
-     ,  K.KHLogWithPrefixesCat r
+     ,  K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
      , Show k
      )
@@ -509,7 +509,7 @@ retrieveAndDecode
      (P.Member (Cache k ct) r
      , P.Member (P.Embed IO) r
      , P.Member (P.Error CacheError) r
-     , K.KHLogWithPrefixesCat r
+     , K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
      , Show k
      )
@@ -529,7 +529,7 @@ retrieveAndDecode s k newestM = K.wrapPrefix ("AtomicCache.retrieveAndDecode (ke
 lookupAndDecode
   :: forall ct k r a
    . ( P.Member (Cache k ct) r
-     , K.KHLogWithPrefixesCat r
+     , K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
      , P.Member (P.Error CacheError) r
@@ -552,7 +552,7 @@ lookupAndDecode s k newestM = K.wrapPrefix ("AtomicCache.lookupAndDecode (key=" 
 retrieveOrMake
   :: forall ct k r a b.
      ( P.Member (Cache k ct) r
-     , K.KHLogWithPrefixesCat r
+     , K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
      , P.Member (P.Error CacheError) r
@@ -596,7 +596,7 @@ type AtomicMemCache k v = C.TVar (Map k (C.TMVar (Maybe (WithCacheTime Identity 
 atomicMemLookup :: (Ord k
                    , Show k
                    , P.Member (P.Embed IO) r
-                   , K.KHLogWithPrefixesCat r
+                   , K.LogWithPrefixesCat r
                    , K.LogWithPrefixesLE r
                    )
                 => AtomicMemCache k ct
@@ -622,7 +622,7 @@ atomicMemUpdate :: (Ord k
                    , Show k
                    , P.Member (P.Embed IO) r
                    , K.LogWithPrefixesLE r
-                   , K.KHLogWithPrefixesCat r
+                   , K.LogWithPrefixesCat r
                    )
                 => AtomicMemCache k ct
                 -> k
@@ -660,7 +660,7 @@ runAtomicInMemoryCache :: (Ord k
                           , Show k
                           , P.Member (P.Embed IO) r
                           , K.LogWithPrefixesLE r
-                          , K.KHLogWithPrefixesCat r
+                          , K.LogWithPrefixesCat r
                           )
                        => AtomicMemCache k ct
                        -> P.InterpreterFor (Cache k ct) r
@@ -678,7 +678,7 @@ runAtomicInMemoryCache cache =
 atomicMemLookupB :: (Ord k
                     , P.Members '[P.Embed IO, Cache k ct] r
                     , K.LogWithPrefixesLE r
-                    , K.KHLogWithPrefixesCat r
+                    , K.LogWithPrefixesCat r
                     , Show k
                     )
                  => AtomicMemCache k ct
@@ -717,7 +717,7 @@ atomicMemLookupB cache key = K.wrapPrefix "atomicMemLookupB" $ do
 
 -- | update for an AtomicMemCache which is backed by some other cache, probably a persistence layer.
 -- This just does the update in both caches
-atomicMemUpdateB ::  (Ord k, Show k, K.KHLogWithPrefixesCat r, K.LogWithPrefixesLE r,  P.Members '[P.Embed IO, Cache k ct] r)
+atomicMemUpdateB ::  (Ord k, Show k, K.LogWithPrefixesCat r, K.LogWithPrefixesLE r,  P.Members '[P.Embed IO, Cache k ct] r)
                  => AtomicMemCache k ct
                  -> k
                  -> Maybe ct
@@ -733,7 +733,7 @@ atomicMemUpdateB cache key mct = K.wrapPrefix "atomicMemUpdateB" $ do
 runBackedAtomicInMemoryCache :: (Ord k
                                 , Show k
                                 , K.LogWithPrefixesLE r
-                                , K.KHLogWithPrefixesCat r
+                                , K.LogWithPrefixesCat r
                                 , P.Members '[P.Embed IO, Cache k ct] r
                                 )
                              => AtomicMemCache k ct
@@ -749,7 +749,7 @@ backedAtomicInMemoryCache :: (Ord k
                              , Show k
                              , P.Member (P.Embed IO) r
                              , K.LogWithPrefixesLE r
-                             , K.KHLogWithPrefixesCat r
+                             , K.LogWithPrefixesCat r
                              )
                           => AtomicMemCache k ct
                           -> P.Sem (Cache k ct ': r) a
@@ -768,7 +768,7 @@ runPersistenceBackedAtomicInMemoryCache :: (Ord k
                                            , P.Member (P.Embed IO) r
                                            , P.Member (P.Error CacheError) r
                                            , K.LogWithPrefixesLE r
-                                           , K.KHLogWithPrefixesCat r
+                                           , K.LogWithPrefixesCat r
                                            )
                                         => P.InterpreterFor (Cache k ct) r -- persistence layer interpreter
                                         -> AtomicMemCache k ct
@@ -783,7 +783,7 @@ runPersistenceBackedAtomicInMemoryCache' :: (Ord k
                                             , P.Member (P.Embed IO) r
                                             , P.Member (P.Error CacheError) r
                                             , K.LogWithPrefixesLE r
-                                            , K.KHLogWithPrefixesCat r
+                                            , K.LogWithPrefixesCat r
                                             )
                                          => P.InterpreterFor (Cache k ct) r
                                          -> P.InterpreterFor (Cache k ct) r
@@ -794,7 +794,7 @@ runPersistenceBackedAtomicInMemoryCache' runPersistentCache x = do
 
 -- | Interpreter for Cache via persistence to disk as a Streamly Memory.Array (Contiguous storage of Storables) of Bytes (Word8)
 persistStreamlyByteArray
-  :: (Show k, P.Member (P.Embed IO) r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r, K.KHLogWithPrefixesCat r)
+  :: (Show k, P.Member (P.Embed IO) r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r, K.LogWithPrefixesCat r)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k (Streamly.Array.Array Word.Word8)) r
 persistStreamlyByteArray keyToFilePath =
@@ -827,7 +827,7 @@ persistStreamlyByteArray keyToFilePath =
 
 -- | Interpreter for Cache via persistence to disk as a strict ByteString
 persistStrictByteString
-  :: (P.Members '[P.Embed IO] r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r, K.KHLogWithPrefixesCat r, Show k)
+  :: (P.Members '[P.Embed IO] r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r, K.LogWithPrefixesCat r, Show k)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k BS.ByteString) r
 persistStrictByteString keyToFilePath =
@@ -852,7 +852,7 @@ persistStrictByteString keyToFilePath =
 
 -- | Interpreter for Cache via persistence to disk as a lazy ByteString
 persistLazyByteString
-  :: (P.Members '[P.Embed IO] r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r,  K.KHLogWithPrefixesCat r, Show k)
+  :: (P.Members '[P.Embed IO] r, P.Member (P.Error CacheError) r, K.LogWithPrefixesLE r,  K.LogWithPrefixesCat r, Show k)
   => (k -> FilePath)
   -> P.InterpreterFor (Cache k BL.ByteString) r
 persistLazyByteString keyToFilePath =
@@ -876,16 +876,16 @@ persistLazyByteString keyToFilePath =
 
 
 createDirIfNecessary
-  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r, K.KHLogWithPrefixesCat r)
+  :: (P.Members '[P.Embed IO] r, K.LogWithPrefixesLE r, K.LogWithPrefixesCat r)
   => Text
   -> P.Sem r ()
 createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
-  K.logCat K.KHCache K.khDebugLogSeverity $ "Checking if cache path (\"" <> dir <> "\") exists."
+  K.logCat "KH_Cache" K.khDebugLogSeverity $ "Checking if cache path (\"" <> dir <> "\") exists."
   existsB <- P.embed $ System.doesDirectoryExist (toString dir)
   if existsB then (do
-    K.logCat K.KHCache K.khDebugLogSeverity $ "\"" <> dir <> "\" exists."
+    K.logCat "KH_Cache" K.khDebugLogSeverity $ "\"" <> dir <> "\" exists."
     return ()) else (do
-    K.logCat K.KHCache K.Info
+    K.logCat "KH_Cache" K.Info
       $  "Cache directory (\""
       <> dir
       <> "\") not found. Atttempting to create."
@@ -897,12 +897,12 @@ createDirIfNecessary dir = K.wrapPrefix "createDirIfNecessary" $ do
 getContentsWithCacheTime :: (P.Members '[P.Embed IO] r
                             , P.Member (P.Error CacheError) r
                             , K.LogWithPrefixesLE r
-                            , K.KHLogWithPrefixesCat r)
+                            , K.LogWithPrefixesCat r)
                          => (FilePath -> IO a)
                          -> FilePath
                          -> P.Sem r (Maybe (WithCacheTime Identity a))
 getContentsWithCacheTime f fp =  K.wrapPrefix "getContentsWithCacheTime" $ do
-  K.logCat K.KHCache K.khDebugLogSeverity "Reading serialization from disk."
+  K.logCat "KH_Cache" K.khDebugLogSeverity "Reading serialization from disk."
   rethrowIOErrorAsCacheError $ fileNotFoundToMaybe $ do
     ct <- f fp
     cTime <- System.getModificationTime fp

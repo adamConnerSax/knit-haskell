@@ -67,8 +67,8 @@ knitEither = either knitError return
 
 -- | Map an error type, @e, into a 'PandocError' so it will be handled in this stack
 knitMapError
-  :: forall e lc r a
-   . K.KnitEffects lc r
+  :: forall e r a
+   . K.KnitEffects r
   => (e -> T.Text)
   -> P.Sem (PE.Error e ': r) a
   -> P.Sem r a

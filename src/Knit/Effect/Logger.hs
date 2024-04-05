@@ -84,6 +84,7 @@ import qualified Polysemy.State          as P
 
 import qualified Data.IORef                    as IORef
 import qualified Data.List                     as List
+import qualified Data.Map                      as Map
 import qualified Data.Text                     as T
 import qualified Prettyprinter     as PP
 import qualified Prettyprinter.Render.Text
@@ -131,7 +132,7 @@ instance PP.Pretty LogSeverity where
 data LogEntry = LogEntry { severity :: !LogSeverity, message :: !T.Text }
 
 -- | log with a category and a base severity. We can raise that severity but not lower it
-data LogCat c = LogCat { logCategory :: !c, lcSeverity :: !LogSeverity, lcMessage :: !T.Text }
+data LogCat = LogCat { logCategory :: !Text, lcSeverity :: !LogSeverity, lcMessage :: !T.Text }
 
 
 -- | log everything.
@@ -167,16 +168,16 @@ log = send . Log
 
 
 --type CatSeverity c = c -> LogSeverity
-type CatSeverityState c = P.AtomicState (c -> Maybe LogSeverity)
+type CatSeverityState = P.AtomicState (Map.Map Text LogSeverity)
 
-adjCatSeverity :: forall c r . Eq c => P.Member (CatSeverityState c) r => c -> LogSeverity -> P.Sem r (c -> Maybe LogSeverity)
+adjCatSeverity :: P.Member CatSeverityState r => Text -> LogSeverity -> P.Sem r (Map.Map Text LogSeverity)
 adjCatSeverity c ls = do
-  oldF <- P.atomicGet
-  let newF c' = if c == c' then Just ls else oldF c'
-  P.atomicPut newF
-  pure oldF
+  oldMap <- P.atomicGet
+  let newMap = Map.insert c ls oldMap
+  P.atomicPut newMap
+  pure oldMap
 
-withCatSeverity :: forall c r x . Eq c => P.Member (CatSeverityState c) r => c -> LogSeverity -> P.Sem r x -> P.Sem r x
+withCatSeverity :: forall r x . P.Member CatSeverityState r => Text -> LogSeverity -> P.Sem r x -> P.Sem r x
 withCatSeverity c ls mx = do
   oldF <- adjCatSeverity c ls
   x <- mx
@@ -189,7 +190,7 @@ logLE ls lm = log (LogEntry ls lm)
 {-# INLINEABLE logLE #-}
 
 -- | Add one log-entry of the @LogEntry@ type with severity keyed by the given category
-logCat :: P.Member (Logger (LogCat c)) effs => c -> LogSeverity -> T.Text -> P.Sem effs ()
+logCat :: P.Member (Logger LogCat) effs => Text -> LogSeverity -> T.Text -> P.Sem effs ()
 logCat cat sev msg = log (LogCat cat sev msg)
 {-# INLINEABLE logCat #-}
 
@@ -392,21 +393,21 @@ filteredLogEntriesToColorizedIO lsF mx = do
 {-# INLINEABLE filteredLogEntriesToColorizedIO #-}
 
 -- | interpret a LogCat effect in terms of a LogEntry effect given the category to severity ands category to Text functions
-interpretLogCatWithLogLE :: (P.Members [CatSeverityState c, Logger LogEntry] r)
-                         => (c -> Text)
-                         -> P.InterpreterFor (Logger (LogCat c)) r
-interpretLogCatWithLogLE catText = P.interpret $ \case
+interpretLogCatWithLogLE :: (P.Members [CatSeverityState, Logger LogEntry] r)
+                         => P.InterpreterFor (Logger LogCat) r
+interpretLogCatWithLogLE = P.interpret $ \case
   Log (LogCat c sev msg) -> do
-    lsM <- ($ c) <$> P.atomicGet
+    lsM <- (Map.lookup c) <$> P.atomicGet
     let ls' = fromMaybe sev $ fmap (max sev) lsM
-    logLE ls' $ catText c <> ": " <> msg
+    logLE ls' $ c <> ": " <> msg
 {-# INLINEABLE interpretLogCatWithLogLE #-}
 
 interpretCatSeverityState :: P.Member (P.Embed IO) r
-                          => (c -> Maybe LogSeverity) -> P.InterpreterFor (CatSeverityState c) r
+                          => (Map.Map Text LogSeverity) -> P.InterpreterFor CatSeverityState r
 interpretCatSeverityState catLS mx = do
     ioRef <- P.embed $ IORef.newIORef catLS
     P.runAtomicStateIORef ioRef mx
+{-# INLINEABLE interpretCatSeverityState #-}
 
 
 {-
@@ -428,7 +429,7 @@ type PrefixedLogEffects a = [PrefixLog, Logger a]
 type PrefixedLogEffectsLE = PrefixedLogEffects LogEntry
 
 -- | List of Logger effects for a prefixed log of type @LogEntry@
-type PrefixedLogEffectsCat c = [PrefixLog, Logger (LogCat c), CatSeverityState c]
+type PrefixedLogEffectsCat = [PrefixLog, Logger LogCat, CatSeverityState]
 
 -- | Constraint helper for logging with prefixes
 type LogWithPrefixes a effs = P.Members (PrefixedLogEffects a) effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
@@ -437,4 +438,4 @@ type LogWithPrefixes a effs = P.Members (PrefixedLogEffects a) effs --(P.Member 
 type LogWithPrefixesLE effs = LogWithPrefixes LogEntry effs --(P.Member PrefixLog effs, P.Member (Logger a) effs)
 
 -- | Constraint helper for @LogEntry@ type with prefixes
-type LogWithPrefixesCat c effs = P.Members (PrefixedLogEffectsCat c) effs
+type LogWithPrefixesCat effs = P.Members PrefixedLogEffectsCat effs

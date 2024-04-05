@@ -116,8 +116,8 @@ a non-default serializer as long as it serializes to @ByteStream@
 
 --data BytesOrDone bytes = Bytes !bytes | Done
 
-log :: KLog.KHLogWithPrefixesCat r => Text -> P.Sem r ()
-log msg = KLog.logCat KLog.KHSerialize KLog.khDebugLogSeverity msg
+log :: KLog.LogWithPrefixesCat r => Text -> P.Sem r ()
+log msg = KLog.logCat "KH_Serialize" KLog.khDebugLogSeverity msg
 
 
 data SerializeDict (c :: Type -> Constraint) (ct :: Type) where
@@ -172,7 +172,7 @@ data Serialize e r a ct where
 -- produce the (trivial) 'Serialize' record-of-functions to encode/decode a single @a@.
 serializeOne :: (c a
 --                , KLog.LogWithPrefixesLE r
-                , KLog.KHLogWithPrefixesCat r
+                , KLog.LogWithPrefixesCat r
                 , P.Member (P.Error SerializationError) r)
              => SerializeDict c ct
              -> Serialize SerializationError r a ct
