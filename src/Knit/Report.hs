@@ -101,6 +101,7 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 , logDebug
                                                 , logDiagnostic
                                                 , logLE
+                                                , logCat
                                                 , wrapPrefix
                                                 , filteredLogEntriesToIO
                                                 , PrefixedLogEffectsLE
