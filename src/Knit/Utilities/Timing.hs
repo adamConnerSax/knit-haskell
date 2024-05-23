@@ -1,27 +1,21 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE UnboxedTuples              #-} -- This is required for the PrimMonad instance
-{-# LANGUAGE UndecidableInstances       #-}
 
 module Knit.Utilities.Timing
   (
     cpuTimed
   , withCPUTime
   , logWithTime
+  , logTime
   )
 where
 
 import Prelude hiding (error)
 
 import qualified Polysemy as P
+import Text.Printf (printf)
 
 --import qualified Data.Text as Text
 import System.CPUTime (getCPUTime)
@@ -46,3 +40,8 @@ withCPUTime withTime ma = cpuTimed ma >>= uncurry withTime
 logWithTime :: P.Member (P.Embed IO) r => (Text -> P.Sem r ()) -> (a -> Double -> Text) -> P.Sem r a -> P.Sem r a
 logWithTime logF logTimeMsg = withCPUTime f where
   f a s = logF (logTimeMsg a s) >> pure a
+
+-- | Given a logging function and a way to produce a message from the action result and the time,
+-- produce an action which runs that function with that message after the initial action.
+logTime :: P.Member (P.Embed IO) r => (Text -> P.Sem r ()) -> Text -> P.Sem r a -> P.Sem r a
+logTime logF t = logWithTime logF (\_ s -> t <> " took " <> toText @String (printf "%0.3f" s))

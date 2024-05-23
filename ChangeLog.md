@@ -1,3 +1,6 @@
+v0.10.7
+* Added timing utilities
+
 v0.10.6
 * Added category based logging. For now interpreted in terms of previous logger. Adds ability to raise logging priority for a category.
 

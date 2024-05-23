@@ -126,4 +126,4 @@ import           Knit.Report.Input.RST          ( addRST
 import           Knit.Report.Input.Visualization.Hvega
                                                 ( addHvega, addHvega' )
 import           Knit.Report.Input.Visualization.Diagrams
-import           Knit.Utilities.Timing (cpuTimed, withCPUTime, logWithTime)
+import           Knit.Utilities.Timing (cpuTimed, withCPUTime, logWithTime, logTime)
