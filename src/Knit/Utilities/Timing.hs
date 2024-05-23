@@ -44,4 +44,4 @@ logWithTime logF logTimeMsg = withCPUTime f where
 -- | Given a logging function and a way to produce a message from the action result and the time,
 -- produce an action which runs that function with that message after the initial action.
 logTime :: P.Member (P.Embed IO) r => (Text -> P.Sem r ()) -> Text -> P.Sem r a -> P.Sem r a
-logTime logF t = logWithTime logF (\_ s -> t <> " took " <> toText @String (printf "%0.3f" s))
+logTime logF t = logWithTime logF (\_ s -> t <> " took " <> toText @String (printf "%0.3fs" s))
