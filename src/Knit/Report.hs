@@ -63,6 +63,9 @@ module Knit.Report
   , module Knit.Effect.Serialize
   , module Polysemy.Async
   , module Knit.Report.Cache
+
+  -- * Utilities
+  , module Knit.Utilities.Timing
   )
 where
 
@@ -123,3 +126,4 @@ import           Knit.Report.Input.RST          ( addRST
 import           Knit.Report.Input.Visualization.Hvega
                                                 ( addHvega, addHvega' )
 import           Knit.Report.Input.Visualization.Diagrams
+import           Knit.Utilities.Timing (cpuTimed, withCPUTime, logWithTime)
