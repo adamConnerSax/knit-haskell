@@ -61,11 +61,12 @@ module Knit.Report
   , module Knit.Effect.Logger
   , module Knit.Effect.UnusedId
   , module Knit.Effect.Serialize
+  , module Knit.Effect.Timer
+
   , module Polysemy.Async
   , module Knit.Report.Cache
 
   -- * Utilities
-  , module Knit.Utilities.Timing
   )
 where
 
@@ -112,6 +113,7 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 )
 import           Knit.Effect.UnusedId           ( getNextUnusedId )
 import           Knit.Effect.Serialize          (DefaultCacheData, DefaultSerializer)
+import           Knit.Effect.Timer (start, snapshot, finish, timed, withTiming, logWithTiming, logTiming)
 import           Knit.Report.Input.Table.Colonnade
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )
@@ -125,5 +127,4 @@ import           Knit.Report.Input.RST          ( addRST
                                                 , addRSTFromFile)
 import           Knit.Report.Input.Visualization.Hvega
                                                 ( addHvega, addHvega' )
-import           Knit.Report.Input.Visualization.Diagrams
-import           Knit.Utilities.Timing (cpuTimed, withCPUTime, logWithTime, logTime)
+import           Knit.Report.Input.Visualization.Diagrams hiding (snapshot, start)

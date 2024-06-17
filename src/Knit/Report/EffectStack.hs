@@ -72,6 +72,7 @@ import qualified Knit.Effect.Logger            as KLog
 import qualified Knit.Effect.UnusedId          as KUI
 import qualified Knit.Effect.AtomicCache       as KC
 import qualified Knit.Effect.Serialize         as KS
+import qualified Knit.Effect.Timer             as KT
 
 {- |
 Parameters for knitting. If possible, create this via, e.g.,
@@ -243,8 +244,8 @@ asyncToFinal = P.interpretFinal $ \case
 -- | The exact stack we are interpreting when we knit
 #if MIN_VERSION_pandoc(2,8,0)
 type KnitEffectStack c ct k
-  = '[ KUI.UnusedId
-     , KPM.Template
+  = '[
+       KPM.Template
      , KPM.Pandoc
      , KS.SerializeEnv c ct
      , KC.Cache k ct
@@ -257,13 +258,14 @@ type KnitEffectStack c ct k
      , PE.Error KC.CacheError
      , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
+     , KT.Timer Text
+     , KUI.UnusedId
      , P.Embed IO
 --     , P.Embed m
      , P.Final IO]
 #else
 type KnitEffectStack lc  c ct k
-  = '[ KUI.UnusedId
-     , KPM.Pandoc
+  = '[ KPM.Pandoc
      , KS.SerializeEnv c ct
      , KC.Cache k ct
      , KLog.Logger KLog.LogCat
@@ -275,6 +277,8 @@ type KnitEffectStack lc  c ct k
      , PE.Error KC.CacheError
      , PE.Error Exceptions.SomeException
      , PE.Error PA.PandocError
+     , KT.Timer Text
+     , KUI.UnusedId
      , P.Embed IO
 --     , P.Embed m
      , P.Final IO]
@@ -298,6 +302,8 @@ consumeKnitEffectStack config =
   P.runFinal
   . P.embedToFinal
 --  . PI.embedToMonadIO @IO -- interpret (Embed IO) using m
+  . KUI.runUnusedId
+  . KT.interpretTimerInIO
   . PE.runError @KPM.PandocError
   . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
@@ -310,7 +316,6 @@ consumeKnitEffectStack config =
   . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO
   . KPM.interpretTemplateIO
-  . KUI.runUnusedId
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #else
 consumeKnitEffectStack
@@ -323,6 +328,8 @@ consumeKnitEffectStack config =
   P.runFinal
   . P.embedToFinal
 --  . PI.embedToMonadIO @m -- interpret (Embed IO) using m
+  . KUI.runUnusedId
+  . KT.interpretTimerInIO
   . PE.runError
   . PE.mapError someExceptionToPandocError
   . PE.mapError cacheErrorToPandocError
@@ -334,7 +341,6 @@ consumeKnitEffectStack config =
   . KC.runPersistenceBackedAtomicInMemoryCache' (persistCache config)
   . KS.runSerializeEnv (serializeDict config)
   . KPM.interpretInIO -- PA.PandocIO
-  . KUI.runUnusedId
   . maybe id KLog.wrapPrefix (outerLogPrefix config)
 #endif
 {-# INLINEABLE consumeKnitEffectStack #-}

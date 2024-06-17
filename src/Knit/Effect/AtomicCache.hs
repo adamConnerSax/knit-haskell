@@ -142,6 +142,7 @@ module Knit.Effect.AtomicCache
   , runPersistenceBackedAtomicInMemoryCache'
     -- * logging
   , cacheLog
+  , timedCacheOp
     -- * Exceptions
   , CacheError(..)
   )
@@ -152,7 +153,7 @@ import qualified Polysemy.Error                as P
 import qualified Knit.Effect.Logger            as K
 import qualified Knit.Effect.Internal.Logger   as K
 import qualified Knit.Effect.Serialize         as KS
-import qualified Knit.Utilities.Timing         as KT
+import qualified Knit.Effect.Timer             as KT
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Semigroup                as Semigroup
@@ -404,8 +405,8 @@ formatLogMsg key msg = "[cache@=" <> show key <> "] " <> msg
 cacheLog :: (Show k, K.LogWithPrefixesCat r) => k -> Text -> P.Sem r ()
 cacheLog key msg = K.logCat "KH_Cache" K.khDebugLogSeverity (formatLogMsg key msg)
 
-timedCacheOp :: P.Member (P.Embed IO) r => (Show k, K.LogWithPrefixesCat r) => k -> Text -> P.Sem r a -> P.Sem r a
-timedCacheOp key msg = KT.logTime (K.logCat "KH_Cache" K.khDebugLogSeverity) (formatLogMsg key msg)
+timedCacheOp :: KT.WithTimer r => (Show k, K.LogWithPrefixesCat r) => k -> Text -> P.Sem r a -> P.Sem r a
+timedCacheOp key msg = KT.logTiming (K.logCat "KH_Cache" K.khDebugLogSeverity) (formatLogMsg key msg)
 
 --debugLogSeverity :: K.LogSeverity
 --debugLogSeverity  = K.Debug 3
@@ -415,6 +416,7 @@ timedCacheOp key msg = KT.logTime (K.logCat "KH_Cache" K.khDebugLogSeverity) (fo
 encodeAndStore
   :: ( Show k
      , P.Member (Cache k ct) r
+     , KT.WithTimer r
      , K.LogWithPrefixesCat r
      )
   => KS.Serialize CacheError r a ct -- ^ Record-Of-Functions for serialization/deserialization
@@ -423,11 +425,9 @@ encodeAndStore
   -> P.Sem r ()
 encodeAndStore (KS.Serialize encode _ encBytes) k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> show k <> ")") $ do
---    cacheLog k  "encoding (serializing) data"
     encoded <- timedCacheOp k "encoding (serializing) data" $ fst <$> encode x
     let nBytes = encBytes encoded
-    cacheLog k $ "Storing " <> show nBytes <> " bytes of encoded data in cache"
-    cacheUpdate k (Just encoded)
+    timedCacheOp k ("Storing " <> show nBytes <> " bytes of encoded data in cache") $ cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
 
 -- | Lookup key and, if that fails, run an action to update the cache.
@@ -445,8 +445,9 @@ encodeAndStore (KS.Serialize encode _ encBytes) k x =
 retrieveOrMakeAndUpdateCache
   :: forall ct k r b a.
      ( P.Members [Cache k ct, P.Embed IO] r
-     ,  K.LogWithPrefixesCat r
+     , K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
+     , KT.WithTimer r
      , Show k
      )
   => KS.Serialize CacheError r a ct            -- ^ Record-Of-Functions for serialization/deserialization
@@ -461,28 +462,25 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
       loggedDepsA = Q depsCT depsAction where
         Q depsCT depsA = deps
         depsAction = do
-          cacheLog key $ "key=" <> show key <> ": Trying to make from given action."
-          cacheLog key $ "key=" <> show key <> ": running actions for dependencies."
-          depsA
+          cacheLog key $ "Trying to make from given action."
+          timedCacheOp key "running actions for dependencies." depsA
       tryIfMissingACT :: ActionWithCacheTime r (Maybe (ActionWithCacheTime r a))
       tryIfMissingACT = promoteQ tryIfMissing' loggedDepsA where
         tryIfMissing' :: b -> P.Sem r (Maybe (ActionWithCacheTime r a))
         tryIfMissing' b = do
-          K.logLE K.Diagnostic $ formatLogMsg key "Out of date or missing. Making new item."
-          ma <- tryIfMissing b
+          ma <- KT.logTiming (K.logLE K.Diagnostic) (formatLogMsg key "Out of date or missing. Making new item.") $ tryIfMissing b
           case ma of
             Nothing -> do
-              cacheLog key $ "key=" <> show key <> ": Making failed."
-              K.logLE K.Error $ "key=" <> show key <> ": Making failed."
+              cacheLog key $ "Making failed."
+              K.logLE K.Error $ "Making failed for key=" <> show key
               cacheUpdate key Nothing
               return Nothing
             Just a -> do
-              cacheLog key $ "key=" <> show key <> ": Buffering/Encoding..."
-              (ct', a') <- encode a -- a' is the buffered version of a (if necessary)
+--              cacheLog key $ "key=" <> show key <> ": Buffering/Encoding..."
+              (ct', a') <- timedCacheOp key ("Buffering/Encoding...") $ encode a -- a' is the buffered version of a (if necessary)
               let nBytes = encBytes ct'
-              cacheLog key $ "key=" <> show key <> ": serialized to " <> show nBytes <> " bytes."
-              cacheLog key "Updating cache..."
-              cacheUpdate key (Just ct')
+              cacheLog key $ "serialized to " <> show nBytes <> " bytes."
+              timedCacheOp key "Updating Cache" $ cacheUpdate key (Just ct')
               curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
               cacheLog key "Finished making and updating."
               return $ Just $ withCacheTime (Just curTime) (return a')
@@ -495,7 +493,7 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
               let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
               let nBytes = encBytes ct
               cacheLog key $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache. Decoding..."
-              return $ Just $ Q cTimeM (cacheLog key ("Deserializing for key=\"" <> show key <> "\"") >> decode ct)
+              return $ Just $ Q cTimeM (timedCacheOp key ("Deserializing") $ decode ct)
           Nothing -> Q Nothing $ do
             cacheLog key $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
             K.logLE K.Error $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
@@ -514,6 +512,7 @@ retrieveAndDecode
      , P.Member (P.Error CacheError) r
      , K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
+     , KT.WithTimer r
      , Show k
      )
   => KS.Serialize CacheError r a ct    -- ^ Record-Of-Functions for serialization/deserialization
@@ -536,6 +535,7 @@ lookupAndDecode
      , K.LogWithPrefixesLE r
      , P.Member (P.Embed IO) r
      , P.Member (P.Error CacheError) r
+     , KT.WithTimer r
      , Show k
      )
   => KS.Serialize CacheError r a ct            -- ^ Record-Of-Functions for serialization/deserialization
@@ -557,6 +557,7 @@ retrieveOrMake
      ( P.Member (Cache k ct) r
      , K.LogWithPrefixesCat r
      , K.LogWithPrefixesLE r
+     , KT.WithTimer r
      , P.Member (P.Embed IO) r
      , P.Member (P.Error CacheError) r
      , Show k
@@ -568,8 +569,8 @@ retrieveOrMake
   -> P.Sem r (ActionWithCacheTime r a)   -- ^ Result of lookup or running computation, wrapped as 'ActionWithCacheTime'
 retrieveOrMake s key cachedDeps makeAction = K.wrapPrefix ("retrieveOrMake (key=" <> show key <> ")") $ do
   let makeIfMissing x = K.wrapPrefix "retrieveOrMake.makeIfMissing" $ do
-        cacheLog key $ "Item (at key=" <> show key <> ") not found/too old. Making..."
-        Just <$> makeAction x
+--        cacheLog key $ "Item (at key=" <> show key <> ") not found/too old. Making..."
+        Just <$> timedCacheOp key ("Item not found/too old. Making...") (makeAction x)
   fromCache <- retrieveOrMakeAndUpdateCache s makeIfMissing key cachedDeps
   case fromCache of
     Just x -> return x

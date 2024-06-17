@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds                  #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GADTs                      #-}
@@ -11,10 +12,16 @@
 
 module Knit.Effect.Timer
   (
-    timed
+    Timer
+  , WithTimer
+  , start
+  , snapshot
+  , finish
+  , timed
   , withTiming
   , logWithTiming
   , logTiming
+  , interpretTimerInIO
   )
 where
 
@@ -78,8 +85,10 @@ interpretTimerInIO mx = do
   P.runAtomicStateIORef ioRef
     $ P.reinterpret nat mx
 
+type WithTimer r = (P.Members [Timer Text, KU.UnusedId] r)
+
 -- | Wrap an action with a timer and produce the time with the result
-timed :: P.Members [Timer Text, KU.UnusedId] r => P.Sem r a -> P.Sem r (a, Maybe Double)
+timed :: WithTimer r => P.Sem r a -> P.Sem r (a, Maybe Double)
 timed ma = do
   timerId <- KU.getNextUnusedId "AnonTimer"
   start timerId
@@ -89,20 +98,20 @@ timed ma = do
 {-# INLINEABLE timed #-}
 
 -- | Build a new action from en existing one and its timing
-withTiming :: P.Members [Timer Text, KU.UnusedId] r => (a -> Maybe Double -> P.Sem r b) -> P.Sem r a -> P.Sem r b
+withTiming :: WithTimer r => (a -> Maybe Double -> P.Sem r b) -> P.Sem r a -> P.Sem r b
 withTiming withTime ma = timed ma >>= uncurry withTime
 {-# INLINEABLE withTiming #-}
 
 -- | Given a logging function and a way to produce a message from the action result and the time,
 -- produce an action which runs that function with that message after the initial action.
-logWithTiming :: P.Members [Timer Text, KU.UnusedId] r => (Text -> P.Sem r ()) -> (a -> Maybe Double -> Text) -> P.Sem r a -> P.Sem r a
+logWithTiming :: WithTimer r => (Text -> P.Sem r ()) -> (a -> Maybe Double -> Text) -> P.Sem r a -> P.Sem r a
 logWithTiming logF logTimeMsg = withTiming f where
   f a s = logF (logTimeMsg a s) >> pure a
 {-# INLINEABLE logWithTiming #-}
 
 -- | Given a logging function and a way to produce a message from the action result and the time,
 -- produce an action which runs that function with that message after the initial action.
-logTiming :: P.Members [Timer Text, KU.UnusedId] r => (Text -> P.Sem r ()) -> Text -> P.Sem r a -> P.Sem r a
+logTiming :: WithTimer r => (Text -> P.Sem r ()) -> Text -> P.Sem r a -> P.Sem r a
 logTiming logF t ma = logF (t <> "...") >> logWithTiming logF g ma where
   g _ tM = case tM of
     Just s -> "took " <> toText @String (printf "%0.3f" s) <> "s"
