@@ -152,7 +152,7 @@ import qualified Polysemy.Error                as P
 import qualified Knit.Effect.Logger            as K
 import qualified Knit.Effect.Internal.Logger   as K
 import qualified Knit.Effect.Serialize         as KS
-
+import qualified Knit.Utilities.Timing         as KT
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Semigroup                as Semigroup
@@ -404,6 +404,9 @@ formatLogMsg key msg = "[cache@=" <> show key <> "] " <> msg
 cacheLog :: (Show k, K.LogWithPrefixesCat r) => k -> Text -> P.Sem r ()
 cacheLog key msg = K.logCat "KH_Cache" K.khDebugLogSeverity (formatLogMsg key msg)
 
+timedCacheOp :: P.Member (P.Embed IO) r => (Show k, K.LogWithPrefixesCat r) => k -> Text -> P.Sem r a -> P.Sem r a
+timedCacheOp key msg = KT.logTime (K.logCat "KH_Cache" K.khDebugLogSeverity) (formatLogMsg key msg)
+
 --debugLogSeverity :: K.LogSeverity
 --debugLogSeverity  = K.Debug 3
 --{-# INLINE debugLogSeverity #-}
@@ -420,8 +423,8 @@ encodeAndStore
   -> P.Sem r ()
 encodeAndStore (KS.Serialize encode _ encBytes) k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> show k <> ")") $ do
-    cacheLog k  "encoding (serializing) data"
-    encoded <- fst <$> encode x
+--    cacheLog k  "encoding (serializing) data"
+    encoded <- timedCacheOp k "encoding (serializing) data" $ fst <$> encode x
     let nBytes = encBytes encoded
     cacheLog k $ "Storing " <> show nBytes <> " bytes of encoded data in cache"
     cacheUpdate k (Just encoded)

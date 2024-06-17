@@ -24,7 +24,7 @@ module Knit.Effect.UnusedId
     -- * Effect
     UnusedId
 
-    -- * actions    
+    -- * actions
   , getNextUnusedId
 
     -- * interpretations
@@ -33,25 +33,29 @@ module Knit.Effect.UnusedId
 where
 
 import qualified Polysemy                      as P
-import qualified Polysemy.State                as PS
+import qualified Polysemy.AtomicState                as PS
 
 import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 
+import qualified Data.IORef                    as IORef
+
 -- | Type alias for the dictionary ('M.Map') of current last used id at each prefix.
 type IdMap = M.Map T.Text Int
 
--- | Type alias for 'Polysemy.State' using "IdMap".
-type UnusedId = PS.State IdMap
+-- | Type alias for 'Polysemy.AtomicState' using "IdMap".
+type UnusedId = PS.AtomicState IdMap
 
 -- | Get an unused id with prefix as specified.  Useful for figures, etc.
 getNextUnusedId :: P.Member UnusedId r => T.Text -> P.Sem r T.Text
 getNextUnusedId prefixT = do
-  idMap <- PS.get @IdMap
+  idMap <- PS.atomicGet @IdMap
   let nextId = fromMaybe 1 $ M.lookup prefixT idMap
-  PS.put $ M.insert prefixT (nextId + 1) idMap
+  PS.atomicPut $ M.insert prefixT (nextId + 1) idMap
   return $ prefixT <> "_" <> show nextId
 
 -- | Run the UnusedId effect and throw away the state.
-runUnusedId :: P.Sem (UnusedId ': r) a -> P.Sem r a
-runUnusedId = fmap snd . PS.runState M.empty
+runUnusedId :: P.Member (P.Embed IO) r => P.Sem (UnusedId ': r) a -> P.Sem r a
+runUnusedId ma = do
+  ioRef <- P.embed $ IORef.newIORef mempty
+  PS.runAtomicStateIORef ioRef ma

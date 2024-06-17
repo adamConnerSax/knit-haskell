@@ -46,6 +46,7 @@ library
       Knit.Effect.Docs
       Knit.Effect.PandocMonad
       Knit.Effect.Pandoc
+      Knit.Effect.Timer
       Knit.Effect.UnusedId
       Knit.Report
       Knit.Report.Cache
