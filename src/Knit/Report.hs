@@ -113,7 +113,7 @@ import           Knit.Effect.Logger             ( LogSeverity(..)
                                                 )
 import           Knit.Effect.UnusedId           ( getNextUnusedId )
 import           Knit.Effect.Serialize          (DefaultCacheData, DefaultSerializer)
-import           Knit.Effect.Timer (start, snapshot, finish, timed, withTiming, logWithTiming, logTiming)
+import           Knit.Effect.Timer (WithTimer, start, snapshot, finish, timed, withTiming, logWithTiming, logTiming)
 import           Knit.Report.Input.Table.Colonnade
 import           Knit.Report.Input.MarkDown.PandocMarkDown
                                                 ( addMarkDown )

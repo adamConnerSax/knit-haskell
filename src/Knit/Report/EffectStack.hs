@@ -201,8 +201,7 @@ withKHCatSeverity c = KLog.withCatSeverity (KHCategory c)
 -- Anything inside a call to Knit can use any of these effects.
 -- Any other effects added to this stack will need to be run before @knitHtml(s)@
 type KnitEffects r = (KPM.PandocEffects r
-                     , P.Members [ KUI.UnusedId
-                                 , KLog.Logger KLog.LogEntry
+                     , P.Members [ KLog.Logger KLog.LogEntry
                                  , KLog.PrefixLog
                                  , KLog.CatSeverityState
                                  , KLog.Logger KLog.LogCat
@@ -210,6 +209,8 @@ type KnitEffects r = (KPM.PandocEffects r
                                  , PE.Error KC.CacheError
                                  , PE.Error Exceptions.SomeException
                                  , PE.Error PA.PandocError
+                                 , KT.Timer Text
+                                 , KUI.UnusedId
                                  , P.Embed IO] r
                      )
 

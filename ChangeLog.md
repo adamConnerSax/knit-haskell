@@ -1,3 +1,6 @@
+v0.10.8
+* Moved Timing to an effect
+
 v0.10.7
 * Added timing utilities
 
