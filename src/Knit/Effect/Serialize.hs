@@ -73,6 +73,7 @@ import qualified Polysemy.Reader               as PR
 import qualified Data.Serialize                as S
 import qualified Data.Text                     as T
 import qualified Data.Word                     as Word
+import qualified Data.Strict.Tuple             as ST
 
 import qualified Control.Exception as X
 --import qualified Control.Monad.IO.Class as MonadIO (MonadIO(liftIO))
@@ -94,6 +95,7 @@ import qualified Streamly.External.ByteString  as Streamly.ByteString
 --import qualified Knit.Utilities.Streamly       as K
 import qualified Knit.Effect.Logger            as KLog
 import qualified Knit.Effect.Internal.Logger   as KLog
+import qualified Knit.Effect.Timer             as KT
 
 -- | Error Type for Serialization errors.  Simplifies catching and reporting them.
 newtype SerializationError = SerializationError T.Text deriving (Show)
@@ -119,6 +121,8 @@ a non-default serializer as long as it serializes to @ByteStream@
 log :: KLog.LogWithPrefixesCat r => Text -> P.Sem r ()
 log msg = KLog.logCat "KH_Serialize" KLog.khDebugLogSeverity msg
 
+logTime :: (KLog.LogWithPrefixesCat r, KT.WithTimer r) => Text -> P.Sem r a -> P.Sem r a
+logTime msg ma = KT.logTiming (KLog.logCat "KH_Serialize" KLog.khDebugLogSeverity) msg ma
 
 data SerializeDict (c :: Type -> Constraint) (ct :: Type) where
   SerializeDict :: forall c ct bytes.
@@ -163,7 +167,7 @@ In many cases, we will just return the input in that slot.
 -}
 data Serialize e r a ct where
   Serialize :: (P.Member (P.Error e) r)
-            => (a -> P.Sem r (ct, a)) -- ^ Encode and provide a "cheap" copy (for things like streams)
+            => (a -> P.Sem r (ST.Pair ct a)) -- ^ Encode and provide a "cheap" copy (for things like streams)
             -> (ct -> P.Sem r a)      -- ^ Decode
             -> (ct -> Int64)          -- ^ Size (in Bytes)
             -> Serialize e r a ct
@@ -173,17 +177,18 @@ data Serialize e r a ct where
 serializeOne :: (c a
 --                , KLog.LogWithPrefixesLE r
                 , KLog.LogWithPrefixesCat r
+                , KT.WithTimer r
                 , P.Member (P.Error SerializationError) r)
              => SerializeDict c ct
              -> Serialize SerializationError r a ct
 serializeOne (SerializeDict encode decode bytesToCT ctToBytes ctBytes) =
-  let enc a = return (bytesToCT $ encode a, a)
+  let enc a = pure $ bytesToCT (encode a) ST.:!: a
       {-# INLINEABLE enc #-}
-      dec x = KLog.wrapPrefix "serializeOne.dec" $ do
-        log "deserializing..."
+      dec x = KLog.wrapPrefix "serializeOne.dec" $ logTime "deserializing" $ P.fromEither @SerializationError $ decode $ ctToBytes x
+{-        log "deserializing..."
         a <- P.fromEither @SerializationError $ decode $ ctToBytes x -- NB: should check for empty bs in return
         log "deserializing complete."
-        return a
+        return a-}
       {-# INLINEABLE dec #-}
   in Serialize enc dec ctBytes
 {-# INLINEABLE serializeOne #-}

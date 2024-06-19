@@ -127,6 +127,7 @@ knitSerialize
      , P.Member (P.Embed IO) r
      , K.LogWithPrefixesLE r
      , K.LogWithPrefixesCat r
+     , KT.WithTimer r
      , P.Member (P.Error C.CacheError) r
      , Show k
      )

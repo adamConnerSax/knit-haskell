@@ -158,7 +158,8 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Semigroup                as Semigroup
 import qualified Data.Text                     as T
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
+import qualified Data.Strict.Tuple             as ST
 import qualified Data.Time.Clock               as Time
 import qualified Data.Word                     as Word
 
@@ -195,7 +196,7 @@ data CacheError =
 -- | Wrapper to hold (deserializable, if necessary) content and a timestamp.
 -- The stamp must be at or after the time the data was constructed
 data Q w t a where
-  Q :: w -> t a -> Q w t a
+  Q :: !w -> !(t a) -> Q w t a
 
 instance Functor t => Functor (Q w t) where
   fmap f (Q w ta) = Q w (fmap f ta)
@@ -270,9 +271,9 @@ zipWithQ :: (Monad m, Monoid w)
          -> Q w m (a, c)
          -> Q w m e
 zipWithQ f bFromA dFromC depsAC = do
-  let bQ = bFromA $ fmap fst depsAC
-      dQ = dFromC $ fmap snd depsAC
-      bdQ = (,) <$> bQ <*> dQ
+  let !bQ = bFromA $ fmap fst depsAC
+      !dQ = dFromC $ fmap snd depsAC
+      !bdQ = (,) <$> bQ <*> dQ
   promoteQ (uncurry f) bdQ
 {-# INLINEABLE zipWithQ #-}
 
@@ -425,7 +426,7 @@ encodeAndStore
   -> P.Sem r ()
 encodeAndStore (KS.Serialize encode _ encBytes) k x =
   K.wrapPrefix ("AtomicCache.encodeAndStore (key=" <> show k <> ")") $ do
-    encoded <- timedCacheOp k "encoding (serializing) data" $ fst <$> encode x
+    encoded <- timedCacheOp k "encoding (serializing) data" $ ST.fst <$> encode x
     let nBytes = encBytes encoded
     timedCacheOp k ("Storing " <> show nBytes <> " bytes of encoded data in cache") $ cacheUpdate k (Just encoded)
 {-# INLINEABLE encodeAndStore #-}
@@ -474,26 +475,25 @@ retrieveOrMakeAndUpdateCache (KS.Serialize encode decode encBytes) tryIfMissing 
               cacheLog key $ "Making failed."
               K.logLE K.Error $ "Making failed for key=" <> show key
               cacheUpdate key Nothing
-              return Nothing
-            Just a -> do
+              pure Nothing
+            Just a -> timedCacheOp key ("Buffering/Encoding...") $ do
 --              cacheLog key $ "key=" <> show key <> ": Buffering/Encoding..."
-              (ct', a') <- timedCacheOp key ("Buffering/Encoding...") $ encode a -- a' is the buffered version of a (if necessary)
-              let nBytes = encBytes ct'
-              cacheLog key $ "serialized to " <> show nBytes <> " bytes."
-              timedCacheOp key "Updating Cache" $ cacheUpdate key (Just ct')
+              (ct' ST.:!: a') <-  encode a -- a' is the buffered version of a (if necessary)
+              let !nBytes = encBytes ct'
+              cacheLog key $ "Serialized to " <> show nBytes <> " bytes. Updating Cache"
+              cacheUpdate key (Just ct')
               curTime <- P.embed Time.getCurrentTime -- Should this come from the cache so the times are the same?  Or is it safe enough that this is later?
-              cacheLog key "Finished making and updating."
-              return $ Just $ withCacheTime (Just curTime) (return a')
+              pure $ Just $ withCacheTime (Just curTime) (return a')
     fromCache <- cacheLookup key
     let cacheACT :: ActionWithCacheTime r (Maybe (ActionWithCacheTime r a ))
         cacheACT = case fromCache of
           Just (Q cTimeM mct) -> Q cTimeM cacheACT' where
             cacheACT' :: P.Sem r (Maybe (ActionWithCacheTime r a))
             cacheACT' = do
-              let ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
-              let nBytes = encBytes ct
-              cacheLog key $ "key=" <> show key <> ": Retrieved " <> show nBytes <> " bytes from cache. Decoding..."
-              return $ Just $ Q cTimeM (timedCacheOp key ("Deserializing") $ decode ct)
+              let !ct = runIdentity mct -- we do this out here only because we want the length.  We could defer this unpacking to the decodeAction
+                  !nBytes = encBytes ct
+                  msg = "Retrieved " <> show nBytes <> " bytes from cache. Decoding..."
+              return $ Just $ Q cTimeM (timedCacheOp key msg $ decode ct)
           Nothing -> Q Nothing $ do
             cacheLog key $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
             K.logLE K.Error $ "key=" <> show key <> " running empty cache action.  Which shouldn't happen!"
@@ -611,7 +611,7 @@ atomicMemLookup cache key = K.wrapPrefix "atomicMemLookup" $ do
   P.embed $ C.atomically $ do
     mv <- C.readTVar cache >>= fmap join . traverse C.readTMVar . M.lookup key
     case mv of
-      Just wctv -> return $ Just wctv
+      Just !wctv -> return $ Just wctv
       Nothing -> do
         newTMV <- C.newEmptyTMVar
         C.modifyTVar cache (M.insert key newTMV)
@@ -638,9 +638,9 @@ atomicMemUpdate cache key mct =
   log "called"
   updateAction <- case mct of
     Nothing -> P.embed (C.atomically $ C.modifyTVar cache (M.delete key)) >> return Deleted
-    Just ct -> do
+    Just !ct -> do
       curTime <- P.embed Time.getCurrentTime
-      let wct = withCacheTime (Just curTime) (Identity ct)
+      let !wct = withCacheTime (Just curTime) (Identity ct)
       P.embed $ C.atomically $ do
         m <- C.readTVar cache
         case M.lookup key m of

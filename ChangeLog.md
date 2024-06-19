@@ -1,3 +1,7 @@
+v0.10.9
+* Made StrictData a default extension
+* Further instrumenting cache operations
+
 v0.10.8
 * Moved Timing to an effect
 
