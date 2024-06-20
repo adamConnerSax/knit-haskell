@@ -112,8 +112,8 @@ logWithTiming logF logTimeMsg = withTiming f where
 -- | Given a logging function and a way to produce a message from the action result and the time,
 -- produce an action which runs that function with that message after the initial action.
 logTiming :: WithTimer r => (Text -> P.Sem r ()) -> Text -> P.Sem r a -> P.Sem r a
-logTiming logF t ma = logF (t <> "...") >> logWithTiming logF g ma where
-  g _ tM = case tM of
-    Just s -> "took " <> toText @String (printf "%0.3f" s) <> "s"
+logTiming logF t ma = logF (t <> "...") >> logWithTiming logF msg ma where
+  msg _ tM = case tM of
+    Just s -> t <> " took " <> toText @String (printf "%0.3f" s) <> "s"
     Nothing -> "(TIMING ERROR)"
 {-# INLINEABLE logTiming #-}
