@@ -129,10 +129,10 @@ instance PP.Pretty LogSeverity where
   pretty = PP.pretty @Text . show
 
 -- | A basic log entry with a severity and a ('Text') message
-data LogEntry = LogEntry { severity :: !LogSeverity, message :: !T.Text }
+data LogEntry = LogEntry { severity :: !LogSeverity, message :: ~T.Text }
 
 -- | log with a category and a base severity. We can raise that severity but not lower it
-data LogCat = LogCat { logCategory :: !Text, lcSeverity :: !LogSeverity, lcMessage :: !T.Text }
+data LogCat = LogCat { logCategory :: !Text, lcSeverity :: !LogSeverity, lcMessage :: ~T.Text }
 
 
 -- | log everything.
