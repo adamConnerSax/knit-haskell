@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StrictData                 #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE BangPatterns               #-}
@@ -39,25 +40,42 @@ import Text.Printf (printf)
 
 --import qualified Data.Text as Text
 import System.CPUTime (getCPUTime)
+import qualified Data.Time.Clock as T
+
+data Timings a b = Timings { wall :: a, cpu :: b }
+
+type Timed = Timings Double Double
+
+type Snapshot = Timings T.UTCTime Integer
+
+snapsTimed :: Snapshot -> Snapshot -> Timed
+snapsTimed (Timings utcStart cpuStart) (Timings utcEnd cpuEnd) = Timings (utcDiffSecs utcEnd utcStart) (cpuDiffSecs cpuEnd cpuStart)
+  where
+    cpuDiffSecs s e = fromIntegral (e - s) / 10 ^ (12 :: Int)
+    utcDiffSecs s e = realToFrac $ T.nominalDiffTimeToSeconds $ T.diffUTCTime e s
 
 data Timer k m r where
   Start    :: k -> Timer k m ()
-  Snapshot :: k -> Timer k m (Maybe Double)
-  Finish   :: k -> Timer k m (Maybe Double)
+  Snapshot :: k -> Timer k m (Maybe Timed)
+  Finish   :: k -> Timer k m (Maybe Timed)
 
 start :: P.Member (Timer k) effs => k -> P.Sem effs ()
 start = send . Start
 {-# INLINEABLE start #-}
 
-snapshot :: P.Member (Timer k) effs => k -> P.Sem effs (Maybe Double)
+snapshot :: P.Member (Timer k) effs => k -> P.Sem effs (Maybe Timed)
 snapshot = send . Snapshot
 {-# INLINEABLE snapshot #-}
 
-finish :: P.Member (Timer k) effs => k -> P.Sem effs (Maybe Double)
+finish :: P.Member (Timer k) effs => k -> P.Sem effs (Maybe Timed)
 finish = send . Finish
 {-# INLINEABLE finish #-}
 
-type TimerStartMap k = P.AtomicState (Map.Map k Integer)
+type TimerStartMap k = P.AtomicState (Map.Map k Snapshot)
+
+getSnap :: P.Member (P.Embed IO) effs => P.Sem effs Snapshot
+getSnap = Timings <$>  P.embed T.getCurrentTime <*> P.embed getCPUTime
+{-# INLINEABLE getSnap #-}
 
 interpretTimerInIO :: forall k effs . (Ord k, P.Member (P.Embed IO) effs) => P.InterpreterFor (Timer k) effs
 interpretTimerInIO mx = do
@@ -65,30 +83,30 @@ interpretTimerInIO mx = do
   let nat :: (forall ri x . (Timer k) (P.Sem ri) x -> P.Sem (TimerStartMap k ': effs) x)
       nat = \case
         Start k -> do
-          startTime <- P.embed getCPUTime
-          P.atomicModify $ Map.insert k startTime
+          snap <- getSnap
+          P.atomicModify $ Map.insert k snap
         Snapshot k -> do
           startTimeM <- Map.lookup k <$> P.atomicGet
           case startTimeM of
             Nothing -> pure Nothing
             Just startTime -> do
-              snapTime <- P.embed getCPUTime
-              pure $ Just $ fromIntegral (snapTime - startTime) / 10^(12 :: Int)
+              snap <- getSnap
+              pure $ Just $ snapsTimed snap startTime
         Finish k -> do
           startTimeM <- Map.lookup k <$> P.atomicGet
           case startTimeM of
             Nothing -> pure Nothing
             Just startTime -> do
-              endTime <- P.embed getCPUTime
-              P.atomicModify @(Map k Integer) $ Map.delete k
-              pure $ Just $ fromIntegral (endTime - startTime) / 10^(12 :: Int)
+              snap <- getSnap
+              P.atomicModify @(Map k Snapshot) $ Map.delete k
+              pure $ Just $ snapsTimed snap startTime
   P.runAtomicStateIORef ioRef
     $ P.reinterpret nat mx
 
 type WithTimer r = (P.Members [Timer Text, KU.UnusedId] r)
 
 -- | Wrap an action with a timer and produce the time with the result
-timed :: WithTimer r => P.Sem r a -> P.Sem r (a, Maybe Double)
+timed :: WithTimer r => P.Sem r a -> P.Sem r (a, Maybe Timed)
 timed ma = do
   timerId <- KU.getNextUnusedId "AnonTimer"
   start timerId
@@ -98,13 +116,13 @@ timed ma = do
 {-# INLINEABLE timed #-}
 
 -- | Build a new action from en existing one and its timing
-withTiming :: WithTimer r => (a -> Maybe Double -> P.Sem r b) -> P.Sem r a -> P.Sem r b
+withTiming :: WithTimer r => (a -> Maybe Timed -> P.Sem r b) -> P.Sem r a -> P.Sem r b
 withTiming withTime ma = timed ma >>= uncurry withTime
 {-# INLINEABLE withTiming #-}
 
 -- | Given a logging function and a way to produce a message from the action result and the time,
 -- produce an action which runs that function with that message after the initial action.
-logWithTiming :: WithTimer r => (Text -> P.Sem r ()) -> (a -> Maybe Double -> Text) -> P.Sem r a -> P.Sem r a
+logWithTiming :: WithTimer r => (Text -> P.Sem r ()) -> (a -> Maybe Timed -> Text) -> P.Sem r a -> P.Sem r a
 logWithTiming logF logTimeMsg = withTiming f where
   f a s = logF (logTimeMsg a s) >> pure a
 {-# INLINEABLE logWithTiming #-}
@@ -114,6 +132,6 @@ logWithTiming logF logTimeMsg = withTiming f where
 logTiming :: WithTimer r => (Text -> P.Sem r ()) -> Text -> P.Sem r a -> P.Sem r a
 logTiming logF t ma = logF (t <> "...") >> logWithTiming logF msg ma where
   msg _ tM = case tM of
-    Just s -> t <> " took " <> toText @String (printf "%0.3f" s) <> "s"
+    Just (Timings wallS cpuS) -> t <> " [wall: " <> toText @String (printf "%0.3f" wallS) <> "s; cpu: " <> toText @String (printf "%0.3f" cpuS) <> "]"
     Nothing -> "(TIMING ERROR)"
 {-# INLINEABLE logTiming #-}
