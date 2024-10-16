@@ -57,6 +57,7 @@ module Knit.Report.Cache
   , updateIf
   , loadOrMakeFile
   , oldestUnit
+  , cachedNow
     -- * Re-Exports
   , UTCTime
   )
@@ -325,3 +326,9 @@ oldestUnit cts = withCacheTime t (pure ()) where
 --  t = minimum $ fmap C.cacheTime cts
   t = join $ Foldl.fold Foldl.minimum $ fmap C.cacheTime cts
 {-# INLINEABLE oldestUnit #-}
+
+-- | Utility to lift something into a time-stamped thing with the time as now
+cachedNow :: P.Member (P.Embed IO) r => P.Sem r a -> P.Sem r (ActionWithCacheTime r a)
+cachedNow ma = do
+  nowCT <- P.embed Time.getCurrentTime
+  pure $ C.withCacheTime (Just nowCT) ma
