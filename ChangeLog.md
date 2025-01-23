@@ -1,3 +1,6 @@
+v0.10.9.1
+* Added knitMaybeM and knitEitherM
+
 v0.10.9
 * Made StrictData a default extension
 * Further instrumenting cache operations
