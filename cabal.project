@@ -4,10 +4,14 @@ packages: ./
 --allow-newer: polysemy-zoo:ghc-prim, polysemy-zoo:text, bytestring
 
 --ghc 9.6.X
-allow-newer: base, ghc-prim
-           , streamly-bytestring:bytestring
-           , knit-haskell:streamly, knit-haskell:streamly-bytestring
-           , streamly-bytestring:streamly-core
+--allow-newer: base, ghc-prim
+--           , streamly-bytestring:bytestring
+--           , knit-haskell:streamly, knit-haskell:streamly-bytestring
+--           , streamly-bytestring:streamly-core
+
+--ghc 9.12.X
+allow-newer: base, ghc-prim, polysemy-zoo:containers, polysemy-zoo:constraints
+--template-haskell, time, bytestring, containers, hashable, lens, profunctors, primitive, text, vector, constraints, extra
 
 -- for 9.6
 --source-repository-package
