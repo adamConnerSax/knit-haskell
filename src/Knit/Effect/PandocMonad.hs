@@ -96,7 +96,7 @@ import qualified Text.Pandoc                   as PA
 import qualified Text.Pandoc.MIME              as PA
 import qualified Text.Pandoc.UTF8              as UTF8
 
-
+import qualified Data.Default                  as Default
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.ByteString.Base64         ( decodeLenient )
@@ -105,6 +105,8 @@ import Data.List (lookup) -- should re-write this so it's relude compatible
 import qualified Data.Text                     as T
 import           Control.Monad.Except           ( MonadError(..)
                                                 )
+import qualified Control.Monad.Except          as MTL
+import qualified Control.Monad.State.Strict    as MTL
 
 --import qualified Data.Constraint               as C
 
@@ -426,6 +428,10 @@ interpretInIO = fmap snd . stateful f PA.def
  where
   liftPair :: forall f x y . Functor f => (x, f y) -> f (x, y)
   liftPair (x, fy) = fmap (x, ) fy
+  traceF msg = do
+    traceB <- PA.getTrace
+    when traceB $ Debug.Trace.trace ("[trace]" ++ pandocTextToString msg) (pure ())
+    pure ()
   f :: Pandoc m x -> PA.CommonState -> P.Sem effs (PA.CommonState, x)
   f (LookupEnv s)         cs = liftPair (cs, liftIO $ fmap stringToPandocText <$> IO.lookupEnv (pandocTextToString s))
   f GetCurrentTime        cs = liftPair (cs, liftIO $ IO.getCurrentTime)
@@ -443,14 +449,15 @@ interpretInIO = fmap snd . stateful f PA.def
   f (GetDataFileName s  ) cs = liftPair (cs, liftIOError getDataFileName' s)
   f (GetModificationTime fp) cs =
     liftPair (cs, liftIOError IO.getModificationTime fp)
-  f GetCommonState          cs = return (cs, cs)
-  f (GetsCommonState   g  ) cs = return (cs, g cs)
-  f (ModifyCommonState g  ) cs = return (g cs, ())
-  f (PutCommonState    cs') _  = return (cs', ())
+  f GetCommonState          cs = pure (cs, cs)
+  f (GetsCommonState   g  ) cs = pure (cs, g cs)
+  f (ModifyCommonState g  ) cs = pure (g cs, ())
+  f (PutCommonState    cs') _  = pure (cs', ())
   f (LogOutput         msg) cs = liftPair (cs, logPandocMessage msg)
   f (Trace             msg) cs = liftPair
     ( cs
-    , when (PA.stTrace cs) $ Debug.Trace.trace ("[trace]" ++ pandocTextToString msg) (return ())
+    , fst <$> commonStateViaPure (traceF msg) cs
+--    , when (PA.setTrace cs) $ Debug.Trace.trace ("[trace]" ++ pandocTextToString msg) (pure ())
     )
 
 
@@ -542,8 +549,9 @@ openURLWithState cs u
           u''
     return (cs, (decodeLenient contents, Just mime))
   | otherwise = do
+    reqHeaders <- fst <$> commonStateViaPure PA.getRequestHeaders cs
     let toReqHeader (n, v) = (CI.mk (pandocTextToBS n), pandocTextToBS v)
-        customHeaders = toReqHeader <$> PA.stRequestHeaders cs
+        customHeaders = toReqHeader <$> reqHeaders --PA.setRequestHeaders cs
     cs' <- report cs $ PA.Fetching u
     res <- liftIO $ E.try $ withSocketsDo $ do
       let parseReq = NHC.parseRequest
@@ -568,17 +576,27 @@ openURLWithState cs u
 -- | Stateful version of the Pandoc @report@ function, outputting relevant log messages
 -- and adding them to the log kept in the state.
 report
-  :: (P.Member (Log.Logger Log.LogEntry) effs)
+  :: (P.Member (Log.Logger Log.LogEntry) effs, P.Member (P.Error PA.PandocError) effs)
   => PA.CommonState
   -> PA.LogMessage
   -> P.Sem effs PA.CommonState
 report cs msg = do
-  let verbosity = PA.stVerbosity cs
+  verbosity <- fst <$> commonStateViaPure PA.getVerbosity cs
+  let --verbosity = PA.getVerbosity cs
       level     = PA.messageVerbosity msg
   when (level <= verbosity) $ logPandocMessage msg
+  let pureF = PA.report msg
+  snd <$> commonStateViaPure pureF cs
+--  pure cs'
+{-
+#if MIN_VERSION_pandoc(3,8,0)
+  let cs' = cs -- um, ugh. But the CommonState is opaque now.
+#else
   let stLog' = msg : PA.stLog cs
-      cs'    = cs { PA.stLog = stLog' }
+      cs'    = cs { PA.setLog = stLog' }
+#endif
   return cs'
+-}
 
 -- | Utility function to lift IO errors into Sem
 liftIOError
@@ -601,3 +619,10 @@ getDataFileName' fp = do
   dir <- E.catch @E.IOException (IO.getEnv "pandoc_datadir")
                                 (const Paths.getDataDir)
   return (dir ++ "/pandoc-data/" ++ fp)
+
+commonStateViaPure :: P.Member (P.Error PA.PandocError) effs => PA.PandocPure a -> PA.CommonState -> P.Sem effs (a, PA.CommonState)
+commonStateViaPure f cs = do
+  let (e, cs') = MTL.evalState (MTL.runStateT (MTL.runExceptT $ PA.unPandocPure f) cs) Default.def
+  case e of
+    Left pe -> P.throw pe
+    Right a -> pure (a, cs')
