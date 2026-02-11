@@ -18,11 +18,15 @@ jobs:
       CONFIG: "--enable-tests --enable-benchmarks"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-haskell@v2.7.0
-        id: setup-haskell-cabal
-        with:
-          ghc-version: ${{ matrix.ghc }}
-          cabal-version: ${{ matrix.cabal }}
+      - uses: haskell-actions/setup@v2.7.0
+      with:
+        # Version of GHC to use. If set to "latest", it will always get the latest stable version. If set to "head", it will always get the latest build of GHC.
+        ghc-version: ${{ matrix.ghc }}
+        # Version of Cabal to use. If set to "latest", it will always get the latest stable version. If set to "head", it will always get the latest build of cabal.
+        cabal-version: ${{ matrix.cabal }}
+        # If specified, will setup Stack.
+        enable-stack: false   
+        cabal-update: true       
       - run: cabal update
       - run: cabal freeze $CONFIG
       - uses: actions/cache@v4
