@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: checkout code
       uses: actions/checkout@v6.0.2
-
+      
       - name: setup_haskell
       uses: haskell-actions/setup@v2.7.0
       with:
@@ -32,24 +32,24 @@ jobs:
         cabal-update: true 
         
       - name: cache deps
-        run: cabal freeze $CONFIG
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
-            dist-newstyle
-          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: |
+      run: cabal freeze $CONFIG
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
+           dist-newstyle
+        key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
+        restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
-
+      
       - name: build          
-        run: cabal build $CONFIG
+      run: cabal build $CONFIG
         
       - name: test
-        run: cabal test $CONFIG
+      run: cabal test $CONFIG
 
       - name: haddocks
-        run: cabal haddock $CONFIG
+      run: cabal haddock $CONFIG
 
       - name: sdist
-        run: cabal sdist
+      run: cabal sdist
