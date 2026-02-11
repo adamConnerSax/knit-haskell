@@ -32,9 +32,9 @@ jobs:
         cabal-update: true 
         
       - name: cache deps
-      run: cabal freeze $CONFIG
-      uses: actions/cache@v4
-      with:
+        run: cabal freeze $CONFIG
+        uses: actions/cache@v4
+        with:
           path: |
             ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
             dist-newstyle
@@ -43,12 +43,13 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - name: build          
-      run: cabal build $CONFIG
+        run: cabal build $CONFIG
+        
       - name: test
-      run: cabal test $CONFIG
+        run: cabal test $CONFIG
 
       - name: haddocks
-      run: cabal haddock $CONFIG
+        run: cabal haddock $CONFIG
 
       - name: sdist
-      run: cabal sdist
+        run: cabal sdist
