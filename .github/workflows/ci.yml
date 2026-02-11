@@ -17,8 +17,9 @@ jobs:
     env:
       CONFIG: "--enable-tests --enable-benchmarks"
     steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/setup@v2.7.0
+      - name: test build 
+      uses: actions/checkout@v4
+      uses: haskell-actions/setup@v2.7.0
       with:
         # Version of GHC to use. If set to "latest", it will always get the latest stable version. If set to "head", it will always get the latest build of GHC.
         ghc-version: ${{ matrix.ghc }}
@@ -27,17 +28,16 @@ jobs:
         # If specified, will setup Stack.
         enable-stack: false   
         cabal-update: true       
-      - run: cabal update
-      - run: cabal freeze $CONFIG
-      - uses: actions/cache@v4
-        with:
+      run: cabal freeze $CONFIG
+      uses: actions/cache@v4
+      with:
           path: |
             ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
             dist-newstyle
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
-      - run: cabal build $CONFIG
-      - run: cabal test $CONFIG
-      - run: cabal haddock $CONFIG
-      - run: cabal sdist
+      run: cabal build $CONFIG
+      run: cabal test $CONFIG
+      run: cabal haddock $CONFIG
+      run: cabal sdist
