@@ -571,7 +571,11 @@ openURLWithState cs u
         )
     case res of
       Right r -> return (cs', second (fmap stringToPandocText) r)
+#if MIN_VERSION_pandoc(3,9,0)
+      Left  e -> P.throw $ PA.PandocHttpError u (show (e :: NHC.HttpException))
+#else
       Left  e -> P.throw $ PA.PandocHttpError u e
+#endif
 
 -- | Stateful version of the Pandoc @report@ function, outputting relevant log messages
 -- and adding them to the log kept in the state.

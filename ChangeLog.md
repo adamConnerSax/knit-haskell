@@ -1,3 +1,6 @@
+v0.10.9.2
+* Updated for Pandoc 3.9 (PandocMonad.hs)
+
 v0.10.9.1
 * Added knitMaybeM and knitEitherM
 
